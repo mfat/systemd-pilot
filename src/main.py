@@ -447,29 +447,38 @@ class SystemdManagerWindow(Gtk.Window):
                     
                     services_data.append([unit_name, status, description])
             
-            # Batch fetch descriptions for services that need them
-            if services_needing_description:
-                # Get descriptions in batches of 20 to avoid too many processes
-                batch_size = 20
-                for i in range(0, len(services_needing_description), batch_size):
-                    batch = services_needing_description[i:i+batch_size]
-                    desc_cmd = ["systemctl", "show", "--property=Description"] + batch
-                    try:
-                        desc_result = subprocess.run(desc_cmd, capture_output=True, text=True)
-                        descriptions = desc_result.stdout.strip().split('\n')
+            # Fetch descriptions for services that need them - one by one for reliability
+            for service_name in services_needing_description:
+                try:
+                    # Try to get description using 'systemctl show' command
+                    desc_cmd = ["systemctl", "show", "--property=Description", service_name]
+                    desc_result = subprocess.run(desc_cmd, capture_output=True, text=True)
+                    desc_output = desc_result.stdout.strip()
+                    
+                    if desc_output and "=" in desc_output:
+                        description = desc_output.split("=", 1)[1].strip()
                         
-                        for j, desc_line in enumerate(descriptions):
-                            if desc_line and "=" in desc_line:
-                                service_name = batch[j]
-                                description = desc_line.split("=", 1)[1].strip()
-                                
-                                # Update the description in our data
-                                for service in services_data:
-                                    if service[0] == service_name:
-                                        service[2] = description
-                                        break
-                    except Exception as e:
-                        self.logger.error(f"Error fetching descriptions: {str(e)}")
+                        # If that fails, try to get it from the unit file directly
+                        if not description:
+                            # Try to read from unit file
+                            unit_file_cmd = ["cat", f"/usr/lib/systemd/system/{service_name}", f"/etc/systemd/system/{service_name}"]
+                            unit_file_result = subprocess.run(unit_file_cmd, capture_output=True, text=True)
+                            unit_file_content = unit_file_result.stdout
+                            
+                            # Extract Description from unit file
+                            import re
+                            desc_match = re.search(r'Description=(.+)', unit_file_content)
+                            if desc_match:
+                                description = desc_match.group(1).strip()
+                        
+                        # Update the description in our data
+                        for service in services_data:
+                            if service[0] == service_name:
+                                service[2] = description
+                                break
+                except Exception as e:
+                    self.logger.debug(f"Could not get description for {service_name}: {str(e)}")
+                    # Continue with next service - don't let one failure stop the process
             
             # Update the UI in the main thread
             GLib.idle_add(self._update_local_services_store, services_data)
@@ -1491,16 +1500,18 @@ WantedBy=multi-user.target
                 self.show_error_dialog(f"Failed to reload configuration: {str(e)}")
 
     def format_local_service_cell(self, column, cell, model, iter, data):
-        """Format service name and description in a single cell for local services"""
+        """Format service name and description in a single cell"""
         try:
             name = model[iter][0].replace(".service", "")
-            description = model[iter][2]
+            description = model[iter][2]  # Description is in column 2 for local services
             
+            # Escape special characters for markup
             if description:
+                description = GLib.markup_escape_text(description)
                 markup = f'<b>{name}</b>\n<span size="smaller" style="italic">{description}</span>'
             else:
                 markup = f'<b>{name}</b>'
-            
+                
             cell.set_property("markup", markup)
             
         except Exception as e:
@@ -1994,7 +2005,9 @@ WantedBy=multi-user.target
             name = model[iter][0].replace(".service", "")
             description = model[iter][3]  # Description is in column 3 for remote services
             
+            # Escape special characters for markup
             if description:
+                description = GLib.markup_escape_text(description)
                 markup = f'<b>{name}</b>\n<span size="smaller" style="italic">{description}</span>'
             else:
                 markup = f'<b>{name}</b>'
@@ -2475,29 +2488,47 @@ WantedBy=multi-user.target
                 version_line = version_result.stdout.split('\n')[0]
                 systemd_version = version_line.split(' ')[1]
                 
-                # Get unit counts - use exact same command as terminal for consistency
+                # Get unit counts - parse the actual count from the output footer
                 total_cmd = ["systemctl", "list-unit-files", "--type=service", "--no-pager"]
                 total_result = subprocess.run(total_cmd, capture_output=True, text=True)
                 total_lines = total_result.stdout.strip().split('\n')
-                # Subtract header and footer lines (typically 2 lines)
-                total_units = len(total_lines) - 2
+                
+                # Extract the actual count from the last line which says "498 unit files listed."
+                last_line = total_lines[-1].strip()
+                total_units_match = re.search(r'(\d+) unit files listed', last_line)
+                total_units = int(total_units_match.group(1)) if total_units_match else len(total_lines) - 2
                 
                 # Log the raw output for debugging
                 self.logger.debug(f"Total services raw output: {len(total_lines)} lines")
                 self.logger.debug(f"First line: {total_lines[0]}")
                 self.logger.debug(f"Last line: {total_lines[-1]}")
+                self.logger.debug(f"Extracted total units: {total_units}")
                 
+                # Get loaded units count
                 loaded_cmd = ["systemctl", "list-units", "--type=service", "--no-pager"]
                 loaded_result = subprocess.run(loaded_cmd, capture_output=True, text=True)
                 loaded_lines = loaded_result.stdout.strip().split('\n')
-                # Subtract header and footer lines
-                loaded_units = len(loaded_lines) - 2
                 
+                # Extract the actual count from the footer line
+                loaded_footer = [line for line in loaded_lines if "loaded units listed" in line]
+                if loaded_footer:
+                    loaded_match = re.search(r'(\d+) loaded units listed', loaded_footer[0])
+                    loaded_units = int(loaded_match.group(1)) if loaded_match else len(loaded_lines) - 2
+                else:
+                    loaded_units = len(loaded_lines) - 2
+                
+                # Get active units count
                 active_cmd = ["systemctl", "list-units", "--type=service", "--state=active", "--no-pager"]
                 active_result = subprocess.run(active_cmd, capture_output=True, text=True)
                 active_lines = active_result.stdout.strip().split('\n')
-                # Subtract header and footer lines
-                active_units = len(active_lines) - 2
+                
+                # Extract the actual count from the footer line
+                active_footer = [line for line in active_lines if "loaded units listed" in line]
+                if active_footer:
+                    active_match = re.search(r'(\d+) loaded units listed', active_footer[0])
+                    active_units = int(active_match.group(1)) if active_match else len(active_lines) - 2
+                else:
+                    active_units = len(active_lines) - 2
                 
                 # Calculate unloaded units
                 unloaded_units = total_units - loaded_units
