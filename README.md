@@ -1,6 +1,6 @@
 # systemd Pilot
 
-systemd Pilot is a desktop application for managing systemd services on GNU/linux systems. it can be described as a gui for systemctrl. 
+systemd Pilot is a desktop application for managing systemd services on GNU/Linux systems. it can be described as a GUI for systemctl. 
 
 ![image](https://github.com/user-attachments/assets/85ee68be-aa3e-4291-8435-ef9ee7b8b72f)
 
@@ -27,7 +27,7 @@ systemd Pilot is a desktop application for managing systemd services on GNU/linu
 - Download from the [releases](https://github.com/mfat/systemd-pilot/releases) section the package for your distribution.
   
 ## Requirements
-If you prefer to run the python script directly, here are the requirements:
+If you prefer to run the Python script directly, here are the requirements:
 
 Python modules:
 - PyGObject>=3.42.0
