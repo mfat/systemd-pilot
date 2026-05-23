@@ -420,6 +420,17 @@ class SystemdManagerWindow(Gtk.Window):
         
         return btn
 
+    def escape_ansi(self, line):
+        ansi_escape = re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
+        return ansi_escape.sub('', line)
+
+    # Get info from mostly SystemCtl, or JournalCtl cleaned of any ansi escape sequences.
+    # e.g. cmd = ["systemctl", "list-units", "--type=service", "--output=json", "--no-pager"]  
+    def SystemGet(self, cmd):
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        CleanedData = self.escape_ansi(result.stdout)
+        return CleanedData
+
     def refresh_local_services(self, widget=None):
         """Refresh the list of local systemd services"""
         try:
@@ -427,14 +438,14 @@ class SystemdManagerWindow(Gtk.Window):
             cmd = ["systemctl", "list-units", "--type=service", "--output=json", "--no-pager"]
             if self.show_inactive:
                 cmd.append("--all")  # Show all units including inactive
-                
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
+
             self.local_service_store.clear()
             
+            result = self.SystemGet(cmd)
+
             # Parse JSON output
             import json
-            services = json.loads(result.stdout)
+            services = json.loads(result)
             
             # Add services to the store
             for service in services:
@@ -885,14 +896,9 @@ class SystemdManagerWindow(Gtk.Window):
         scrolled, text_label = self.create_dark_text_view()
         
         try:
-            result = subprocess.run(
-                ["journalctl", "-u", service_name, "-n", "1000", "--no-pager"],
-                capture_output=True,
-                text=True
-            )
-            
             # Format and set logs
-            formatted_logs = self.format_log_output(result.stdout)
+            result = self.SystemGet(["journalctl", "-u", service_name, "-n", "1000", "--no-pager"])
+            formatted_logs = self.format_log_output(result)
             text_label.set_markup(formatted_logs)
             
         except Exception as e:
@@ -914,26 +920,22 @@ class SystemdManagerWindow(Gtk.Window):
             if "ERROR" in line.upper():
                 line = line.replace(
                     "error",
-                    '<span foreground="#e74c3c">error</span>',
-                    flags=re.IGNORECASE
+                    '<span foreground="#e74c3c">error</span>'
                 )
             elif "WARNING" in line.upper():
                 line = line.replace(
                     "warning",
-                    '<span foreground="#f1c40f">warning</span>',
-                    flags=re.IGNORECASE
+                    '<span foreground="#f1c40f">warning</span>'
                 )
             elif "NOTICE" in line.upper():
                 line = line.replace(
                     "notice",
-                    '<span foreground="#3498db">notice</span>',
-                    flags=re.IGNORECASE
+                    '<span foreground="#3498db">notice</span>'
                 )
             elif "INFO" in line.upper():
                 line = line.replace(
                     "info",
-                    '<span foreground="#2ecc71">info</span>',
-                    flags=re.IGNORECASE
+                    '<span foreground="#2ecc71">info</span>'
                 )
             
             # Highlight timestamps
@@ -1129,14 +1131,9 @@ class SystemdManagerWindow(Gtk.Window):
         scrolled, text_label = self.create_dark_text_view()
         
         try:
-            result = subprocess.run(
-                ["journalctl", "-u", service_name, "-n", "1000", "--no-pager"],
-                capture_output=True,
-                text=True
-            )
-            
             # Format and set logs
-            formatted_logs = self.format_log_output(result.stdout)
+            result = self.SystemGet(["journalctl", "-u", service_name, "-n", "1000", "--no-pager"])
+            formatted_logs = self.format_log_output(result)
             text_label.set_markup(formatted_logs)
             
         except Exception as e:
@@ -1283,22 +1280,18 @@ class SystemdManagerWindow(Gtk.Window):
                 
             else:
                 # Get local service status
-                result = subprocess.run(["systemctl", "is-enabled", service_name], capture_output=True, text=True)
-                enabled_status = result.stdout.strip()
+                enabled_status = self.SystemGet(["systemctl", "is-enabled", service_name]).strip()
                 
-                result = subprocess.run(["systemctl", "is-active", service_name], capture_output=True, text=True)
-                active_status = result.stdout.strip()
-                
+                active_status = self.SystemGet(["systemctl", "is-active", service_name]).strip()
+
                 # Get local status output
-                result = subprocess.run(["systemctl", "status", service_name], capture_output=True, text=True)
-                
+                result = self.SystemGet(["systemctl", "status", service_name])
                 # Apply color formatting and set markup
-                formatted_text = self.format_status_output(result.stdout)
+                formatted_text = self.format_status_output(result)
                 status_label.set_markup(formatted_text)
                 
                 # Get local properties
-                result = subprocess.run(["systemctl", "show", service_name], capture_output=True, text=True)
-                details = result.stdout
+                details = self.SystemGet(["systemctl", "show", service_name])
                 
                 # Format and set properties text
                 formatted_props = self.format_properties(details)
@@ -1431,21 +1424,11 @@ class SystemdManagerWindow(Gtk.Window):
         
         try:
             # Get enabled status
-            result = subprocess.run(
-                ["systemctl", "is-enabled", service_name],
-                capture_output=True,
-                text=True
-            )
-            enabled_status = result.stdout.strip()
-            
+            enabled_status = self.SystemGet(["systemctl", "is-enabled", service_name]).strip()
+
             # Get active status
-            result = subprocess.run(
-                ["systemctl", "is-active", service_name],
-                capture_output=True,
-                text=True
-            )
-            active_status = result.stdout.strip()
-            
+            active_status = self.SystemGet(["systemctl", "is-active", service_name]).strip()
+
             # Create status labels with colored backgrounds
             enabled_label = Gtk.Label()
             enabled_label.set_markup(
@@ -1473,13 +1456,13 @@ class SystemdManagerWindow(Gtk.Window):
         notebook = Gtk.Notebook()
         
         # Status page
-        status_view = self.create_log_text_view()
+        status_view = Gtk.TextView()
         status_scroll = Gtk.ScrolledWindow()
         status_scroll.add(status_view)
         notebook.append_page(status_scroll, Gtk.Label(label="Status"))
         
         # Properties page
-        props_view = self.create_log_text_view()
+        props_view = Gtk.TextView()
         props_scroll = Gtk.ScrolledWindow()
         props_scroll.add(props_view)
         notebook.append_page(props_scroll, Gtk.Label(label="Properties"))
@@ -1488,20 +1471,10 @@ class SystemdManagerWindow(Gtk.Window):
         
         try:
             # Get status
-            result = subprocess.run(
-                ["systemctl", "status", service_name],
-                capture_output=True,
-                text=True
-            )
-            status_view.get_buffer().set_text(result.stdout)
+            status_view.get_buffer().set_text(self.SystemGet(["systemctl", "status", service_name]))
             
             # Get properties
-            result = subprocess.run(
-                ["systemctl", "show", service_name],
-                capture_output=True,
-                text=True
-            )
-            props_view.get_buffer().set_text(result.stdout)
+            props_view.get_buffer().set_text(self.SystemGet(["systemctl", "show", service_name]))
             
         except Exception as e:
             self.show_error_dialog(f"Failed to fetch service details: {str(e)}")
