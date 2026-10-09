@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="systemd-pilot">
+  <schema id="io.github.mfat.systemdpilot" path="/io/github/mfat/systemdpilot/">
+    <key name="window-width" type="i">
+      <default>1000</default>
+    </key>
+    <key name="window-height" type="i">
+      <default>680</default>
+    </key>
+    <key name="window-maximized" type="b">
+      <default>false</default>
+    </key>
+    <key name="show-inactive" type="b">
+      <default>false</default>
+      <summary>Show inactive services</summary>
+      <description>Also list services that are loaded but not running, and installed services that are not loaded.</description>
+    </key>
+    <key name="color-scheme" type="s">
+      <choices>
+        <choice value="default"/>
+        <choice value="light"/>
+        <choice value="dark"/>
+      </choices>
+      <default>"default"</default>
+      <summary>Color scheme</summary>
+    </key>
+  </schema>
+</schemalist>

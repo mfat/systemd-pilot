@@ -1,0 +1,2 @@
+option('tests', type: 'boolean', value: true, description: 'Register the Python unit tests with meson test')
+option('python', type: 'string', value: '', description: 'Interpreter for the launcher’s #! line (default: /usr/bin/env python3)')

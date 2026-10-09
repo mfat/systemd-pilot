@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=systemd Pilot
-Comment=A graphical tool for managing systemd services locally and remotely
-Exec=systemd-pilot
-Icon=io.github.mfat.systemdpilot
-Terminal=false
-Type=Application
-Categories=System;Settings;
-Keywords=systemd;service;system;

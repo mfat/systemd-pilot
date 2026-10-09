@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mfat.systemdpilot</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>systemd Pilot</name>
+  <summary>Manage systemd services</summary>
+  <description>
+    <p>
+      systemd Pilot is a graphical front end for systemctl. Manage the services on this
+      computer, or on remote machines over SSH, from one window.
+    </p>
+    <ul>
+      <li>Browse system and user services, with instant search</li>
+      <li>Start, stop, restart, enable and disable services</li>
+      <li>Read a service's status, logs, unit file and properties</li>
+      <li>Create new services from templates</li>
+      <li>Connect to remote hosts with a password, a private key or your SSH agent</li>
+    </ul>
+  </description>
+
+  <developer id="io.github.mfat">
+    <name>mFat</name>
+  </developer>
+  <launchable type="desktop-id">io.github.mfat.systemdpilot.desktop</launchable>
+  <translation type="gettext">systemd-pilot</translation>
+
+  <url type="homepage">https://github.com/mfat/systemd-pilot</url>
+  <url type="bugtracker">https://github.com/mfat/systemd-pilot/issues</url>
+  <url type="vcs-browser">https://github.com/mfat/systemd-pilot</url>
+
+  <content_rating type="oars-1.1"/>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Services on this computer</caption>
+      <image>https://raw.githubusercontent.com/mfat/systemd-pilot/main/data/screenshots/main.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Details and logs of a service</caption>
+      <image>https://raw.githubusercontent.com/mfat/systemd-pilot/main/data/screenshots/details.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="4.0.0" date="2026-10-09">
+      <description>
+        <p>A complete rewrite for GTK 4 and libadwaita.</p>
+        <ul>
+          <li>Local and remote machines in one sidebar, with an adaptive layout</li>
+          <li>User services work everywhere, including logs and controls</li>
+          <li>Service details now include logs, the unit file and searchable properties</li>
+          <li>Remote host keys are verified, and passwords are never placed on a command line</li>
+          <li>Errors from systemctl are reported instead of being shown as success</li>
+          <li>Hosts can be removed, and editing a host keeps its saved password</li>
+        </ul>
+      </description>
+    </release>
+    <release version="3.0.0" date="2024-12-28"/>
+    <release version="2.0.0" date="2024-12-20"/>
+    <release version="1.0.0" date="2024-12-17"/>
+  </releases>
+</component>

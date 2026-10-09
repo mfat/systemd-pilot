@@ -1,0 +1,35 @@
+#!@PYTHON@
+
+# systemd-pilot - manage systemd services locally and over SSH
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+import gettext
+import locale
+import os
+import signal
+import sys
+
+VERSION = "@VERSION@"
+pkgdatadir = "@pkgdatadir@"
+localedir = "@localedir@"
+
+sys.path.insert(1, pkgdatadir)
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+try:
+    locale.setlocale(locale.LC_ALL, "")
+    locale.bindtextdomain("systemd-pilot", localedir)
+    locale.textdomain("systemd-pilot")
+except (AttributeError, locale.Error):
+    pass
+gettext.bindtextdomain("systemd-pilot", localedir)
+gettext.textdomain("systemd-pilot")
+
+if __name__ == "__main__":
+    from gi.repository import Gio
+
+    Gio.Resource.load(os.path.join(pkgdatadir, "systemd-pilot.gresource"))._register()
+
+    from systemdpilot import main
+
+    sys.exit(main.main(VERSION))

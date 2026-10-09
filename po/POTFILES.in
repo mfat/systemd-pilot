@@ -1,0 +1,15 @@
+data/io.github.mfat.systemdpilot.desktop.in
+data/io.github.mfat.systemdpilot.metainfo.xml.in
+data/io.github.mfat.systemdpilot.gschema.xml
+src/systemdpilot/main.py
+src/systemdpilot/ui/create-unit-dialog.ui
+src/systemdpilot/ui/create_unit_dialog.py
+src/systemdpilot/ui/host-dialog.ui
+src/systemdpilot/ui/host_dialog.py
+src/systemdpilot/ui/operations.py
+src/systemdpilot/ui/prompts.py
+src/systemdpilot/ui/unit-dialog.ui
+src/systemdpilot/ui/unit_dialog.py
+src/systemdpilot/ui/unit_list.py
+src/systemdpilot/ui/window.py
+src/systemdpilot/ui/window.ui

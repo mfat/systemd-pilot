@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/io/github/mfat/systemdpilot">
+    <file preprocess="xml-stripblanks" alias="ui/window.ui">systemdpilot/ui/window.ui</file>
+    <file preprocess="xml-stripblanks" alias="ui/unit-dialog.ui">systemdpilot/ui/unit-dialog.ui</file>
+    <file preprocess="xml-stripblanks" alias="ui/host-dialog.ui">systemdpilot/ui/host-dialog.ui</file>
+    <file preprocess="xml-stripblanks" alias="ui/create-unit-dialog.ui">systemdpilot/ui/create-unit-dialog.ui</file>
+    <file alias="style.css">systemdpilot/ui/style.css</file>
+  </gresource>
+</gresources>
