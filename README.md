@@ -1,5 +1,9 @@
 # systemd Pilot
 
+<p align="center">
+  <img src="data/icons/hicolor/scalable/apps/io.github.mfat.systemdpilot.svg" alt="systemd Pilot icon" width="128" height="128">
+</p>
+
 systemd Pilot is a desktop app for managing systemd services, on this computer
 or on remote machines over SSH. Think of it as a GUI for `systemctl`, built with
 GTK 4 and libadwaita.
