@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --buildsystem=meson
+
+# The Python unit tests run in CI; the package build still validates the
+# desktop file, metainfo and GSettings schema.
+override_dh_auto_configure:
+	dh_auto_configure -- -Dtests=false -Dpython=/usr/bin/python3

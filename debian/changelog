@@ -1,0 +1,8 @@
+systemd-pilot (4.0.0) unstable; urgency=medium
+
+  * Rewrite for GTK 4 and libadwaita, built with meson.
+  * Verify SSH host keys and pass sudo passwords on standard input.
+  * Report systemctl failures instead of showing them as success.
+  * Support user services for every action, locally and remotely.
+
+ -- mFat <newmfat@gmail.com>  Fri, 09 Oct 2026 12:00:00 +0000
