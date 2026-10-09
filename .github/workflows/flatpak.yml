@@ -1,0 +1,35 @@
+name: Flatpak
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  flatpak:
+    name: Flatpak (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: systemd-pilot-${{ matrix.arch }}.flatpak
+          manifest-path: build-aux/flatpak/io.github.mfat.systemdpilot.json
+          cache-key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('build-aux/flatpak/*.json') }}
+          arch: ${{ matrix.arch }}
+          upload-artifact: true

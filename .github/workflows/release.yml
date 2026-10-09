@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag matches the project version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            python3 build-aux/check-version.py "$GITHUB_REF_NAME"
+          else
+            python3 build-aux/check-version.py
+          fi
+
+  deb:
+    name: Debian package
+    needs: version
+    runs-on: ubuntu-24.04
+    # Build on the oldest supported base so the package installs on newer ones too.
+    container: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential devscripts equivs lintian
+          mk-build-deps --install --remove --tool "apt-get -y --no-install-recommends" debian/control
+      - name: Build
+        run: |
+          dpkg-buildpackage --build=binary --unsigned-source --unsigned-changes
+          mkdir -p dist
+          mv ../systemd-pilot_*.deb dist/
+      - name: Lintian
+        run: lintian --info --no-tag-display-limit dist/*.deb || true
+      - name: Install test
+        run: |
+          apt-get install -y ./dist/*.deb
+          python3 -c "import sys; sys.path.insert(1, '/usr/share/systemd-pilot'); import systemdpilot.core.manager"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
+
+  rpm:
+    name: RPM package
+    needs: version
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Install tools
+        run: dnf install -y rpm-build rpmdevtools git tar 'dnf-command(builddep)'
+      - uses: actions/checkout@v5
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version=$(rpmspec -q --qf '%{version}\n' packaging/rpm/systemd-pilot.spec | head -1)
+          rpmdev-setuptree
+          git archive --format=tar.gz --prefix="systemd-pilot-$version/" \
+            -o ~/rpmbuild/SOURCES/systemd-pilot-$version.tar.gz HEAD
+          dnf builddep -y packaging/rpm/systemd-pilot.spec
+          rpmbuild -ba packaging/rpm/systemd-pilot.spec
+          mkdir -p dist
+          cp ~/rpmbuild/RPMS/noarch/*.rpm ~/rpmbuild/SRPMS/*.rpm dist/
+      - name: Install test
+        run: dnf install -y dist/*.noarch.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: dist/*.rpm
+
+  flatpak:
+    name: Flatpak
+    needs: version
+    uses: ./.github/workflows/flatpak.yml
+
+  publish:
+    name: Publish release
+    if: github.ref_type == 'tag'
+    needs: [deb, rpm, flatpak]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List files
+        run: ls -l dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.flatpak
+          generate_release_notes: true
