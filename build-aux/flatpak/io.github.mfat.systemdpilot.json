@@ -1,0 +1,39 @@
+{
+    "id": "io.github.mfat.systemdpilot",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "51",
+    "sdk": "org.gnome.Sdk",
+    "command": "systemd-pilot",
+    "finish-args": [
+        "--share=network",
+        "--share=ipc",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--device=dri",
+        "--socket=ssh-auth",
+        "--filesystem=~/.ssh:ro",
+        "--talk-name=org.freedesktop.Flatpak"
+    ],
+    "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "*.a",
+        "*.la"
+    ],
+    "modules": [
+        "python3-deps.json",
+        {
+            "name": "systemd-pilot",
+            "buildsystem": "meson",
+            "config-opts": [
+                "-Dtests=false"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "../.."
+                }
+            ]
+        }
+    ]
+}
