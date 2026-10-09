@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface domain="systemd-pilot">
+  <requires lib="gtk" version="4.12"/>
+  <requires lib="libadwaita" version="1.5"/>
+  <template class="SystemdPilotHostDialog" parent="AdwDialog">
+    <property name="width-request">360</property>
+    <property name="height-request">294</property>
+    <property name="content-width">480</property>
+    <property name="title" translatable="yes">Add Host</property>
+    <property name="child">
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="AdwToolbarView">
+            <child type="top">
+              <object class="AdwHeaderBar">
+                <property name="show-start-title-buttons">False</property>
+                <property name="show-end-title-buttons">False</property>
+                <child type="start">
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">_Cancel</property>
+                    <property name="use-underline">True</property>
+                    <signal name="clicked" handler="on_cancel_clicked"/>
+                  </object>
+                </child>
+                <child type="end">
+                  <object class="GtkButton" id="save_button">
+                    <property name="label" translatable="yes">_Save</property>
+                    <property name="use-underline">True</property>
+                    <property name="sensitive">False</property>
+                    <signal name="clicked" handler="on_save_clicked"/>
+                    <style>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <property name="content">
+              <object class="AdwPreferencesPage">
+                <child>
+                  <object class="AdwPreferencesGroup">
+                    <child>
+                      <object class="AdwEntryRow" id="name_row">
+                        <property name="title" translatable="yes">Name</property>
+                        <signal name="changed" handler="on_field_changed"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="hostname_row">
+                        <property name="title" translatable="yes">Address</property>
+                        <property name="input-purpose">url</property>
+                        <signal name="changed" handler="on_field_changed"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwSpinRow" id="port_row">
+                        <property name="title" translatable="yes">Port</property>
+                        <property name="numeric">True</property>
+                        <property name="adjustment">
+                          <object class="GtkAdjustment">
+                            <property name="lower">1</property>
+                            <property name="upper">65535</property>
+                            <property name="value">22</property>
+                            <property name="step-increment">1</property>
+                            <property name="page-increment">10</property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="username_row">
+                        <property name="title" translatable="yes">User Name</property>
+                        <signal name="changed" handler="on_field_changed"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup" id="auth_group">
+                    <property name="title" translatable="yes">Authentication</property>
+                    <child>
+                      <object class="AdwComboRow" id="auth_row">
+                        <property name="title" translatable="yes">Method</property>
+                        <property name="model">
+                          <object class="GtkStringList">
+                            <items>
+                              <item translatable="yes">Password</item>
+                              <item translatable="yes">Private Key</item>
+                              <item translatable="yes">SSH Agent or Default Keys</item>
+                            </items>
+                          </object>
+                        </property>
+                        <signal name="notify::selected" handler="on_auth_changed"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwActionRow" id="key_row">
+                        <property name="title" translatable="yes">Private Key</property>
+                        <property name="use-markup">False</property>
+                        <child type="suffix">
+                          <object class="GtkButton">
+                            <property name="label" translatable="yes">C_hoose…</property>
+                            <property name="use-underline">True</property>
+                            <property name="valign">center</property>
+                            <signal name="clicked" handler="on_choose_key_clicked"/>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPasswordEntryRow" id="secret_row">
+                        <property name="title" translatable="yes">Password</property>
+                        <signal name="changed" handler="on_field_changed"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwPreferencesGroup" id="remove_group">
+                    <property name="visible">False</property>
+                    <child>
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">_Remove Host</property>
+                        <property name="use-underline">True</property>
+                        <property name="halign">center</property>
+                        <signal name="clicked" handler="on_remove_clicked"/>
+                        <style>
+                          <class name="destructive-action"/>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

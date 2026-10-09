@@ -1,0 +1,16 @@
+.badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: smaller;
+  font-weight: bold;
+  background-color: alpha(currentColor, 0.1);
+}
+
+.badge.success { color: @success_color; background-color: alpha(@success_color, 0.15); }
+.badge.error { color: @error_color; background-color: alpha(@error_color, 0.15); }
+.badge.warning { color: @warning_color; background-color: alpha(@warning_color, 0.15); }
+.badge.accent { color: @accent_color; background-color: alpha(@accent_bg_color, 0.15); }
+
+textview.output {
+  padding: 6px 12px;
+}

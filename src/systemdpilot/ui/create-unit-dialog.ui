@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface domain="systemd-pilot">
+  <requires lib="gtk" version="4.12"/>
+  <requires lib="libadwaita" version="1.5"/>
+  <template class="SystemdPilotCreateUnitDialog" parent="AdwDialog">
+    <property name="width-request">360</property>
+    <property name="height-request">294</property>
+    <property name="content-width">760</property>
+    <property name="content-height">680</property>
+    <property name="title" translatable="yes">New Service</property>
+    <property name="child">
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="AdwToolbarView">
+            <child type="top">
+              <object class="AdwHeaderBar">
+                <property name="show-start-title-buttons">False</property>
+                <property name="show-end-title-buttons">False</property>
+                <property name="title-widget">
+                  <object class="AdwWindowTitle" id="header_title"/>
+                </property>
+                <child type="start">
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">_Cancel</property>
+                    <property name="use-underline">True</property>
+                    <signal name="clicked" handler="on_cancel_clicked"/>
+                  </object>
+                </child>
+                <child type="end">
+                  <object class="GtkButton" id="create_button">
+                    <property name="label" translatable="yes">C_reate</property>
+                    <property name="use-underline">True</property>
+                    <property name="sensitive">False</property>
+                    <signal name="clicked" handler="on_create_clicked"/>
+                    <style>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <property name="content">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">12</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <property name="margin-bottom">12</property>
+                <child>
+                  <object class="GtkListBox">
+                    <property name="selection-mode">none</property>
+                    <style>
+                      <class name="boxed-list"/>
+                    </style>
+                    <child>
+                      <object class="AdwEntryRow" id="name_row">
+                        <property name="title" translatable="yes">Service Name</property>
+                        <signal name="changed" handler="on_name_changed"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwComboRow" id="template_row">
+                        <property name="title" translatable="yes">Template</property>
+                        <signal name="notify::selected" handler="on_template_changed"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwSwitchRow" id="enable_row">
+                        <property name="title" translatable="yes">Start at Boot</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwSwitchRow" id="start_row">
+                        <property name="title" translatable="yes">Start Now</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkFrame">
+                    <property name="child">
+                      <object class="GtkScrolledWindow" id="editor_scroll">
+                        <property name="vexpand">True</property>
+                        <property name="min-content-height">240</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>
