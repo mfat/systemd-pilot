@@ -22,6 +22,7 @@ versions = {
     "meson.build": find("meson.build", r"^\s*version:\s*'([^']+)'"),
     "debian/changelog": find("debian/changelog", r"^systemd-pilot \(([^)-]+)"),
     "packaging/rpm/systemd-pilot.spec": find("packaging/rpm/systemd-pilot.spec", r"^Version:\s*(\S+)"),
+    "man page": find("data/systemd-pilot.1", r'"systemd Pilot ([^"]+)"'),
     "metainfo (latest release)": find(
         "data/io.github.mfat.systemdpilot.metainfo.xml.in", r'<release version="([^"]+)"'
     ),

@@ -9,12 +9,15 @@ from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from ..core.errors import (
     AuthenticationFailed,
+    ConnectionCancelled,
     ConnectionFailed,
     HostKeyMismatch,
     HostKeyUnknown,
+    PilotError,
 )
 from ..core.models import AuthMethod, Host, Scope, Unit, UnitAction
 from ..core.session import LOCAL_ID, Sessions
+from ..core.ssh import SSHRunner
 from . import prompts
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
@@ -79,7 +82,7 @@ class Window(Adw.ApplicationWindow):
         self.machine_id = LOCAL_ID
         self.scope = Scope.SYSTEM
         self._generation = 0
-        self._connecting: dict[str, bool] = {}  # host id -> cancelled
+        self._connecting: dict[str, SSHRunner] = {}  # host id -> connection attempt
         self.operations = Operations(self, self.toast)
 
         self.set_default_size(settings.get_int("window-width"), settings.get_int("window-height"))
@@ -200,6 +203,7 @@ class Window(Adw.ApplicationWindow):
         if row is None or row.machine_id == self.machine_id and self.unit_list.store.get_n_items():
             return
         self.machine_id = row.machine_id
+        self._generation += 1  # results still on their way belong to the previous machine
         self.unit_list.clear()
         host = self._current_host()
         self.content_page.set_title(host.name if host else _("This Computer"))
@@ -229,29 +233,32 @@ class Window(Adw.ApplicationWindow):
             self._ask_login_password(host)
             return
 
-        self._connecting[host.id] = False
+        runner = self.sessions.prepare(host, secret)
+        self._connecting[host.id] = runner
         self._show_loading(_("Connecting to {host}…").format(host=host.name), cancellable=True)
         self._update_actions()
         run_in_thread(
             self.sessions.connect,
-            host,
-            secret,
-            on_done=lambda _m: self._on_connected(host),
-            on_error=lambda e: self._on_connect_failed(host, e),
+            runner,
+            on_done=lambda _m: self._on_connected(host, runner),
+            on_error=lambda e: self._on_connect_failed(host, runner, e),
         )
 
     def cancel_connect(self):
         host = self._current_host()
-        if host and host.id in self._connecting:
-            self._connecting[host.id] = True
+        runner = self._connecting.pop(host.id, None) if host else None
+        if runner:
+            # Closes the socket, so the attempt stops instead of finishing in the background.
+            runner.cancel()
             self._show_disconnected()
             self._update_actions()
 
-    def _on_connected(self, host):
-        cancelled = self._connecting.pop(host.id, False)
-        if cancelled:
+    def _on_connected(self, host, runner):
+        if self._connecting.get(host.id) is not runner:
+            # Cancelled just as it succeeded.
             self.sessions.disconnect(host.id)
             return
+        del self._connecting[host.id]
         self._refresh_row_status(host.id)
         if self.machine_id == host.id:
             self._update_actions()
@@ -259,13 +266,13 @@ class Window(Adw.ApplicationWindow):
         else:
             self.toast(_("Connected to {host}").format(host=host.name))
 
-    def _on_connect_failed(self, host, error):
-        cancelled = self._connecting.pop(host.id, False)
+    def _on_connect_failed(self, host, runner, error):
+        if self._connecting.get(host.id) is not runner or isinstance(error, ConnectionCancelled):
+            return  # cancelled; the UI already moved on
+        del self._connecting[host.id]
         visible = self.machine_id == host.id
         if visible:
             self._update_actions()
-        if cancelled:
-            return
 
         if isinstance(error, HostKeyUnknown):
 
@@ -303,7 +310,10 @@ class Window(Adw.ApplicationWindow):
             if password is None:
                 return
             if remember:
-                self.sessions.hosts.save(host, password)
+                try:
+                    self.sessions.hosts.save(host, password)
+                except PilotError as e:
+                    self.toast(str(e))  # still connect, just without remembering
             if self.machine_id == host.id:
                 self.connect_current(secret=password)
 
@@ -317,6 +327,7 @@ class Window(Adw.ApplicationWindow):
         )
 
     def disconnect_current(self):
+        self._generation += 1
         self.sessions.disconnect(self.machine_id)
         self._refresh_row_status(self.machine_id)
         self.unit_list.clear()
@@ -336,7 +347,7 @@ class Window(Adw.ApplicationWindow):
             return
         dialog = HostDialog(self.sessions.hosts, host)
         dialog.connect("saved", self._on_host_saved)
-        dialog.connect("remove-requested", lambda *_: self.remove_host())
+        dialog.connect("remove-requested", lambda d, _id: self.remove_host(parent=d, on_removed=d.close))
         dialog.present(self)
 
     def _on_host_saved(self, _dialog, host_id):
@@ -346,20 +357,29 @@ class Window(Adw.ApplicationWindow):
         self.machine_id = None
         self.machine_list.select_row(self._row_for(host_id))
 
-    def remove_host(self):
+    def remove_host(self, parent=None, on_removed=None):
         host = self._current_host()
         if not host:
             return
+
+        def remove():
+            if on_removed:
+                on_removed()
+            self._remove_host(host.id)
+
         prompts.confirm(
-            self,
+            parent or self,
             _("Remove {host}?").format(host=host.name),
             _("The host and its saved password will be removed."),
             _("_Remove"),
-            lambda: self._remove_host(host.id),
+            remove,
             destructive=True,
         )
 
     def _remove_host(self, host_id):
+        runner = self._connecting.pop(host_id, None)
+        if runner:
+            runner.cancel()
         self.sessions.disconnect(host_id)
         self.sessions.hosts.remove(host_id)
         self._rebuild_machine_list()
@@ -387,12 +407,16 @@ class Window(Adw.ApplicationWindow):
                 return
             self._on_units_loaded(units)
             run_in_thread(
-                manager.complete_units, units, scope, include_inactive, on_done=completed, on_error=lambda _e: None
+                manager.complete_units, units, scope, include_inactive, on_done=completed, on_error=incomplete
             )
 
         def completed(units):
             if generation == self._generation:
                 self._on_units_loaded(units)
+
+        def incomplete(error):
+            if generation == self._generation:
+                self.toast(_("Could not load startup states: {error}").format(error=describe(error)))
 
         def failed(error):
             if generation != self._generation:
@@ -455,7 +479,7 @@ class Window(Adw.ApplicationWindow):
             manager,
             lambda: manager.control(unit.name, action, scope),
             on_success=lambda _r: (self.toast(self._action_message(unit, action)), self.reload()),
-            error_heading=_("Could Not {action} {unit}").format(action=action.value.title(), unit=unit.short_name),
+            error_heading=self._action_error_heading(unit, action),
         )
 
     @staticmethod
@@ -469,6 +493,18 @@ class Window(Adw.ApplicationWindow):
             UnitAction.DISABLE: _("Disabled {unit}"),
         }
         return messages[action].format(unit=unit.short_name)
+
+    @staticmethod
+    def _action_error_heading(unit: Unit, action: UnitAction) -> str:
+        headings = {
+            UnitAction.START: _("Could Not Start {unit}"),
+            UnitAction.STOP: _("Could Not Stop {unit}"),
+            UnitAction.RESTART: _("Could Not Restart {unit}"),
+            UnitAction.RELOAD: _("Could Not Reload {unit}"),
+            UnitAction.ENABLE: _("Could Not Enable {unit}"),
+            UnitAction.DISABLE: _("Could Not Disable {unit}"),
+        }
+        return headings[action].format(unit=unit.short_name)
 
     def show_unit(self, unit: Unit | None):
         manager = self.sessions.get(self.machine_id)

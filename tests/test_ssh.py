@@ -1,14 +1,17 @@
+import threading
+
 import paramiko
 import pytest
 
 from systemdpilot.core.errors import (
     AuthenticationFailed,
     AuthenticationRequired,
+    ConnectionCancelled,
     HostKeyMismatch,
     HostKeyUnknown,
 )
 from systemdpilot.core.known_hosts import KnownHosts, fingerprint
-from systemdpilot.core.models import Host
+from systemdpilot.core.models import AuthMethod, Host
 from systemdpilot.core.ssh import SSHRunner
 
 
@@ -100,3 +103,70 @@ def test_bad_host_key_is_translated(monkeypatch, tmp_path):
     r = SSHRunner(Host("h", "h.example", "me"), KnownHosts(tmp_path / "kh", tmp_path / "x"), client_factory=Client)
     with pytest.raises(HostKeyMismatch):
         r.connect()
+
+
+class RecordingClient(paramiko.SSHClient):
+    calls: list = []
+
+    def connect(self, **kwargs):
+        RecordingClient.calls.append(kwargs)
+
+
+def _runner(tmp_path, host, secret=None):
+    return SSHRunner(host, KnownHosts(tmp_path / "kh", tmp_path / "none"), secret, client_factory=RecordingClient)
+
+
+def test_key_auth_uses_only_the_chosen_key(tmp_path):
+    RecordingClient.calls = []
+    host = Host("h", "h.example", "me", auth=AuthMethod.KEY, key_path="/k")
+    _runner(tmp_path, host, "passphrase").connect()
+    kwargs = RecordingClient.calls[-1]
+    assert kwargs["key_filename"] == "/k" and kwargs["passphrase"] == "passphrase"
+    assert kwargs["allow_agent"] is False and kwargs["look_for_keys"] is False
+
+
+def test_secret_is_dropped_after_connect(tmp_path):
+    r = _runner(tmp_path, Host("h", "h.example", "me"), "pw")
+    r.connect()
+    assert r._secret is None
+
+
+def test_cancel_before_connect(tmp_path):
+    r = _runner(tmp_path, Host("h", "h.example", "me"), "pw")
+    r.cancel()
+    with pytest.raises(ConnectionCancelled):
+        r.connect()
+
+
+def test_cancel_during_connect_closes_the_socket(tmp_path):
+    started, closed = threading.Event(), threading.Event()
+
+    class BlockingClient(paramiko.SSHClient):
+        def connect(self, **kwargs):
+            started.set()
+            if not closed.wait(5):
+                raise AssertionError("connect was not interrupted")
+            raise OSError("socket closed")
+
+        def close(self):
+            closed.set()
+
+    r = SSHRunner(
+        Host("h", "h.example", "me"), KnownHosts(tmp_path / "kh", tmp_path / "x"), "pw", client_factory=BlockingClient
+    )
+    errors = []
+    t = threading.Thread(target=lambda: _capture(r.connect, errors))
+    t.start()
+    assert started.wait(5)
+    r.cancel()
+    t.join(5)
+    assert not t.is_alive()
+    assert isinstance(errors[0], ConnectionCancelled)
+    assert not r.connected
+
+
+def _capture(func, errors):
+    try:
+        func()
+    except Exception as e:  # noqa: BLE001
+        errors.append(e)

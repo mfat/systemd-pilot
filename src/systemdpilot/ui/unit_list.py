@@ -89,6 +89,13 @@ class UnitList(Gtk.ScrolledWindow):
         self._menu.set_halign(Gtk.Align.START)
         self.connect("destroy", lambda *_: self._menu.unparent())
 
+        # Keyboard access to the context menu: Menu key or Shift+F10.
+        trigger = Gtk.ShortcutTrigger.parse_string("Menu|<Shift>F10")
+        action = Gtk.CallbackAction.new(lambda *_: self._popup_for_focus())
+        shortcuts = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
+        shortcuts.add_shortcut(Gtk.Shortcut(trigger=trigger, action=action))
+        self.view.add_controller(shortcuts)
+
         self.set_child(self.view)
 
     # -- public API -------------------------------------------------------
@@ -184,6 +191,22 @@ class UnitList(Gtk.ScrolledWindow):
         item, handler = self._handlers.pop(list_item, (None, None))
         if item is not None:
             item.disconnect(handler)
+
+    def _popup_for_focus(self) -> bool:
+        """Show the context menu for the selected row, next to the focused cell."""
+        if self.selection.get_selected_item() is None:
+            return False
+        focus = self.get_root().get_focus() if self.get_root() else None
+        rect = Gdk.Rectangle()
+        ok, bounds = focus.compute_bounds(self.view) if focus and focus.is_ancestor(self.view) else (False, None)
+        if ok:
+            rect.x, rect.y = int(bounds.get_x() + 24), int(bounds.get_y() + bounds.get_height() / 2)
+        else:
+            rect.x, rect.y = 24, 24
+        rect.width = rect.height = 1
+        self._menu.set_pointing_to(rect)
+        self._menu.popup()
+        return True
 
     def _setup_name(self, _factory, list_item):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=6, margin_bottom=6)

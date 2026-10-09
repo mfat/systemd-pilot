@@ -41,7 +41,7 @@ jobs:
           mkdir -p dist
           mv ../systemd-pilot_*.deb dist/
       - name: Lintian
-        run: lintian --info --no-tag-display-limit dist/*.deb || true
+        run: lintian --info --no-tag-display-limit --fail-on error,warning dist/*.deb
       - name: Install test
         run: |
           apt-get install -y ./dist/*.deb

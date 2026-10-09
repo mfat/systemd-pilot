@@ -19,15 +19,18 @@ _INSTALL_SCRIPT = r"""
 set -eu
 target=$1; dir=$2; shift 2
 mkdir -p -- "$dir"
-if [ "${PILOT_OVERWRITE:-0}" != 1 ] && [ -e "$target" ]; then
-    echo "exists" >&2; exit 17
-fi
 tmp=$(mktemp "$target.XXXXXX")
 trap 'rm -f -- "$tmp"' EXIT
 cat > "$tmp"
 chmod 644 -- "$tmp"
-mv -f -- "$tmp" "$target"
+if [ "${PILOT_OVERWRITE:-0}" = 1 ]; then
+    mv -f -- "$tmp" "$target"
+else
+    # ln fails if the target exists, atomically; a check before mv would race.
+    ln -- "$tmp" "$target" 2>/dev/null || { echo "exists" >&2; exit 17; }
+fi
 trap - EXIT
+rm -f -- "$tmp"
 systemctl "$@" daemon-reload
 """
 

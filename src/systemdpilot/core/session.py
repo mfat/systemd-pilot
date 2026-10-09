@@ -33,12 +33,18 @@ class Sessions:
     def is_connected(self, machine_id: str) -> bool:
         return self.get(machine_id) is not None
 
-    def connect(self, host: Host, secret: str | None = None) -> SystemdManager:
-        """Connect to ``host``. Blocking; call from a worker thread.
+    def prepare(self, host: Host, secret: str | None = None) -> SSHRunner:
+        """A runner for ``host``; pass it to :meth:`connect`, or :meth:`SSHRunner.cancel` it.
 
         ``secret`` overrides the stored password or key passphrase.
         """
-        runner = SSHRunner(host, self.known_hosts, secret if secret is not None else self.hosts.secret(host))
+        return SSHRunner(host, self.known_hosts, secret)
+
+    def connect(self, runner: SSHRunner) -> SystemdManager:
+        """Connect ``runner`` and register it. Blocking; call from a worker thread."""
+        host = runner.host
+        if runner.needs_stored_secret:
+            runner.set_secret(self.hosts.secret(host))
         runner.connect()
         manager = SystemdManager(runner)
         with self._lock:

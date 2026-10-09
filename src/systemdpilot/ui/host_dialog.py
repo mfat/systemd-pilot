@@ -146,5 +146,5 @@ class HostDialog(Adw.Dialog):
 
     @Gtk.Template.Callback()
     def on_remove_clicked(self, _button):
+        # The window asks for confirmation and closes this dialog if confirmed.
         self.emit("remove-requested", self.host.id)
-        self.close()

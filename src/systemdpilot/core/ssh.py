@@ -14,6 +14,7 @@ from .errors import (
     AuthenticationFailed,
     AuthenticationRequired,
     CommandError,
+    ConnectionCancelled,
     ConnectionFailed,
     HostKeyUnknown,
 )
@@ -54,19 +55,66 @@ class SSHRunner(CommandRunner):
         self._secret = secret
         self._client_factory = client_factory
         self._client: paramiko.SSHClient | None = None
+        self._pending: paramiko.SSHClient | None = None  # client of an attempt in progress
+        self._cancelled = False
         self._sudo_mode: str | None = None
         self._sudo_password: str | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # guards _client, _pending and _cancelled
+        self._probe_lock = threading.Lock()
 
     # -- connection -------------------------------------------------------
 
     @property
+    def needs_stored_secret(self) -> bool:
+        return self._secret is None and self.host.auth is not AuthMethod.AGENT
+
+    def set_secret(self, secret: str | None) -> None:
+        self._secret = secret
+
+    @property
     def connected(self) -> bool:
-        transport = self._client.get_transport() if self._client else None
-        return bool(transport and transport.is_active())
+        return self._active_transport() is not None
+
+    def _active_transport(self) -> paramiko.Transport | None:
+        # close() may run on another thread; read the client once, under the lock.
+        with self._lock:
+            client = self._client
+        transport = client.get_transport() if client else None
+        return transport if transport and transport.is_active() else None
 
     def connect(self, timeout: float = 15) -> None:
+        """Connect; blocking. :meth:`cancel` from another thread aborts it."""
         client = self._client_factory()
+        with self._lock:
+            if self._cancelled:
+                raise ConnectionCancelled("Connection cancelled")
+            self._pending = client
+        try:
+            self._connect(client, timeout)
+        finally:
+            with self._lock:
+                self._pending = None
+                cancelled = self._cancelled
+            # Only needed to unlock a key or log in; don't keep it around.
+            self._secret = None
+        if cancelled:
+            client.close()
+            raise ConnectionCancelled("Connection cancelled")
+        with self._lock:
+            self._client = client
+        self._sudo_mode = None
+        self._sudo_password = None
+
+    def cancel(self) -> None:
+        """Abort a :meth:`connect` running in another thread."""
+        with self._lock:
+            self._cancelled = True
+            pending = self._pending
+        if pending:
+            # Closing the socket makes the blocked connect() fail promptly.
+            pending.close()
+
+    def _connect(self, client: paramiko.SSHClient, timeout: float) -> None:
         self._known_hosts.apply(client)
         h = self.host
         kwargs = dict(
@@ -80,40 +128,44 @@ class SSHRunner(CommandRunner):
         if h.auth is AuthMethod.PASSWORD:
             kwargs.update(password=self._secret or "", allow_agent=False, look_for_keys=False)
         elif h.auth is AuthMethod.KEY:
+            # Only the chosen key; agent keys would make the choice meaningless.
             kwargs.update(
-                key_filename=h.key_path, passphrase=self._secret or None, allow_agent=True, look_for_keys=False
+                key_filename=h.key_path, passphrase=self._secret or None, allow_agent=False, look_for_keys=False
             )
         else:
             kwargs.update(allow_agent=True, look_for_keys=True)
 
         try:
             client.connect(**kwargs)
-        except HostKeyUnknown:
+        except Exception as e:
             client.close()
+            if self._cancelled:
+                raise ConnectionCancelled("Connection cancelled") from None
+            if isinstance(e, HostKeyUnknown):
+                raise
+            if isinstance(e, paramiko.BadHostKeyException):
+                raise translate_bad_host_key(e) from e
+            if isinstance(e, paramiko.AuthenticationException):
+                raise AuthenticationFailed(f"Authentication to {h.hostname} failed: {e}") from e
+            if isinstance(e, (TimeoutError, paramiko.SSHException, OSError, ValueError, EOFError)):
+                raise ConnectionFailed(f"Could not connect to {h.hostname}: {e}") from e
             raise
-        except paramiko.BadHostKeyException as e:
-            client.close()
-            raise translate_bad_host_key(e) from e
-        except paramiko.AuthenticationException as e:
-            client.close()
-            raise AuthenticationFailed(f"Authentication to {h.hostname} failed: {e}") from e
-        except (TimeoutError, paramiko.SSHException, OSError, ValueError) as e:
-            client.close()
-            raise ConnectionFailed(f"Could not connect to {h.hostname}: {e}") from e
-
-        self._client = client
-        self._sudo_mode = None
-        self._sudo_password = None
 
     def close(self) -> None:
-        if self._client:
-            self._client.close()
-        self._client = None
+        with self._lock:
+            client, self._client = self._client, None
+        if client:
+            client.close()
         self._sudo_password = None
+        self._secret = None
 
     # -- sudo -------------------------------------------------------------
 
     def sudo_mode(self) -> str:
+        with self._probe_lock:
+            return self._probe_sudo_mode()
+
+    def _probe_sudo_mode(self) -> str:
         if self._sudo_mode is None:
             uid = self._exec("id -u", None, 30)[1].strip()
             if uid == "0":
@@ -170,10 +222,9 @@ class SSHRunner(CommandRunner):
         return CommandResult(tuple(argv), code, out, err)
 
     def _exec(self, command: str, stdin: str | None, timeout: float | None) -> tuple[int, str, str]:
-        if not self.connected:
+        transport = self._active_transport()
+        if transport is None:
             raise ConnectionFailed(f"Not connected to {self.host.name}")
-        with self._lock:
-            transport = self._client.get_transport()
         try:
             chan = transport.open_session(timeout=30)
             # The login shell may not be POSIX (fish, csh), so always hand the command to sh.

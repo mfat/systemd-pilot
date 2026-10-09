@@ -1,0 +1,43 @@
+.TH SYSTEMD-PILOT 1 "October 2026" "systemd Pilot 4.0.0" "User Commands"
+.SH NAME
+systemd-pilot \- manage systemd services locally and over SSH
+.SH SYNOPSIS
+.B systemd-pilot
+[\fIOPTION\fR...]
+.SH DESCRIPTION
+.B systemd-pilot
+is a graphical front end for
+.BR systemctl (1).
+It lists the system and user services of this computer, or of remote
+machines reached over SSH, and can start, stop, restart, enable and
+disable them, show their status, logs, unit file and properties, and
+create new services.
+.PP
+Changes to system services on this computer are authorized through
+polkit
+.RB ( pkexec (1)).
+On remote machines they use
+.BR sudo (8);
+the password is sent on standard input and kept only for the current
+connection.
+.SH OPTIONS
+.TP
+.BR \-v ", " \-\-verbose
+Print debug messages.
+.TP
+.BR \-h ", " \-\-help
+Show the available options.
+.SH FILES
+.TP
+.I ~/.config/systemd\-pilot/hosts.json
+Saved remote hosts. Their passwords are kept in the keyring.
+.TP
+.I ~/.config/systemd\-pilot/known_hosts
+Host keys accepted in systemd Pilot, in addition to
+.IR ~/.ssh/known_hosts .
+.SH SEE ALSO
+.BR systemctl (1),
+.BR journalctl (1),
+.BR systemd.unit (5)
+.SH BUGS
+https://github.com/mfat/systemd-pilot/issues

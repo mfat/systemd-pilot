@@ -6,24 +6,48 @@ nothing in a log line or property value can be interpreted as markup.
 
 from __future__ import annotations
 
-from gi.repository import Gtk, Pango
+import weakref
+
+from gi.repository import Adw, Gtk, Pango
 
 from ..core.models import LogEntry
 
-_TAGS = {
-    "dim": {"foreground": "#8a8a8a"},
-    "key": {"weight": Pango.Weight.BOLD},
-    "error": {"foreground": "#e62d42", "weight": Pango.Weight.BOLD},
-    "warning": {"foreground": "#c88800"},
-    "notice": {"foreground": "#3584e4"},
+# GNOME palette shades with enough contrast on the light and the dark background.
+_COLORS = {
+    False: {"dim": "#77767b", "error": "#c01c28", "warning": "#9c6e03", "notice": "#1c71d8"},
+    True: {"dim": "#9a9996", "error": "#ff7b63", "warning": "#f8e45c", "notice": "#99c1f1"},
 }
+
+
+def _apply_colors(buffer: Gtk.TextBuffer, dark: bool) -> None:
+    table = buffer.get_tag_table()
+    for name, color in _COLORS[dark].items():
+        table.lookup(name).set_property("foreground", color)
 
 
 def _ensure_tags(buffer: Gtk.TextBuffer) -> None:
     table = buffer.get_tag_table()
-    for name, props in _TAGS.items():
-        if table.lookup(name) is None:
-            buffer.create_tag(name, **props)
+    if table.lookup("key") is not None:
+        return
+    buffer.create_tag("key", weight=Pango.Weight.BOLD)
+    buffer.create_tag("error", weight=Pango.Weight.BOLD)
+    for name in ("dim", "warning", "notice"):
+        buffer.create_tag(name)
+
+    style = Adw.StyleManager.get_default()
+    _apply_colors(buffer, style.get_dark())
+
+    # Follow light/dark switches without keeping the buffer alive: the
+    # handler holds only a weak reference, and is removed with the buffer.
+    buffer._pilot_tags = True  # ties the Python wrapper to the GObject's lifetime
+    ref = weakref.ref(buffer)
+
+    def on_dark(manager, _pspec):
+        if (live := ref()) is not None:
+            _apply_colors(live, manager.get_dark())
+
+    handler = style.connect("notify::dark", on_dark)
+    buffer.weak_ref(lambda: style.disconnect(handler))
 
 
 def _priority_tag(priority: int) -> str | None:

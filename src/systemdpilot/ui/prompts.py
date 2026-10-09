@@ -57,7 +57,7 @@ def ask_password(
         box.append(label)
     group = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
     entry = Adw.PasswordEntryRow(title=_("Password"))
-    entry.connect("entry-activated", lambda _e: dialog.response("ok"))
+    entry.set_activates_default(True)  # Enter picks the default response, "ok"
     group.append(entry)
     remember = Adw.SwitchRow(title=_("Remember Password"))
     if offer_remember:

@@ -166,3 +166,16 @@ def test_create_system_unit_is_privileged(runner):
         SystemdManager(runner).create_unit("demo.service", "[Unit]\n")
     assert runner.calls[0]["privileged"]
     assert runner.calls[0]["argv"][-1] == "--system"
+
+
+def test_create_user_unit_overwrite(runner, tmp_path, monkeypatch):
+    manager = SystemdManager(runner)
+    manager.create_unit("demo.service", "[Unit]\nDescription=old", Scope.USER)
+    assert _run_install_script(runner.calls[-1], tmp_path, monkeypatch).returncode == 0
+
+    manager.create_unit("demo.service", "[Unit]\nDescription=new", Scope.USER, overwrite=True)
+    proc = _run_install_script(runner.calls[-1], tmp_path, monkeypatch)
+    assert proc.returncode == 0, proc.stderr
+    unit_dir = tmp_path / ".config/systemd/user"
+    assert (unit_dir / "demo.service").read_text() == "[Unit]\nDescription=new\n"
+    assert [p.name for p in unit_dir.iterdir()] == ["demo.service"]  # no temp files left behind

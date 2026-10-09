@@ -47,6 +47,10 @@ class ConnectionFailed(PilotError):
     """An SSH connection could not be established or was lost."""
 
 
+class ConnectionCancelled(PilotError):
+    """The user cancelled a connection attempt."""
+
+
 class HostKeyUnknown(PilotError):
     """The server presented a host key we have never seen.
 

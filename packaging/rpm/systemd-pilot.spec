@@ -51,6 +51,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.mfat.system
 %files -f %{name}.lang
 %license LICENSE
 %{_bindir}/systemd-pilot
+%{_mandir}/man1/systemd-pilot.1*
 %{_datadir}/systemd-pilot/
 %{_datadir}/applications/io.github.mfat.systemdpilot.desktop
 %{_metainfodir}/io.github.mfat.systemdpilot.metainfo.xml

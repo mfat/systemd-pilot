@@ -23,17 +23,6 @@ class UnitAction(str, Enum):
     ENABLE = "enable"
     DISABLE = "disable"
 
-    @property
-    def past_tense(self) -> str:
-        return {
-            UnitAction.START: "started",
-            UnitAction.STOP: "stopped",
-            UnitAction.RESTART: "restarted",
-            UnitAction.RELOAD: "reloaded",
-            UnitAction.ENABLE: "enabled",
-            UnitAction.DISABLE: "disabled",
-        }[self]
-
 
 class AuthMethod(str, Enum):
     PASSWORD = "password"

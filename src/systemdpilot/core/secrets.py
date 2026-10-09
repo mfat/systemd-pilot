@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
+
+from .errors import PilotError
+
+log = logging.getLogger(__name__)
 
 SCHEMA_NAME = "io.github.mfat.systemdpilot.Host"
 LEGACY_KEYRING_SERVICE = "systemd-manager"
@@ -58,16 +63,29 @@ class LibsecretStore(SecretStore):
             {"service": Secret.SchemaAttributeType.STRING, "username": Secret.SchemaAttributeType.STRING},
         )
 
+    # Without a keyring service (no gnome-keyring, a headless session) every
+    # call fails; behave as an empty store rather than breaking host management.
+
     def get(self, host_id):
-        return self._Secret.password_lookup_sync(self._schema, {"host-id": host_id}, None)
+        try:
+            return self._Secret.password_lookup_sync(self._schema, {"host-id": host_id}, None)
+        except self._GLibError as e:
+            log.warning("Could not read from the keyring: %s", e.message)
+            return None
 
     def set(self, host_id, label, secret):
-        self._Secret.password_store_sync(
-            self._schema, {"host-id": host_id}, self._Secret.COLLECTION_DEFAULT, label, secret, None
-        )
+        try:
+            self._Secret.password_store_sync(
+                self._schema, {"host-id": host_id}, self._Secret.COLLECTION_DEFAULT, label, secret, None
+            )
+        except self._GLibError as e:
+            raise PilotError(f"Could not save the password in the keyring: {e.message}") from e
 
     def delete(self, host_id):
-        self._Secret.password_clear_sync(self._schema, {"host-id": host_id}, None)
+        try:
+            self._Secret.password_clear_sync(self._schema, {"host-id": host_id}, None)
+        except self._GLibError as e:
+            log.warning("Could not remove a password from the keyring: %s", e.message)
 
     def get_legacy(self, username, hostname):
         try:

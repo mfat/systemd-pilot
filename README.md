@@ -42,8 +42,10 @@ flatpak install --user systemd-pilot-x86_64.flatpak
   password is sent on the command's standard input, never on its command line,
   and it is kept in memory only for the current connection. Host keys are
   checked against `~/.ssh/known_hosts`, and you are asked to confirm the
-  fingerprint of a host you haven't connected to before.
+  fingerprint of a host you haven't connected to before. A host set up with a
+  private key authenticates with that key only, not with other agent keys.
 - Saved SSH passwords and key passphrases live in your keyring (libsecret).
+  Without a keyring, the app still works but can't remember passwords.
   Hosts are stored in `~/.config/systemd-pilot/hosts.json`. Hosts saved by
   version 3 are imported automatically.
 
@@ -118,14 +120,18 @@ debian/, packaging/rpm/   distribution packaging
 ```
 
 The UI calls into `core` from worker threads and never builds shell commands
-itself. Everything in `core` is covered by the tests in `tests/`, which run
-without a display.
+itself.
+
+`tests/` has pytest tests for `core` (command construction, parsers, the local
+and SSH runners, host storage, host keys). They don't need a display. The UI is
+covered only by `tests/smoke_ui.py`, which opens each window and dialog and
+exercises a few flows. It runs in CI under Xvfb.
 
 ## Releasing
 
 1. Bump the version in `meson.build`, `debian/changelog`,
-   `packaging/rpm/systemd-pilot.spec` and the `<releases>` in
-   `data/io.github.mfat.systemdpilot.metainfo.xml.in`.
+   `packaging/rpm/systemd-pilot.spec`, `data/systemd-pilot.1` and the
+   `<releases>` in `data/io.github.mfat.systemdpilot.metainfo.xml.in`.
    `build-aux/check-version.py` verifies that they agree.
 2. Tag and push: `git tag v4.0.0 && git push origin v4.0.0`.
 
