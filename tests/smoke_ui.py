@@ -1,6 +1,7 @@
 """Start the app, open every dialog and quit. Needs a display (e.g. xvfb-run).
 
-meson devenv -C build python3 tests/smoke_ui.py
+meson devenv -C build python3 tests/smoke_ui.py   # with the GResource bundle
+python3 tests/smoke_ui.py                         # from the source files
 """
 
 import os
@@ -13,7 +14,10 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gio, GLib  # noqa: E402
 
-Gio.Resource.load(os.environ["SYSTEMD_PILOT_RESOURCE"])._register()
+if os.environ.get("SYSTEMD_PILOT_RESOURCE"):
+    Gio.Resource.load(os.environ["SYSTEMD_PILOT_RESOURCE"])._register()
+else:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
 from systemdpilot.core.models import Unit  # noqa: E402
 from systemdpilot.main import Application  # noqa: E402

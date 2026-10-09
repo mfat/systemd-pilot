@@ -8,15 +8,15 @@ from pathlib import Path
 
 from gi.repository import Adw, Gio, GLib, GObject, Gtk
 
-from .. import RESOURCE_PATH
 from ..core.errors import PilotError
 from ..core.hosts import HostStore
 from ..core.models import AuthMethod, Host
+from .resources import template
 
 _METHODS = [AuthMethod.PASSWORD, AuthMethod.KEY, AuthMethod.AGENT]
 
 
-@Gtk.Template(resource_path=f"{RESOURCE_PATH}/ui/host-dialog.ui")
+@template("host-dialog.ui")
 class HostDialog(Adw.Dialog):
     """Emits ``saved(host_id)`` or ``remove-requested(host_id)``."""
 

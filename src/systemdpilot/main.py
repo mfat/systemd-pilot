@@ -18,6 +18,7 @@ from .core.hosts import HostStore  # noqa: E402
 from .core.known_hosts import KnownHosts  # noqa: E402
 from .core.secrets import LibsecretStore, MemorySecretStore  # noqa: E402
 from .core.session import Sessions  # noqa: E402
+from .ui.resources import load_css_from_source  # noqa: E402
 from .ui.settings import Settings  # noqa: E402
 from .ui.window import Window  # noqa: E402
 
@@ -52,6 +53,7 @@ class Application(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        load_css_from_source()
 
         config_dir = Path(GLib.get_user_config_dir()) / "systemd-pilot"
         try:

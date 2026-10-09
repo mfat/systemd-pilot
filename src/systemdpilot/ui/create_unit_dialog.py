@@ -7,7 +7,6 @@ from gettext import gettext as _
 
 from gi.repository import Adw, Gtk
 
-from .. import RESOURCE_PATH
 from ..core.errors import InvalidUnitName, UnitExists
 from ..core.manager import SystemdManager
 from ..core.models import Scope, UnitAction
@@ -15,6 +14,7 @@ from ..core.templates import TEMPLATES, render
 from ..core.validation import normalize_service_name
 from . import prompts
 from .operations import Operations
+from .resources import template
 
 try:
     import gi
@@ -55,7 +55,7 @@ def _make_editor() -> tuple[Gtk.TextView, Gtk.TextBuffer]:
     return view, buffer
 
 
-@Gtk.Template(resource_path=f"{RESOURCE_PATH}/ui/create-unit-dialog.ui")
+@template("create-unit-dialog.ui")
 class CreateUnitDialog(Adw.Dialog):
     __gtype_name__ = "SystemdPilotCreateUnitDialog"
 

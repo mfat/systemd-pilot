@@ -17,9 +17,9 @@ jobs:
       - name: Install ruff
         run: pipx install ruff
       - name: ruff check
-        run: ruff check --output-format=github src tests build-aux
+        run: ruff check --output-format=github src tests build-aux run.py
       - name: ruff format
-        run: ruff format --check src tests build-aux
+        run: ruff format --check src tests build-aux run.py
       - name: Versions agree
         run: python3 build-aux/check-version.py
 

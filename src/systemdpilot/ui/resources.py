@@ -1,0 +1,45 @@
+"""Load UI templates and CSS from the GResource bundle, or from source files.
+
+Installed copies register ``systemd-pilot.gresource``. When running from a
+source checkout (``python3 run.py``) nothing is registered, and the files
+next to this module are used instead, so no build step is needed.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from gi.repository import Gdk, Gio, GLib, Gtk
+
+from .. import RESOURCE_PATH
+
+_SOURCE_DIR = Path(__file__).resolve().parent
+
+
+def _in_bundle(name: str) -> bool:
+    try:
+        Gio.resources_get_info(f"{RESOURCE_PATH}/{name}", Gio.ResourceLookupFlags.NONE)
+        return True
+    except GLib.Error:
+        return False
+
+
+def template(name: str) -> Gtk.Template:
+    """Class decorator for the template ``ui/<name>``."""
+    if _in_bundle(f"ui/{name}"):
+        return Gtk.Template(resource_path=f"{RESOURCE_PATH}/ui/{name}")
+    return Gtk.Template(filename=str(_SOURCE_DIR / name))
+
+
+def load_css_from_source() -> None:
+    """Load style.css from the source tree when the bundle is not registered.
+
+    With the bundle, Adw.Application loads it from its resource base path.
+    """
+    if _in_bundle("style.css"):
+        return
+    provider = Gtk.CssProvider()
+    provider.load_from_path(str(_SOURCE_DIR / "style.css"))
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )

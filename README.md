@@ -49,7 +49,7 @@ flatpak install --user systemd-pilot-x86_64.flatpak
 
 ## Build from source
 
-Dependencies:
+Dependencies (meson and gettext are only needed to build and install):
 
 - meson ≥ 1.0, gettext, `glib-compile-resources`, `glib-compile-schemas`
 - Python ≥ 3.10, PyGObject, paramiko
@@ -69,7 +69,13 @@ sudo dnf install meson gettext glib2-devel desktop-file-utils appstream \
   python3-gobject gtk4 libadwaita libsecret gtksourceview5 python3-paramiko
 ```
 
-Build, test and run without installing:
+Run it straight from the checkout, no build needed:
+
+```sh
+python3 run.py        # add -v for debug output
+```
+
+Or build and test with meson:
 
 ```sh
 meson setup build

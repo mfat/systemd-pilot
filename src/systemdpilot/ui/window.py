@@ -7,7 +7,6 @@ from gettext import ngettext
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
-from .. import RESOURCE_PATH
 from ..core.errors import (
     AuthenticationFailed,
     ConnectionFailed,
@@ -20,6 +19,7 @@ from . import prompts
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
 from .operations import Operations, describe
+from .resources import template
 from .settings import Settings
 from .tasks import run_in_thread
 from .unit_dialog import UnitDialog
@@ -49,7 +49,7 @@ class MachineRow(Gtk.ListBoxRow):
         self.status.set_visible(connected)
 
 
-@Gtk.Template(resource_path=f"{RESOURCE_PATH}/ui/window.ui")
+@template("window.ui")
 class Window(Adw.ApplicationWindow):
     __gtype_name__ = "SystemdPilotWindow"
 

@@ -8,11 +8,11 @@ from gettext import gettext as _
 
 from gi.repository import Adw, GLib, Gtk
 
-from .. import RESOURCE_PATH
 from ..core.manager import SystemdManager
 from ..core.models import LogResult, Scope, Unit, UnitAction
 from . import text
 from .operations import Operations, describe
+from .resources import template
 from .tasks import run_in_thread
 from .unit_list import state_css_class
 
@@ -34,7 +34,7 @@ class _Details:
     logs: LogResult
 
 
-@Gtk.Template(resource_path=f"{RESOURCE_PATH}/ui/unit-dialog.ui")
+@template("unit-dialog.ui")
 class UnitDialog(Adw.Dialog):
     __gtype_name__ = "SystemdPilotUnitDialog"
 
