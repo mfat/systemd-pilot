@@ -1,0 +1,20 @@
+# Tool configuration only; the application is built and installed with meson.
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "BLE"]
+ignore = [
+    "N802",  # GObject vfuncs are named do_*
+    "N818",  # exception names describe the condition, e.g. HostKeyUnknown
+    "B027",  # optional no-op hooks in ABCs
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["systemdpilot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
