@@ -27,10 +27,18 @@ Download the package for your distribution from the
 | `systemd-pilot_*_all.deb` | Debian 13+, Ubuntu 24.04+ |
 | `systemd-pilot-*.noarch.rpm` | Fedora |
 | `systemd-pilot-*.flatpak` | Any distribution with Flatpak |
+| `systemd-pilot-*-x86_64.AppImage` | Most distributions (no install) |
 
 ```sh
 flatpak install --user systemd-pilot-x86_64.flatpak
 ```
+
+```sh
+chmod +x systemd-pilot-*-x86_64.AppImage
+./systemd-pilot-*-x86_64.AppImage
+```
+
+On a system without FUSE, run the AppImage with `--appimage-extract-and-run`.
 
 ## How it works
 
@@ -97,6 +105,14 @@ Build the Flatpak:
 
 ```sh
 flatpak-builder --user --install --force-clean flatpak-build build-aux/flatpak/io.github.mfat.systemdpilot.json
+```
+
+Build the AppImage (Ubuntu 24.04 host; needs `patchelf`, `wget`, and the runtime
+dependencies above, plus `adwaita-icon-theme`, `librsvg2-common`,
+`dconf-gsettings-backend`, `python3-gi-cairo` and `python3-pip`):
+
+```sh
+xvfb-run -a packaging/appimage/build-appimage.sh   # writes dist/*.AppImage
 ```
 
 ## Project layout

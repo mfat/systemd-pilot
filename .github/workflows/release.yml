@@ -83,10 +83,15 @@ jobs:
     needs: version
     uses: ./.github/workflows/flatpak.yml
 
+  appimage:
+    name: AppImage
+    needs: version
+    uses: ./.github/workflows/build-appimage.yml
+
   publish:
     name: Publish release
     if: github.ref_type == 'tag'
-    needs: [deb, rpm, flatpak]
+    needs: [deb, rpm, flatpak, appimage]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -103,4 +108,5 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.flatpak
+            dist/*.AppImage
           generate_release_notes: true

@@ -1,9 +1,11 @@
 /build/
 /_build/
+/dist/
 /.flatpak-builder/
 /flatpak-build/
 /repo/
 *.flatpak
+*.AppImage
 __pycache__/
 *.pyc
 /.pytest_cache/

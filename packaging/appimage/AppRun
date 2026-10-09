@@ -1,0 +1,76 @@
+#!/bin/sh
+# AppRun for the systemd Pilot AppImage.
+#
+# The bundled binaries find their libraries through an $ORIGIN RPATH written by
+# packaging/appimage/build-appimage.sh, so this script deliberately does NOT
+# export LD_LIBRARY_PATH, PYTHONHOME or PYTHONPATH: the app runs the host's
+# systemctl, journalctl and pkexec, and a leaked library path would make those
+# host binaries load our libraries. The bundled interpreter finds its standard
+# library on its own, because it sits in the usual $prefix/bin + $prefix/lib
+# layout under usr/.
+#
+# What is left below is the data GTK can only find through the environment,
+# and the choice of C library.
+
+set -eu
+
+SELF=$(readlink -f "$0")
+APPDIR=${APPDIR:-$(dirname "$SELF")}
+export APPDIR
+
+export XDG_DATA_DIRS="$APPDIR/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export GI_TYPELIB_PATH="$APPDIR/usr/lib/girepository-1.0"
+# Additive in GLib: host schemas stay reachable through XDG_DATA_DIRS.
+export GSETTINGS_SCHEMA_DIR="$APPDIR/usr/share/glib-2.0/schemas"
+export GIO_MODULE_DIR="$APPDIR/usr/lib/gio/modules"
+
+# The loaders.cache has to name the loaders by absolute path, which is only
+# known once the AppImage is mounted. Materialise it per user rather than
+# writing into the read-only mount; a fixed path keeps this from piling up.
+pixbuf_template="$APPDIR/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache.in"
+if [ -f "$pixbuf_template" ]; then
+    pixbuf_cache_dir="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/systemd-pilot/appimage"
+    if mkdir -p "$pixbuf_cache_dir" 2>/dev/null &&
+       sed "s|@APPDIR@|$APPDIR|g" "$pixbuf_template" \
+           > "$pixbuf_cache_dir/loaders.cache" 2>/dev/null; then
+        export GDK_PIXBUF_MODULEDIR="$APPDIR/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+        export GDK_PIXBUF_MODULE_FILE="$pixbuf_cache_dir/loaders.cache"
+    fi
+fi
+
+# The C library. Everything bundled was linked against the build host's glibc,
+# which the image also carries in usr/lib/libc. A host at least that new runs
+# the app on its own glibc, as any other package would; an older one (Ubuntu
+# 22.04, for example) gets the bundled glibc through a wrapper that runs the
+# interpreter through the bundled loader. The host's glibc is preferred
+# whenever it can work because the libraries still taken from the host (GL
+# drivers, X11, fonts) are built against it.
+#
+# SYSTEMD_PILOT_APPIMAGE_LIBC=host|bundled overrides the choice, for diagnosis.
+version_older() { # $1 < $2, both "major.minor"
+    [ "${1%%.*}" -lt "${2%%.*}" ] ||
+        { [ "${1%%.*}" -eq "${2%%.*}" ] && [ "${1#*.}" -lt "${2#*.}" ]; }
+}
+
+use_bundled_libc() {
+    case "${SYSTEMD_PILOT_APPIMAGE_LIBC:-auto}" in
+        bundled) return 0 ;;
+        host) return 1 ;;
+    esac
+    bundled=$(cat "$APPDIR/usr/lib/libc/VERSION" 2>/dev/null) || return 1
+    # getconf is part of glibc itself; a host without it has nothing better to
+    # offer than its own C library, so keep to the host there.
+    host=$(getconf GNU_LIBC_VERSION 2>/dev/null) || return 1
+    host=${host#glibc }
+    case "$host.$bundled" in
+        *[!0-9.]*) return 1 ;;
+    esac
+    version_older "$host" "$bundled"
+}
+
+SYSTEMD_PILOT_PYTHON="$APPDIR/usr/bin/python3"
+if use_bundled_libc; then
+    SYSTEMD_PILOT_PYTHON="$APPDIR/usr/bin/python3-bundled-libc"
+fi
+
+exec "$SYSTEMD_PILOT_PYTHON" "$APPDIR/usr/bin/systemd-pilot" "$@"
