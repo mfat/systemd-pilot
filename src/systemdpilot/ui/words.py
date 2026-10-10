@@ -54,10 +54,10 @@ def boot_text(file_state: str | None) -> str:
     if file_state is None:
         return ""
     if file_state.startswith("enabled"):
-        return _("Starts at boot")
+        return _("Enabled")
     return {
         "static": _("Started when needed"),
-        "disabled": _("Off at boot"),
+        "disabled": _("Disabled"),
         "masked": _("Blocked"),
         "masked-runtime": _("Blocked"),
         "indirect": _("Started by other services"),

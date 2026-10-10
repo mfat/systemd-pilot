@@ -564,7 +564,9 @@ class Window(Adw.ApplicationWindow):
         self.operations.run(
             manager,
             lambda: manager.control(unit.name, action, scope),
-            on_success=lambda _r: (self.toast(self._action_message(unit, action)), self.reload()),
+            on_success=lambda _r: self.toast(self._action_message(unit, action)),
+            # Also after a failure or cancel, so a pending enable switch goes back.
+            on_finish=self.reload,
             error_heading=self._action_error_heading(unit, action),
         )
 

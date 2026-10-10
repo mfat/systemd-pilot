@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from gettext import gettext as _
 
-from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango
 
 from ..core.models import Scope, Unit, UnitAction
 from . import widgets, words
@@ -25,7 +25,8 @@ def mode_switch() -> Gtk.Widget:
 
 
 class UnitRow(Gtk.ListBoxRow):
-    """A service in the simple view. Start/stop buttons show while hovered or focused."""
+    """A service in the simple view. Start/stop buttons show while hovered or focused,
+    the switch enables or disables it, and right-click opens the unit menu."""
 
     def __init__(self, unit: Unit, view: ServicesView):
         super().__init__(activatable=True)
@@ -60,6 +61,20 @@ class UnitRow(Gtk.ListBoxRow):
         state.append(widgets.label(words.state_word(unit), "state-word", words.state_css(unit), xalign=1))
         state.append(widgets.label(words.boot_text(unit.file_state), "dim-label", "caption", xalign=1))
         box.append(state)
+
+        # Same width with or without a switch, so the columns line up.
+        enable = Gtk.Box(width_request=52, halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
+        if words.can_toggle_startup(unit):
+            enabled = words.starts_at_boot(unit)
+            switch = Gtk.Switch(
+                active=enabled,
+                valign=Gtk.Align.CENTER,
+                tooltip_text=_("Disable (don’t start at boot)") if enabled else _("Enable (start at boot)"),
+            )
+            switch.update_property([Gtk.AccessibleProperty.LABEL], [_("Enabled")])
+            switch.connect("state-set", self._on_enable_set, view)
+            enable.append(switch)
+        box.append(enable)
         box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"]))
         self.set_child(box)
         self.update_property([Gtk.AccessibleProperty.LABEL], [f"{title}, {words.state_word(unit)}"])
@@ -73,6 +88,28 @@ class UnitRow(Gtk.ListBoxRow):
         focus.connect("enter", lambda *_: self._set_hover(focused=True))
         focus.connect("leave", lambda *_: self._set_hover(focused=False))
         self.add_controller(focus)
+
+        click = Gtk.GestureClick(button=3)
+        click.connect("pressed", lambda _g, _n, x, y: view.popup_menu(self, x, y))
+        self.add_controller(click)
+        press = Gtk.GestureLongPress(touch_only=True)
+        press.connect("pressed", lambda _g, x, y: view.popup_menu(self, x, y))
+        self.add_controller(press)
+        # Keyboard access to the menu: Menu key or Shift+F10.
+        shortcuts = Gtk.ShortcutController(scope=Gtk.ShortcutScope.LOCAL)
+        shortcuts.add_shortcut(
+            Gtk.Shortcut(
+                trigger=Gtk.ShortcutTrigger.parse_string("Menu|<Shift>F10"),
+                action=Gtk.CallbackAction.new(lambda *_: view.popup_menu(self, 24, self.get_height() / 2)),
+            )
+        )
+        self.add_controller(shortcuts)
+
+    def _on_enable_set(self, _switch, state, view):
+        if state != words.starts_at_boot(self.unit):
+            view.emit("unit-action", self.unit, (UnitAction.ENABLE if state else UnitAction.DISABLE).value)
+        # Leave the switch pending; the list is rebuilt once the action has finished.
+        return True
 
     def _set_hover(self, hovered: bool | None = None, focused: bool | None = None):
         if hovered is not None:
@@ -164,6 +201,7 @@ class ServicesView(Gtk.Box):
         )
         self._simple_scroll = Gtk.ScrolledWindow(child=clamp, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.stack.add_named(self._simple_scroll, "simple")
+        self._setup_menu(unit_menu)
 
         self.unit_list = UnitList(unit_menu)
         self.unit_list.connect("unit-activated", lambda _l, unit: self.emit("unit-activated", unit))
@@ -222,6 +260,49 @@ class ServicesView(Gtk.Box):
         return self._filter.get_state().get_string()
 
     # -- internals --------------------------------------------------------
+
+    def _setup_menu(self, unit_menu: Gio.MenuModel) -> None:
+        """The table's unit menu, for simple rows. Its ``unit.*`` actions are shadowed
+        here, so they act on the row the menu was opened for instead of the table's selection."""
+        self._menu_unit: Unit | None = None
+        self._menu_actions = Gio.SimpleActionGroup()
+        for action in UnitAction:
+            if action is not UnitAction.RELOAD:
+                item = Gio.SimpleAction.new(action.value, None)
+                item.connect("activate", lambda *_, a=action: self.emit("unit-action", self._menu_unit, a.value))
+                self._menu_actions.add_action(item)
+        details = Gio.SimpleAction.new("details", None)
+        details.connect("activate", lambda *_: self.emit("unit-activated", self._menu_unit))
+        self._menu_actions.add_action(details)
+        self._simple_scroll.insert_action_group("unit", self._menu_actions)
+
+        self.menu = Gtk.PopoverMenu.new_from_model(unit_menu)
+        self.menu.set_parent(self._simple_scroll)
+        self.menu.set_has_arrow(False)
+        self.menu.set_halign(Gtk.Align.START)
+        self.connect("destroy", lambda *_: self.menu.unparent())
+
+    def popup_menu(self, row: UnitRow, x: float, y: float) -> bool:
+        unit = self._menu_unit = row.unit
+        toggle, enabled = words.can_toggle_startup(unit), words.starts_at_boot(unit)
+        available = {
+            UnitAction.START.value: not unit.is_active,
+            UnitAction.STOP.value: unit.is_active,
+            UnitAction.RESTART.value: unit.is_active,
+            UnitAction.ENABLE.value: toggle and not enabled,
+            UnitAction.DISABLE.value: toggle and enabled,
+            "details": True,
+        }
+        for name, on in available.items():
+            self._menu_actions.lookup_action(name).set_enabled(on)
+        ok, point = row.compute_point(self._simple_scroll, Graphene.Point().init(x, y))
+        if not ok:
+            return False
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(point.x), int(point.y), 1, 1
+        self.menu.set_pointing_to(rect)
+        self.menu.popup()
+        return True
 
     def _on_filter(self, action, value):
         action.set_state(value)

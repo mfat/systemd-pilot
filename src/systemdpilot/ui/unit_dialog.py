@@ -290,7 +290,7 @@ class UnitDialog(Adw.Dialog):
         if words.can_toggle_startup(unit):
             enabled = words.starts_at_boot(unit)
             row = Adw.SwitchRow(
-                title=_("Start automatically"),
+                title=_("Enabled"),
                 subtitle=_("Starts every time the computer boots") if enabled else _("Only runs when you start it"),
                 active=enabled,
             )
@@ -302,7 +302,7 @@ class UnitDialog(Adw.Dialog):
                 if unit.file_state in ("static", "indirect")
                 else _("Can’t be turned on or off at boot")
             )
-            behavior.add(self._row(_("Start automatically"), words.boot_text(unit.file_state), help_text))
+            behavior.add(self._row(_("Enabled"), words.boot_text(unit.file_state), help_text))
         box.append(behavior)
 
         if unit.kind == "running":

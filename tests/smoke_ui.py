@@ -79,6 +79,9 @@ def run_steps(window):
         # One step, so a service list loading in the background can't replace the row in between.
         lambda: open_context_menu_from_keyboard(window, unit),
         lambda: window.unit_list._menu.popdown(),
+        # The same menu and an enable switch on simple rows.
+        lambda: open_simple_row_menu(window),
+        lambda: window.services.menu.popdown(),
         # Remove a host from its edit dialog: confirm first, then the dialog closes.
         lambda: add_demo_host(window),
         window.edit_host,
@@ -98,6 +101,27 @@ def run_steps(window):
         window.unit_list.set_units([unit])  # a known row, whatever services the machine has
         window.unit_list.select_name(unit.name)
         check(window.unit_list._popup_for_focus(), "keyboard context menu did not open")
+
+    def open_simple_row_menu(window):
+        from gi.repository import Gtk
+
+        from systemdpilot.ui.services_view import UnitRow
+
+        window.services.set_units(demo_units())
+        rows = [w for w in _descendants(window.services._groups) if isinstance(w, UnitRow)]
+        row = next(r for r in rows if r.unit.name == "ok.service")
+        check(any(isinstance(w, Gtk.Switch) for w in _descendants(row)), "no enable switch on an enabled service")
+        check(window.services.popup_menu(row, 10, 10), "simple row menu did not open")
+        actions = window.services._menu_actions
+        check(not actions.lookup_action("enable").get_enabled(), "Enable offered for an enabled service")
+        check(actions.lookup_action("disable").get_enabled(), "Disable not offered for an enabled service")
+
+    def _descendants(widget):
+        child = widget.get_first_child()
+        while child:
+            yield child
+            yield from _descendants(child)
+            child = child.get_next_sibling()
 
     def filter_failed(window):
         window.services.set_units(demo_units())
