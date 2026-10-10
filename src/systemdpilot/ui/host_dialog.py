@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-from gettext import gettext as _
 from pathlib import Path
 
 from gi.repository import Adw, Gio, GLib, GObject, Gtk
@@ -11,6 +10,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk
 from ..core.errors import PilotError
 from ..core.hosts import HostStore
 from ..core.models import AuthMethod, Host
+from ..i18n import _
 from .resources import template
 
 _METHODS = [AuthMethod.PASSWORD, AuthMethod.KEY, AuthMethod.AGENT]

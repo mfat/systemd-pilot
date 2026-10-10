@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
-from gettext import gettext as _
 
 from gi.repository import Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango
 
 from ..core.models import Unit
+from ..i18n import _
 from . import widgets
 
 

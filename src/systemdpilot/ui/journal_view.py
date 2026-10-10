@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from gettext import gettext as _
-from gettext import ngettext
 
 from gi.repository import Adw, Gio, GLib, GObject, Gtk
 
@@ -12,6 +10,7 @@ from ..core.journal import ERROR, PRESETS, PRESETS_BY_ID, Issue, find_issues
 from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
 from ..core.models import LogEntry, LogResult
 from ..core.ssh import SSHRunner
+from ..i18n import _, ngettext
 from . import prompts, text, widgets, words
 from .operations import Operations, describe
 from .services_view import mode_switch

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from gettext import gettext as _
 
 from gi.repository import GLib, Gtk, Pango
 
 from ..core.models import LogEntry
+from ..i18n import _
 from . import words
 
 

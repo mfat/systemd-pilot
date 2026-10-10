@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from gettext import gettext as _
 
 from gi.repository import Adw, Gtk
+
+from ..i18n import _
 
 
 def show_error(parent: Gtk.Widget, heading: str, body: str) -> None:

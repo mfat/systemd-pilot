@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from gettext import gettext as _
 
 from gi.repository import Adw, Gtk
 
@@ -12,6 +11,7 @@ from ..core.manager import SystemdManager
 from ..core.models import Scope, UnitAction
 from ..core.templates import TEMPLATES, render
 from ..core.validation import normalize_service_name
+from ..i18n import _
 from . import prompts
 from .operations import Operations
 from .resources import template

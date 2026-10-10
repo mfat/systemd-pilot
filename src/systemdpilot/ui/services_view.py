@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from gettext import gettext as _
-
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
 from ..core.models import Unit, UnitAction
+from ..i18n import _
 from . import widgets, words
 from .unit_list import UnitList, matches_filter
 

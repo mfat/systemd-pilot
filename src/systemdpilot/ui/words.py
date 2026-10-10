@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from gettext import gettext as _
-from gettext import ngettext
 
 from ..core.models import Unit
+from ..i18n import _, ngettext
 
 # File states that "systemctl enable/disable" can change.
 FIXED_FILE_STATES = ("", "static", "masked", "masked-runtime", "generated", "transient", "indirect", "alias")

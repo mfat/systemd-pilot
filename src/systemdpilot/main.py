@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import sys
-from gettext import gettext as _
 
 import gi
+
+from .i18n import _
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")

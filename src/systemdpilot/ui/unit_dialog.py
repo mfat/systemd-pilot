@@ -6,7 +6,6 @@ import itertools
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from gettext import gettext as _
 
 from gi.repository import Adw, GLib, Gtk, Pango
 
@@ -14,6 +13,7 @@ from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
 from ..core.parsers import parse_int, unit_file_body
 from ..core.ssh import SSHRunner
+from ..i18n import _
 from . import text, widgets, words
 from .create_unit_dialog import CreateUnitDialog
 from .operations import Operations, describe

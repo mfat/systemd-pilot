@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-from gettext import gettext as _
-from gettext import ngettext
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
@@ -21,6 +19,7 @@ from ..core.manager import SystemdManager
 from ..core.models import AuthMethod, Host, Unit, UnitAction
 from ..core.session import LOCAL_ID, Sessions
 from ..core.ssh import SSHRunner
+from ..i18n import _, ngettext
 from . import prompts
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog

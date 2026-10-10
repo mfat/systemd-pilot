@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from gettext import gettext as _
-
 from gi.repository import Adw, Gio, GObject, Gtk
 
+from ..i18n import _
 from .journal_view import JournalView
 
 

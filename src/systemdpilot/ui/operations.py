@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from gettext import gettext as _
 from typing import Any
 
 from gi.repository import Gtk
@@ -11,6 +10,7 @@ from gi.repository import Gtk
 from ..core.errors import AuthenticationCancelled, AuthenticationFailed, AuthenticationRequired, PilotError
 from ..core.manager import SystemdManager
 from ..core.ssh import SSHRunner
+from ..i18n import _
 from . import prompts
 from .tasks import run_in_thread
 
