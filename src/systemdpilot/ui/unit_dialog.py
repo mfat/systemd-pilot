@@ -139,8 +139,7 @@ class UnitPanel(Adw.BreakpointBin):
                 (UnitAction.STOP, _("S_top"), "media-playback-stop-symbolic", "destructive-action"),
             ]
         else:
-            label = _("_Try Again") if unit.is_failed else _("_Start")
-            buttons = [(UnitAction.START, label, "media-playback-start-symbolic", "suggested-action")]
+            buttons = [(UnitAction.START, _("_Start"), "media-playback-start-symbolic", "suggested-action")]
         for action, label, icon, css in buttons:
             button = Gtk.Button(
                 child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True),
