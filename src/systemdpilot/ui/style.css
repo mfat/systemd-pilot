@@ -118,7 +118,7 @@ button.option:checked .option-count { background-color: @accent_bg_color; color:
 .unit-title { font-weight: 600; }
 .state-word { font-size: 13px; font-weight: 600; }
 button.row-action { min-width: 32px; min-height: 32px; padding: 0; }
-.state-line { font-size: 15px; }
+.identity-card { padding: 14px 16px 14px 18px; }
 
 .table-card { padding: 0; }
 .table-card > scrolledwindow, .table-card columnview { border-radius: 12px; background: none; }

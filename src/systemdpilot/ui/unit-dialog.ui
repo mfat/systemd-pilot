@@ -12,10 +12,23 @@
       </object>
     </child>
     <child>
+      <!-- Too narrow for the name and the actions on one line: actions go below. -->
+      <object class="AdwBreakpoint">
+        <condition>max-width: 480sp</condition>
+        <setter object="switcher" property="policy">narrow</setter>
+        <setter object="identity_card" property="orientation">vertical</setter>
+        <setter object="identity_card" property="spacing">12</setter>
+        <setter object="action_box" property="halign">start</setter>
+      </object>
+    </child>
+    <child>
       <object class="AdwBreakpoint">
         <condition>max-width: 400sp</condition>
         <setter object="switcher_bar" property="reveal">True</setter>
         <setter object="switcher" property="visible">False</setter>
+        <setter object="identity_card" property="orientation">vertical</setter>
+        <setter object="identity_card" property="spacing">12</setter>
+        <setter object="action_box" property="halign">start</setter>
       </object>
     </child>
     <property name="child">
@@ -59,71 +72,52 @@
               </object>
             </child>
             <child type="top">
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <property name="spacing">12</property>
+              <!-- Name, description and actions share one card; the state is in the Status group. -->
+              <object class="GtkBox" id="identity_card">
+                <property name="spacing">16</property>
                 <property name="margin-start">24</property>
                 <property name="margin-end">24</property>
                 <property name="margin-top">6</property>
-                <property name="margin-bottom">14</property>
+                <style>
+                  <class name="card"/>
+                  <class name="identity-card"/>
+                </style>
                 <child>
                   <object class="GtkBox">
-                    <property name="spacing">14</property>
+                    <property name="orientation">vertical</property>
+                    <property name="hexpand">True</property>
+                    <property name="valign">center</property>
                     <child>
-                      <object class="GtkBox" id="state_dot">
-                        <property name="valign">center</property>
+                      <object class="GtkLabel" id="title_label">
+                        <property name="xalign">0</property>
+                        <property name="selectable">True</property>
+                        <property name="ellipsize">end</property>
                         <style>
-                          <class name="status-dot"/>
-                          <class name="large"/>
+                          <class name="title-2"/>
                         </style>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <property name="hexpand">True</property>
-                        <child>
-                          <object class="GtkLabel" id="title_label">
-                            <property name="xalign">0</property>
-                            <property name="selectable">True</property>
-                            <property name="ellipsize">end</property>
-                            <style>
-                              <class name="title-2"/>
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="name_label">
-                            <property name="xalign">0</property>
-                            <property name="ellipsize">end</property>
-                            <style>
-                              <class name="caption"/>
-                              <class name="dim-label"/>
-                            </style>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkFlowBox" id="action_box">
-                        <property name="selection-mode">none</property>
-                        <property name="homogeneous">False</property>
-                        <property name="valign">center</property>
-                        <property name="max-children-per-line">5</property>
-                        <property name="min-children-per-line">1</property>
-                        <property name="column-spacing">8</property>
-                        <property name="row-spacing">8</property>
+                      <object class="GtkLabel" id="name_label">
+                        <property name="xalign">0</property>
+                        <property name="ellipsize">end</property>
+                        <style>
+                          <class name="caption"/>
+                          <class name="dim-label"/>
+                        </style>
                       </object>
                     </child>
                   </object>
                 </child>
                 <child>
-                  <object class="GtkLabel" id="state_label">
-                    <property name="xalign">0</property>
-                    <property name="wrap">True</property>
-                    <style>
-                      <class name="state-line"/>
-                    </style>
+                  <object class="GtkFlowBox" id="action_box">
+                    <property name="selection-mode">none</property>
+                    <property name="homogeneous">False</property>
+                    <property name="valign">center</property>
+                    <property name="max-children-per-line">5</property>
+                    <property name="min-children-per-line">1</property>
+                    <property name="column-spacing">8</property>
+                    <property name="row-spacing">8</property>
                   </object>
                 </child>
               </object>

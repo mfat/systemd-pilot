@@ -48,11 +48,9 @@ class UnitPanel(Adw.BreakpointBin):
     refresh_button: Gtk.Button = Gtk.Template.Child()
     mode_box: Gtk.Box = Gtk.Template.Child()
     mode_switch: Gtk.Switch = Gtk.Template.Child()
-    state_dot: Gtk.Box = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
     action_box: Gtk.FlowBox = Gtk.Template.Child()
-    state_label: Gtk.Label = Gtk.Template.Child()
     stack: Adw.ViewStack = Gtk.Template.Child()
     loading_stack: Gtk.Stack = Gtk.Template.Child()
     pages_spinner: Gtk.Spinner = Gtk.Template.Child()
@@ -108,12 +106,6 @@ class UnitPanel(Adw.BreakpointBin):
 
         # Beside the list the window's Simple/Advanced switch applies.
         self.mode_box.set_visible(not in_pane)
-        if in_pane:
-            # Too narrow to share a line with the name: actions go below the state line.
-            row = self.action_box.get_parent()
-            row.remove(self.action_box)
-            row.get_parent().append(self.action_box)
-            self.action_box.set_halign(Gtk.Align.START)
 
         self.mode_switch.set_active(self._advanced)
         self.mode_switch.connect("notify::active", self._on_switch)
@@ -169,12 +161,6 @@ class UnitPanel(Adw.BreakpointBin):
         self.name_label.set_label(description)
         self.name_label.set_visible(bool(description))
         self.name_label.set_tooltip_text(description or None)
-        widgets.set_dot(self.state_dot, unit.kind)
-        self.state_dot.add_css_class("large")
-        word = GLib.markup_escape_text(words.state_word(unit))
-        sentence = GLib.markup_escape_text(words.state_sentence(unit))
-        self.state_label.set_markup(f'<span weight="bold">{word}</span> · {sentence}')
-        self.state_label.set_css_classes(["state-line"])
         self._show_actions(unit)
 
     def _show_actions(self, unit: Unit):
@@ -390,12 +376,16 @@ class UnitPanel(Adw.BreakpointBin):
             banner.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
             box.append(banner)
 
-        behavior = Adw.PreferencesGroup(title=_("Behavior"))
+        status = Adw.PreferencesGroup(title=_("Status"))
+        status.add(self._state_row(unit))
         if unit.kind == "running" and unit.main_pid:
             program = (props.get("ExecMainPath") or self._program(props)).rsplit("/", 1)[-1] or unit.short_name
-            behavior.add(
+            status.add(
                 self._row(_("Main process"), f"{program} (#{unit.main_pid})", _("The program this service runs"))
             )
+        box.append(status)
+
+        behavior = Adw.PreferencesGroup(title=_("Behavior"))
         if words.can_toggle_startup(unit):
             enabled = words.starts_at_boot(unit)
             starts = _("Starts every time you log in") if unit.is_user else _("Starts every time the computer boots")
@@ -525,6 +515,18 @@ class UnitPanel(Adw.BreakpointBin):
     def _program(props: dict[str, str]) -> str:
         match = _EXEC_PATH_RE.search(props.get("ExecStart", ""))
         return match.group(1) if match else ""
+
+    @staticmethod
+    def _state_row(unit: Unit) -> Adw.ActionRow:
+        sentence = words.state_sentence(unit)
+        row = Adw.ActionRow(title=_("State"), subtitle=sentence[:1].upper() + sentence[1:])
+        state = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
+        dot = Gtk.Box(valign=Gtk.Align.CENTER)
+        widgets.set_dot(dot, unit.kind)
+        state.append(dot)
+        state.append(widgets.label(words.state_word(unit), "heading", words.state_css(unit)))
+        row.add_suffix(state)
+        return row
 
     @staticmethod
     def _row(title: str, value: str, help_text: str = "", mono: bool = False) -> Adw.ActionRow:
