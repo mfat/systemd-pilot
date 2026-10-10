@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 
 from .errors import CommandError, InvalidUnitName, PilotError, UnitExists
 from .models import LogResult, Scope, Unit, UnitAction
@@ -47,6 +48,11 @@ systemctl "$@" daemon-reload
 """
 
 _JOURNAL_PERMISSION_HINTS = ("insufficient permissions", "no journal files were opened", "not seeing messages")
+
+JOURNAL_GROUP = "systemd-journal"
+# Journal access, see journal_access().
+ACCESS_FULL, ACCESS_PENDING, ACCESS_MISSING = "full", "pending", "missing"
+_USER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*\$?$")
 
 _RUNTIME_PROPERTIES = "Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,StateChangeTimestamp"
 
@@ -173,11 +179,12 @@ class SystemdManager:
             return ""
         return strip_ansi(result.stdout)
 
-    def logs(self, name: str, scope: Scope = Scope.SYSTEM, lines: int = 500) -> LogResult:
+    def logs(self, name: str, scope: Scope = Scope.SYSTEM, lines: int = 500, privileged: bool = False) -> LogResult:
+        """A unit's newest log entries, oldest first. ``privileged`` reads them as root."""
         validate_unit_name(name)
         argv = ["journalctl", "--no-pager", "--output=json", f"--lines={int(lines)}"]
         argv += ["--user-unit", name] if scope is Scope.USER else ["--unit", name]
-        result = self.runner.run(argv)
+        result = self.runner.run(argv, privileged=privileged)
         entries = parse_journal(result.stdout)
         warning = ""
         stderr = strip_ansi(result.stderr).strip()
@@ -191,12 +198,19 @@ class SystemdManager:
         return LogResult(entries, warning)
 
     def journal(
-        self, *, since: str = "", boot: int | None = None, kernel: bool = False, lines: int = 1500
+        self,
+        *,
+        since: str = "",
+        boot: int | None = None,
+        kernel: bool = False,
+        lines: int = 1500,
+        privileged: bool = False,
     ) -> LogResult:
         """The newest ``lines`` journal entries, newest first.
 
         ``since`` is a journalctl time such as "today" or "24 hours ago";
         ``boot`` is 0 for this boot, -1 for the one before, and so on.
+        ``privileged`` reads it as root, so nothing is hidden.
         """
         argv = [
             "journalctl",
@@ -213,7 +227,7 @@ class SystemdManager:
             argv.append(f"--since={since}")
         if kernel:
             argv.append("--dmesg")
-        result = self.runner.run(argv)
+        result = self.runner.run(argv, privileged=privileged)
         entries = parse_journal(result.stdout)
         stderr = strip_ansi(result.stderr).strip()
         warning = ""
@@ -225,6 +239,34 @@ class SystemdManager:
         elif not result.ok and not entries and "no such boot" not in stderr.lower():
             raise CommandError(argv, result.returncode, result.stderr)
         return LogResult(entries, warning)
+
+    def _user(self) -> str:
+        user = self.runner.run(["id", "-un"]).check().stdout.strip()
+        if not _USER_NAME_RE.match(user):
+            raise PilotError(f"Unexpected user name: {user!r}")
+        return user
+
+    def journal_access(self) -> str:
+        """Whether the user can read the whole journal through the systemd-journal group.
+
+        ACCESS_PENDING means the user was added to the group, but this login
+        session started before that, so it does not apply yet.
+        """
+        groups = self.runner.run(["id", "-Gn"]).stdout.split()
+        if JOURNAL_GROUP in groups:
+            return ACCESS_FULL
+        entry = self.runner.run(["getent", "group", JOURNAL_GROUP]).stdout.strip()
+        members = entry.split(":")[3].split(",") if entry.count(":") >= 3 else []
+        return ACCESS_PENDING if self._user() in members else ACCESS_MISSING
+
+    def grant_journal_access(self) -> None:
+        """Add the user to the systemd-journal group, which can read all logs.
+
+        gpasswd edits the group file directly, so it also works for users
+        that come from a directory service rather than /etc/passwd.
+        """
+        user = self._user()
+        self.runner.run(["gpasswd", "-a", user, JOURNAL_GROUP], privileged=True).check()
 
     def boot_id(self) -> str:
         """This boot's ID as the journal writes it, or "" if unknown."""

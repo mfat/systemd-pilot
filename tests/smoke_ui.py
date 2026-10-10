@@ -19,7 +19,7 @@ import gi  # noqa: E402 - must follow the HOME override above
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gio, GLib  # noqa: E402
+from gi.repository import Adw, Gio, GLib  # noqa: E402
 
 if os.environ.get("SYSTEMD_PILOT_RESOURCE"):
     Gio.Resource.load(os.environ["SYSTEMD_PILOT_RESOURCE"])._register()
@@ -70,6 +70,10 @@ def run_steps(window):
         lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
         lambda: window.activate_action("win.mode", GLib.Variant("s", "simple")),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "")),
+        # Hidden entries: the banner offers access, which asks first.
+        lambda: show_hidden_entries(window),
+        lambda: check(isinstance(window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"),
+        lambda: answer(window.get_visible_dialog(), "cancel"),
         lambda: window.activate_action("win.view", GLib.Variant("s", "services")),
         # Context menu from the keyboard (Menu / Shift+F10).
         # One step, so a service list loading in the background can't replace the row in between.
@@ -100,6 +104,16 @@ def run_steps(window):
         window.services.activate_action("services.filter", GLib.Variant("s", "failed"))
         check(window.services.visible_count == 1, "failed filter did not apply")
 
+    def show_hidden_entries(window):
+        from systemdpilot.core.models import LogResult
+
+        journal = window.journal
+        journal._result, journal._access = LogResult([], "hidden"), "missing"
+        journal._refresh()
+        check(journal._banner.get_revealed(), "no banner for hidden entries")
+        check(journal._banner.get_button_label() == "Allow Access…", "banner offers no access")
+        journal._banner.emit("button-clicked")
+
     def demo_units():
         return [
             unit,
@@ -120,8 +134,6 @@ def run_steps(window):
 
     def find_alert(window):
         # The confirmation is presented over the edit dialog.
-        from gi.repository import Adw
-
         dialog = window.get_visible_dialog()
         assert isinstance(dialog, Adw.AlertDialog), f"expected a confirmation, got {dialog}"
         return dialog

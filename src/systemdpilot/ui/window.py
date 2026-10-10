@@ -105,7 +105,7 @@ class Window(Adw.ApplicationWindow):
         # The advanced table; its selection drives the "unit" actions and context menu.
         self.unit_list = self.services.unit_list
         self.unit_list.connect("selection-changed", lambda *_: self._update_actions())
-        self.journal = JournalView()
+        self.journal = JournalView(self.operations)
         self.journal.connect("open-unit", lambda _v, name: self._open_unit_by_name(name))
         self.journal.connect("changed", lambda *_: self._update_header())
         self.journal_bin.set_child(self.journal)

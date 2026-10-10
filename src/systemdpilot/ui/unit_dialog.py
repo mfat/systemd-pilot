@@ -12,6 +12,7 @@ from gi.repository import Adw, Gio, GLib, Gtk, Pango
 from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
 from ..core.parsers import parse_int
+from ..core.ssh import SSHRunner
 from . import text, widgets, words
 from .operations import Operations, describe
 from .resources import template
@@ -86,6 +87,12 @@ class UnitDialog(Adw.Dialog):
         self._properties: dict[str, str] = {}
         self._details: _Details | None = None
         self._closed = False
+        # On remote hosts, logs the SSH user may not read can be read through sudo.
+        self._remote = isinstance(manager.runner, SSHRunner)
+        self._elevated = False
+        self._loads = 0
+        self._details_load: int | None = None  # the load the shown details came from
+        self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
         self.connect("closed", self._on_closed)
 
         self.set_title(unit.short_name)
@@ -172,7 +179,9 @@ class UnitDialog(Adw.Dialog):
 
     def load(self):
         self._set_busy(True)
-        manager, name, scope = self.manager, self.unit.name, self.scope
+        manager, name, scope, elevated = self.manager, self.unit.name, self.scope, self._elevated
+        self._loads += 1
+        load = self._loads
 
         def fetch() -> _Details:
             props = manager.properties(name, scope)
@@ -190,14 +199,36 @@ class UnitDialog(Adw.Dialog):
                 status=manager.status_text(name, scope),
                 properties=props,
                 unit_file=manager.unit_file(name, scope),
-                logs=manager.logs(name, scope),
+                logs=manager.logs(name, scope, privileged=elevated),
             )
 
-        run_in_thread(fetch, on_done=self._on_loaded, on_error=self._on_load_failed)
+        if not elevated:
+            run_in_thread(fetch, on_done=self._on_loaded, on_error=self._on_load_failed)
+            return
 
-    def _on_loaded(self, details: _Details):
+        def finished():
+            # Cancelled or failed (the error was shown): go back to what the user can read.
+            if not self._closed and load == self._loads and self._details_load != load:
+                self._elevated = False
+                self.load()
+
+        # Asks for the sudo password when needed, once per connection.
+        self.operations.run(
+            manager,
+            fetch,
+            on_success=lambda details: self._on_loaded(details, load),
+            on_finish=finished,
+            error_heading=_("Could Not Read the Logs as Administrator"),
+        )
+
+    def _view_logs_as_admin(self):
+        self._elevated = True
+        self.load()
+
+    def _on_loaded(self, details: _Details, load: int | None = None):
         if self._closed:
             return
+        self._details_load = load
         self._details = details
         self._set_busy(False)
         self._show_unit(details.unit)
@@ -208,7 +239,8 @@ class UnitDialog(Adw.Dialog):
         text.set_logs(self.logs_view.get_buffer(), details.logs.entries)
         if not details.logs.entries:
             self.logs_view.get_buffer().set_text(_("No log entries."))
-        self.logs_banner.set_title(GLib.markup_escape_text(details.logs.warning))
+        self.logs_banner.set_title(GLib.markup_escape_text(self._logs_warning(details)))
+        self.logs_banner.set_button_label(_("View as Administrator") if self._remote else None)
         self.logs_banner.set_revealed(bool(details.logs.warning))
         GLib.idle_add(self._scroll_logs_to_end)
         self._build_overview(details)
@@ -343,7 +375,13 @@ class UnitDialog(Adw.Dialog):
         box = self.activity_box
         widgets.clear(box)
         if details.logs.warning:
-            box.append(widgets.label(details.logs.warning, "dim-label", "caption", wrap=True, margin_bottom=8))
+            notice = Gtk.Box(spacing=12, margin_bottom=8)
+            notice.append(widgets.label(self._logs_warning(details), "dim-label", "caption", wrap=True, hexpand=True))
+            if self._remote:
+                button = Gtk.Button(label=_("View as Administrator"), css_classes=["small-pill"])
+                button.connect("clicked", lambda *_: self._view_logs_as_admin())
+                notice.append(button)
+            box.append(notice)
         entries = list(reversed(details.logs.entries))[:_ACTIVITY_LIMIT]
         section = widgets.Section(_("Activity"), _("Newest first"))
         for entry in entries:
@@ -351,6 +389,11 @@ class UnitDialog(Adw.Dialog):
         if not entries:
             section.list.append(widgets.placeholder_row(_("No log entries.")))
         box.append(section.box)
+
+    def _logs_warning(self, details: _Details) -> str:
+        if self._remote:
+            return _("Some entries may be hidden: only entries this user may read are shown.")
+        return details.logs.warning
 
     @staticmethod
     def _program(props: dict[str, str]) -> str:

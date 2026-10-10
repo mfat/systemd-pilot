@@ -9,10 +9,11 @@ from gettext import ngettext
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
 from ..core.journal import ERROR, PRESETS, PRESETS_BY_ID, Issue, find_issues
-from ..core.manager import SystemdManager
+from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
 from ..core.models import LogEntry, LogResult
-from . import text, widgets, words
-from .operations import describe
+from ..core.ssh import SSHRunner
+from . import prompts, text, widgets, words
+from .operations import Operations, describe
 from .services_view import mode_switch
 from .tasks import run_in_thread
 from .widgets import Chip, Option, OptionButton
@@ -211,9 +212,13 @@ class JournalView(Gtk.Box):
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
-    def __init__(self):
+    def __init__(self, operations: Operations):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self.operations = operations
         self._manager: SystemdManager | None = None
+        self._access = ""  # ACCESS_* when entries are hidden, else ""
+        self._elevated = False  # read as root through sudo (remote hosts)
+        self._banner_action: Callable[[], None] | None = None
         self._generation = 0
         self._result: LogResult | None = None
         self._boot_id = ""
@@ -279,6 +284,7 @@ class JournalView(Gtk.Box):
         self.append(widgets.scroller(bar))
 
         self._banner = Adw.Banner()
+        self._banner.connect("button-clicked", lambda *_: self._banner_action and self._banner_action())
         self.append(self._banner)
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
@@ -362,6 +368,8 @@ class JournalView(Gtk.Box):
         self._generation += 1
         self._result = None
         self._boot_id = ""
+        self._access = ""
+        self._elevated = False
         self.issues = []
         self.entry_count = 0
         self.loaded = False
@@ -385,16 +393,20 @@ class JournalView(Gtk.Box):
         boot = _pick(BOOTS, self._state("boot"))[4]
         kernel = _pick(SOURCES, self._state("source"))[4]
         need_boot_id = not self._boot_id
+        elevated = self._elevated
 
         def fetch():
             boot_id = manager.boot_id() if need_boot_id else None
-            return manager.journal(since=since, boot=boot, kernel=kernel, lines=LIMIT), boot_id
+            result = manager.journal(since=since, boot=boot, kernel=kernel, lines=LIMIT, privileged=elevated)
+            # Hidden entries: say why, and whether the user can do something about it.
+            access = manager.journal_access() if result.warning else ""
+            return result, boot_id, access
 
         def done(result):
             if generation != self._generation:
                 return
             self._loading = False
-            self._result, boot_id = result
+            self._result, boot_id, self._access = result
             if boot_id is not None:
                 self._boot_id = boot_id
             self.loaded = True
@@ -413,7 +425,24 @@ class JournalView(Gtk.Box):
             self.stack.set_visible_child_name("status")
             self.emit("changed")
 
-        run_in_thread(fetch, on_done=done, on_error=failed)
+        if not elevated:
+            run_in_thread(fetch, on_done=done, on_error=failed)
+            return
+
+        def finished():
+            # Cancelled or failed (the error was shown): go back to what the user can read.
+            if generation == self._generation and self._loading:
+                self._elevated = False
+                self.reload()
+
+        # Asks for the sudo password when needed, once per connection.
+        self.operations.run(
+            manager,
+            fetch,
+            on_success=done,
+            on_finish=finished,
+            error_heading=_("Could Not Read the Journal as Administrator"),
+        )
 
     def set_query(self, query: str) -> None:
         self._query = query.strip().lower()
@@ -437,7 +466,8 @@ class JournalView(Gtk.Box):
         ]
         rng = ", ".join(p for p in parts if p)
         count = ngettext("{n} entry", "{n} entries", self.entry_count).format(n=self.entry_count)
-        return " · ".join(p for p in (_("Journal"), count, rng) if p)
+        admin = _("as administrator") if self._elevated else ""
+        return " · ".join(p for p in (_("Journal"), count, rng, admin) if p)
 
     # -- internals --------------------------------------------------------
 
@@ -487,13 +517,7 @@ class JournalView(Gtk.Box):
             self._presets.set_css_classes(["chip"])
         self._clear_preset.set_visible(preset is not None)
 
-        warning = self._result.warning
-        if not warning and len(self._result.entries) >= LIMIT:
-            warning = _("Only the newest {n} entries are shown. Choose a shorter range to see older ones.").format(
-                n=LIMIT
-            )
-        self._banner.set_title(GLib.markup_escape_text(warning))
-        self._banner.set_revealed(bool(warning))
+        self._update_banner()
 
         flt = self._state("filter")
         shown = [(i, e) for i, e in enumerate(entries) if _FILTER_MATCH[flt](i, e, flagged)]
@@ -502,6 +526,62 @@ class JournalView(Gtk.Box):
         else:
             self._render_simple(shown, flagged, flt)
         self.emit("changed")
+
+    # -- hidden entries ---------------------------------------------------
+
+    def _update_banner(self) -> None:
+        warning, button, action = "", "", None
+        remote = isinstance(self._manager.runner, SSHRunner) if self._manager else False
+        if self._result.warning and remote:
+            warning = _("Only entries this user may read are shown.")
+            button, action = _("View as Administrator"), self._view_as_admin
+        elif self._result.warning and self._access == ACCESS_PENDING:
+            warning = _("Log out and back in to see all entries.")
+        elif self._result.warning and self._access == ACCESS_MISSING:
+            warning = _("You’re only seeing your own entries.")
+            button, action = _("Allow Access…"), self._ask_grant_access
+        elif self._result.warning:
+            warning = self._result.warning
+        elif len(self._result.entries) >= LIMIT:
+            warning = _("Only the newest {n} entries are shown. Choose a shorter range to see older ones.").format(
+                n=LIMIT
+            )
+        self._banner_action = action
+        self._banner.set_title(GLib.markup_escape_text(warning))
+        self._banner.set_button_label(button or None)
+        self._banner.set_revealed(bool(warning))
+
+    def _view_as_admin(self) -> None:
+        self._elevated = True
+        self.reload()
+
+    def _ask_grant_access(self) -> None:
+        prompts.confirm(
+            self,
+            _("Allow Access to All Logs?"),
+            _(
+                "Your account will be added to the “systemd-journal” group, so you can read the logs of the "
+                "whole system without a password. Logs can include other users’ activity. "
+                "This applies after you log out and back in."
+            ),
+            _("_Allow Access"),
+            self._grant_access,
+        )
+
+    def _grant_access(self) -> None:
+        manager = self._manager
+        if manager is None:
+            return
+
+        def granted(_result):
+            if manager is self._manager:
+                self._access = ACCESS_PENDING
+                self._update_banner()
+            self.operations.toast(_("Access granted. Log out and back in to see all entries."))
+
+        self.operations.run(
+            manager, manager.grant_journal_access, on_success=granted, error_heading=_("Could Not Allow Access")
+        )
 
     def _render_simple(self, shown, flagged, flt) -> None:
         widgets.clear(self._simple)

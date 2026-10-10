@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from systemdpilot.core.errors import CommandError, InvalidUnitName, UnitExists
+from systemdpilot.core.errors import CommandError, InvalidUnitName, PilotError, UnitExists
 from systemdpilot.core.manager import SystemdManager
 from systemdpilot.core.models import Scope, Unit, UnitAction
 from systemdpilot.core.validation import normalize_service_name, validate_unit_name
@@ -240,3 +240,43 @@ def test_journal_failure_raises(runner):
 def test_boot_id(runner):
     runner.reply("cat", stdout="e8a1f04c-1111-2222-3333-444455556666\n")
     assert SystemdManager(runner).boot_id() == "e8a1f04c111122223333444455556666"
+
+
+def test_journal_can_be_read_as_root(runner):
+    SystemdManager(runner).journal(privileged=True)
+    assert runner.calls[0]["privileged"]
+
+
+@pytest.mark.parametrize(
+    ("groups", "entry", "expected"),
+    [
+        ("me wheel systemd-journal", "", "full"),
+        ("me wheel", "systemd-journal:x:190:other,me", "pending"),
+        ("me wheel", "systemd-journal:x:190:", "missing"),
+        ("me wheel", "", "missing"),
+    ],
+)
+def test_journal_access(runner, groups, entry, expected):
+    runner.reply("id", "-Gn", stdout=groups + "\n")
+    runner.reply("id", "-un", stdout="me\n")
+    runner.reply("getent", stdout=entry + "\n")
+    assert SystemdManager(runner).journal_access() == expected
+
+
+def test_grant_journal_access_adds_user_to_group(runner):
+    runner.reply("id", "-un", stdout="me\n")
+    SystemdManager(runner).grant_journal_access()
+    call = runner.calls[-1]
+    assert call["argv"] == ["gpasswd", "-a", "me", "systemd-journal"] and call["privileged"]
+
+
+def test_grant_journal_access_rejects_odd_user_names(runner):
+    runner.reply("id", "-un", stdout="me; rm -rf /\n")
+    with pytest.raises(PilotError):
+        SystemdManager(runner).grant_journal_access()
+    assert not any(c["privileged"] for c in runner.calls)
+
+
+def test_unit_logs_can_be_read_as_root(runner):
+    SystemdManager(runner).logs("a.service", privileged=True)
+    assert runner.calls[0]["privileged"]
