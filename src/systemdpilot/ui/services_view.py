@@ -205,17 +205,27 @@ class ServicesView(Gtk.Box):
         self.append(widgets.scroller(bar))
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
-        self._groups = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22, margin_top=8, margin_bottom=24)
-        clamp = Adw.Clamp(
-            child=self._groups, maximum_size=880, tightening_threshold=600, margin_start=24, margin_end=24
+        self._groups = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=22,
+            margin_top=8,
+            margin_bottom=24,
+            margin_start=24,
+            margin_end=24,
+            hexpand=True,
         )
-        self._simple_scroll = Gtk.ScrolledWindow(child=clamp, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self._simple_scroll = Gtk.ScrolledWindow(child=self._groups, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.stack.add_named(self._simple_scroll, "simple")
 
         self.unit_list = UnitList(unit_menu)
         self.unit_list.connect("unit-activated", lambda _l, unit: self.emit("unit-activated", unit))
         card = Gtk.Box(
-            css_classes=["card", "table-card"], margin_top=8, margin_bottom=24, margin_start=24, margin_end=24
+            css_classes=["card", "table-card"],
+            margin_top=8,
+            margin_bottom=24,
+            margin_start=24,
+            margin_end=24,
+            hexpand=True,
         )
         card.append(self.unit_list)
         self.unit_list.set_hexpand(True)

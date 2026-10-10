@@ -305,11 +305,16 @@ class JournalView(Gtk.Box):
         )
         self.stack.add_named(spinner, "loading")
 
-        self._simple = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22, margin_top=8, margin_bottom=24)
-        clamp = Adw.Clamp(
-            child=self._simple, maximum_size=880, tightening_threshold=600, margin_start=24, margin_end=24
+        self._simple = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=22,
+            margin_top=8,
+            margin_bottom=24,
+            margin_start=24,
+            margin_end=24,
+            hexpand=True,
         )
-        self._simple_scroll = Gtk.ScrolledWindow(child=clamp, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self._simple_scroll = Gtk.ScrolledWindow(child=self._simple, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.stack.add_named(self._simple_scroll, "simple")
 
         self._command = widgets.label(
@@ -326,6 +331,7 @@ class JournalView(Gtk.Box):
         card.set_margin_bottom(24)
         card.set_margin_start(24)
         card.set_margin_end(24)
+        card.set_hexpand(True)
         self.stack.add_named(card, "advanced")
 
         self._status = Adw.StatusPage()

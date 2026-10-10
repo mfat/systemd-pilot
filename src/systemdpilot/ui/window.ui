@@ -242,15 +242,10 @@
                 <child type="top">
                   <object class="GtkSearchBar" id="search_bar">
                     <property name="child">
-                      <object class="AdwClamp">
-                        <property name="maximum-size">500</property>
+                      <object class="GtkSearchEntry" id="search_entry">
                         <property name="hexpand">True</property>
-                        <property name="child">
-                          <object class="GtkSearchEntry" id="search_entry">
-                            <property name="placeholder-text" translatable="yes">Search services</property>
-                            <signal name="search-changed" handler="on_search_changed"/>
-                          </object>
-                        </property>
+                        <property name="placeholder-text" translatable="yes">Search services</property>
+                        <signal name="search-changed" handler="on_search_changed"/>
                       </object>
                     </property>
                   </object>
