@@ -76,18 +76,25 @@ def run_steps(window):
         lambda: check(window._details.activity_stack.get_visible_child_name() == "list", "no activity list"),
         lambda: window._close_details(),
         lambda: check(window._details is None, "details panel not closed"),
-        # The journal is pushed over the whole window.
+        # The bell switches the window to the journal: its filters, list and details.
         lambda: window.activate_action("win.journal", None),
-        lambda: check(window.journal_shown, "journal page not shown"),
+        lambda: check(window.journal_shown, "journal not shown"),
+        lambda: check(window.mode_dropdown.get_selected() == 1, "dropdown does not say Journal"),
+        lambda: check(window.filters_bin.get_child() is window.journal.sidebar, "no journal filters in the sidebar"),
+        lambda: check(window.details_bin.get_child() is window.journal_details, "no journal details"),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "ssh")),
         lambda: window.journal.activate_action("journal.filter", GLib.Variant("s", "all")),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "")),
+        lambda: select_journal_entries(window),
         # Hidden entries: the banner offers access, which asks first.
         lambda: show_hidden_entries(window),
         lambda: check(isinstance(window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"),
         lambda: answer(window.get_visible_dialog(), "cancel"),
-        lambda: window.nav_view.pop(),
-        lambda: check(not window.journal_shown, "journal page not closed"),
+        # The dropdown switches back.
+        lambda: window.mode_dropdown.set_selected(0),
+        lambda: check(not window.journal_shown, "journal not closed"),
+        lambda: check(window.filters_bin.get_child() is window.services.sidebar, "no service filters in the sidebar"),
+        lambda: check(window.content_stack.get_visible_child_name() == "main", "services list not shown"),
         # Enable/disable is only in the details dialog now.
         lambda: check_no_enable_switch(window),
         # Remove a host from its edit dialog: confirm first, then the dialog closes.
@@ -137,6 +144,27 @@ def run_steps(window):
         window.services.set_units(demo_units())
         window.services.activate_action("services.filter", GLib.Variant("s", "failed"))
         check(window.services.visible_count == 1, "failed filter did not apply")
+
+    def select_journal_entries(window):
+        from datetime import datetime
+
+        from systemdpilot.core.models import LogEntry, LogResult
+
+        journal = window.journal
+        now = datetime.now()
+        entries = [
+            LogEntry(now, 3, "broken", "7", "Failed with result 'exit-code'.", unit="broken.service"),
+            LogEntry(now, 6, "kernel", "", "usb 1-1: new device\nsecond line", kernel=True),
+        ]
+        journal._result = LogResult(entries)
+        journal._analysis_key = None
+        journal._refresh()
+        check(window.content_stack.get_visible_child_name() == "journal", "journal list not shown")
+        journal.emit("selected", entries[1])
+        check(window.journal_details.item is entries[1], "entry details not shown")
+        if journal.issues:
+            journal.emit("selected", journal.issues[0])
+            check(window.journal_details.item is journal.issues[0], "problem details not shown")
 
     def show_hidden_entries(window):
         from systemdpilot.core.models import LogResult

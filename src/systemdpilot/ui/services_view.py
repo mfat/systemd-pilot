@@ -7,6 +7,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 from ..core.models import Unit, UnitAction
 from ..i18n import _
 from . import widgets, words
+from .widgets import FilterRow
 
 
 def matches_filter(unit: Unit, value: str) -> bool:
@@ -28,29 +29,6 @@ def user_tag() -> Gtk.Widget:
         valign=Gtk.Align.CENTER,
         tooltip_text=_("User-level systemd unit"),
     )
-
-
-class FilterRow(Gtk.ListBoxRow):
-    """A filter in the window sidebar: icon or dot, name and how many services match."""
-
-    def __init__(self, value: str, text: str, dot_kind: str | None = None, icon_name: str = "", **props):
-        super().__init__(**props)
-        self.value = value
-        box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
-        if dot_kind:
-            mark = Gtk.Box(width_request=16, valign=Gtk.Align.CENTER)  # dots line up with the icons
-            mark.append(widgets.dot(dot_kind, small=True))
-        else:
-            mark = Gtk.Image(icon_name=icon_name or "cogged-wheel-symbolic")
-        box.append(mark)
-        box.append(widgets.label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
-        self.count = widgets.label("", "dim-label", "numeric")
-        box.append(self.count)
-        self.set_child(box)
-        self.update_property([Gtk.AccessibleProperty.LABEL], [text])
-
-    def set_count(self, count: int) -> None:
-        self.count.set_label(str(count))
 
 
 GROUP_ORDER = {"failed": 0, "running": 1, "exited": 2, "dead": 3}

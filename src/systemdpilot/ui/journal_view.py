@@ -14,7 +14,7 @@ from ..i18n import _, ngettext
 from . import prompts, widgets, words
 from .operations import Operations, describe
 from .tasks import run_in_thread
-from .widgets import Chip, Option, OptionButton
+from .widgets import FilterRow, Option, OptionButton
 
 LIMIT = 1500  # newest entries fetched; enough to spot problems without a slow transfer over SSH
 PAGE = 300  # rows shown in the simple timeline before “Show More”
@@ -40,11 +40,12 @@ SOURCES = (
     ("all", _("Everything"), _("Services, programs and the kernel"), _("all sources"), False),
     ("kernel", _("Kernel only"), _("Hardware, drivers and memory messages"), _("the kernel only"), True),
 )
+# value, sidebar label, dot (or icon), timeline title
 FILTERS = (
-    ("problems", _("Flagged"), None, _("Flagged entries")),
+    ("problems", _("Flagged"), "dialog-warning-symbolic", _("Flagged entries")),
     ("errors", _("Errors"), "failed", _("Errors")),
     ("warnings", _("Warnings"), "warning", _("Warnings")),
-    ("all", _("All entries"), None, _("All entries")),
+    ("all", _("All entries"), "bell-symbolic", _("All entries")),
 )
 # Chips that keep only the problem cards of one severity, and what to say when there are none.
 CARD_FILTERS = {
@@ -132,18 +133,20 @@ def issue_text(issue: Issue) -> tuple[str, str]:
 
 
 class IssueRow(Gtk.ListBoxRow):
-    def __init__(self, issue: Issue, open_unit: Callable[[str], None] | None):
-        super().__init__(activatable=False)
+    """A problem card. Selecting it shows its entries, and its service, in the details column."""
+
+    def __init__(self, issue: Issue):
+        super().__init__()
+        self.issue = issue
         title, explanation = issue_text(issue)
         error = issue.severity == ERROR
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=16, margin_end=16)
         icon = "dialog-error-symbolic" if error else "dialog-warning-symbolic"
         box.append(Gtk.Image(icon_name=icon, valign=Gtk.Align.START, css_classes=["error" if error else "warning"]))
 
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
         heading = Gtk.Box(spacing=8)
-        heading.append(widgets.label(title, "unit-title", wrap=True))
+        heading.append(widgets.label(title, "unit-title", wrap=True, hexpand=True))
         badge = Gtk.Label(label=_("Error") if error else _("Warning"), valign=Gtk.Align.CENTER)
         badge.set_css_classes(["badge", "error" if error else "warning"])
         heading.append(badge)
@@ -151,69 +154,40 @@ class IssueRow(Gtk.ListBoxRow):
         if explanation:
             explanation = explanation.partition("\n")[0]
             texts.append(widgets.label(explanation, "issue-explanation", wrap=True))
-        count = len(issue.entries)
-        meta = " · ".join(
-            (
-                issue.unit or issue.source,
-                ngettext("{n} entry", "{n} entries", count).format(n=count),
-                _("last seen {ago}").format(ago=words.ago(issue.latest.timestamp)) if issue.latest.timestamp else "",
-            )
-        ).strip(" ·")
-        texts.append(widgets.label(meta, "dim-label", "caption", wrap=True))
+        texts.append(widgets.label(issue_meta(issue), "dim-label", "caption", wrap=True))
         box.append(texts)
 
-        buttons = Gtk.Box(spacing=6, valign=Gtk.Align.START)
-        if open_unit:
-            open_button = Gtk.Button(label=_("Open Service"), css_classes=["small-pill"])
-            open_button.connect("clicked", lambda *_: open_unit(issue.unit))
-            buttons.append(open_button)
-        toggle = Gtk.ToggleButton(css_classes=["flat", "small-pill"], tooltip_text=_("Show details"))
-        toggle_content = Gtk.Box(spacing=6)
-        toggle_content.append(Gtk.Label(label=_("Details")))
-        chevron = Gtk.Image(icon_name="pan-down-symbolic")
-        toggle_content.append(chevron)
-        toggle.set_child(toggle_content)
-        buttons.append(toggle)
-        box.append(buttons)
-        outer.append(box)
+        box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER))
+        self.set_child(box)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [title])
 
-        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=["issue-lines"])
-        detail_lines = []
-        for entry in issue.entries[:30]:
-            stamp = entry.timestamp.strftime("%b %d %H:%M:%S") if entry.timestamp else "—"
-            source = entry.identifier + (f"[{entry.pid}]" if entry.pid else "")
-            detail_lines.append(f"{stamp} {source}: {entry.message.partition(chr(10))[0]}")
-        if detail_lines:
-            lines.append(
-                widgets.label(
-                    "\n".join(detail_lines),
-                    "monospace",
-                    "caption",
-                    wrap=True,
-                    selectable=True,
-                    hexpand=True,
-                )
-            )
-        if count > 30:
-            lines.append(widgets.label(_("…and {n} more").format(n=count - 30), "dim-label", "caption"))
-        revealer = Gtk.Revealer(child=lines)
-        outer.append(revealer)
 
-        def on_toggled(button):
-            revealer.set_reveal_child(button.get_active())
-            chevron.set_from_icon_name("pan-up-symbolic" if button.get_active() else "pan-down-symbolic")
-
-        toggle.connect("toggled", on_toggled)
-        self.set_child(outer)
+def issue_meta(issue: Issue) -> str:
+    """Where a problem comes from, how often it was seen and when last."""
+    count = len(issue.entries)
+    return " · ".join(
+        (
+            issue.unit or issue.source,
+            ngettext("{n} entry", "{n} entries", count).format(n=count),
+            _("last seen {ago}").format(ago=words.ago(issue.latest.timestamp)) if issue.latest.timestamp else "",
+        )
+    ).strip(" ·")
 
 
 class JournalView(Gtk.Box):
-    """Emits ``open-unit`` (unit name) and ``changed`` when the summary or problem count changes."""
+    """The problems and the timeline, for the middle column; :attr:`sidebar` holds their filters.
+
+    Emits ``open-unit`` (unit name), ``changed`` when the summary or problem count
+    changes, ``selected`` (an :class:`Issue` or :class:`LogEntry`, or None when it
+    is no longer listed) and ``activated`` (the same) when a row is clicked.
+    """
 
     __gtype_name__ = "SystemdPilotJournalView"
     __gsignals__ = {
         "open-unit": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        "selected": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
+        "activated": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
     }
 
     def __init__(self, operations: Operations):
@@ -236,7 +210,8 @@ class JournalView(Gtk.Box):
         self._stale = False
         self._needs_render = True  # False after a UI render matches the current analysis
         self._render_gen = 0  # cancels in-flight chunked timeline paints
-        self._jump_to_timeline = False  # a chip was clicked: bring its entries into view
+        self._jump_to_timeline = False  # a filter was chosen: bring its entries into view
+        self.selected: Issue | LogEntry | None = None  # shown in the details column
         # Cached filter work: recomputed when the entry set, query or preset changes.
         self._analysis_key: tuple | None = None
         self._entries: list[LogEntry] = []
@@ -254,18 +229,19 @@ class JournalView(Gtk.Box):
         self._actions = actions
         self.insert_action_group("journal", actions)
 
-        # Filters over the entries.
-        bar = Gtk.Box(spacing=8, margin_top=12, margin_bottom=4, margin_start=24, margin_end=24)
-        chips = Gtk.Box(spacing=6)
-        self._chips: dict[str, Chip] = {}
-        for value, label, dot_kind, _title in FILTERS:
-            chip = Chip(label, "journal.filter", value, dot_kind)
-            self._chips[value] = chip
-            chips.append(chip)
-        bar.append(chips)
-        bar.append(
-            Gtk.Separator(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.START, height_request=20, margin_top=6)
-        )
+        # The filters, presets and range live in the window sidebar.
+        self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_bottom=12)
+        self.sidebar.insert_action_group("journal", actions)
+        self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
+        self._filter_rows: dict[str, FilterRow] = {}
+        for value, label, mark, _title in FILTERS:
+            icon = mark if mark.endswith("-symbolic") else ""
+            row = FilterRow(value, label, None if icon else mark, icon)
+            self._filter_rows[value] = row
+            self.filter_list.append(row)
+        self.filter_list.select_row(self._filter_rows["problems"])
+        self.filter_list.connect("row-selected", self._on_filter_row_selected)
+        self.sidebar.append(self.filter_list)
 
         groups = []
         for group, heading in PRESET_GROUPS:
@@ -274,11 +250,12 @@ class JournalView(Gtk.Box):
         self._presets = OptionButton(
             "journal.preset",
             groups,
-            intro=_("Ready-made searches for common problems. Counts use the range at the bottom."),
+            intro=_("Ready-made searches for common problems. Counts use the range below."),
             width=420,
             counts=True,
         )
-        self._presets.set_text(_("Presets"))
+        self._presets.set_hexpand(True)
+        self._presets.set_text(_("No preset"))
         self._clear_preset = Gtk.Button(
             icon_name="window-close-symbolic",
             tooltip_text=_("Remove Preset"),
@@ -287,11 +264,40 @@ class JournalView(Gtk.Box):
             action_name="journal.preset",
             action_target=GLib.Variant("s", ""),
         )
-        preset_box = Gtk.Box(css_classes=["linked"], valign=Gtk.Align.START)
+        preset_box = Gtk.Box(css_classes=["linked"])
         preset_box.append(self._presets)
         preset_box.append(self._clear_preset)
-        bar.append(preset_box)
-        self.append(widgets.scroller(bar))
+        self.sidebar.append(self._sidebar_group(_("Presets"), preset_box))
+
+        # The range the entries come from.
+        self._since = OptionButton(
+            "journal.since",
+            [(None, [Option(v, label, "", f"--since “{flag}”" if flag else "") for v, label, _p, flag in SINCE])],
+            css=("picker",),
+        )
+        self._boot = OptionButton(
+            "journal.boot",
+            [
+                (
+                    None,
+                    [
+                        Option(v, label, help, f"-b {b}" if b else ("-b" if b == 0 else ""))
+                        for v, label, help, _t, b in BOOTS
+                    ],
+                )
+            ],
+            css=("picker",),
+        )
+        self._source = OptionButton(
+            "journal.source",
+            [(None, [Option(v, label, help, "-k" if kernel else "") for v, label, help, _t, kernel in SOURCES])],
+            css=("picker",),
+        )
+        pickers = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        for button in (self._since, self._boot, self._source):
+            button.set_hexpand(True)
+            pickers.append(button)
+        self.sidebar.append(self._sidebar_group(_("Range"), pickers))
 
         self._banner = Adw.Banner()
         self._banner.connect("button-clicked", lambda *_: self._banner_action and self._banner_action())
@@ -319,42 +325,6 @@ class JournalView(Gtk.Box):
         self.stack.add_named(self._status, "status")
         self.append(self.stack)
 
-        # The range the entries come from.
-        footer = Gtk.Box(spacing=8, margin_top=8, margin_bottom=8, margin_start=24, margin_end=24)
-        footer.append(widgets.label(_("Showing"), "dim-label"))
-        self._since = OptionButton(
-            "journal.since",
-            [(None, [Option(v, label, "", f"--since “{flag}”" if flag else "") for v, label, _p, flag in SINCE])],
-            css=("picker",),
-        )
-        footer.append(self._since)
-        footer.append(widgets.label(_("in"), "dim-label"))
-        self._boot = OptionButton(
-            "journal.boot",
-            [
-                (
-                    None,
-                    [
-                        Option(v, label, help, f"-b {b}" if b else ("-b" if b == 0 else ""))
-                        for v, label, help, _t, b in BOOTS
-                    ],
-                )
-            ],
-            css=("picker",),
-        )
-        footer.append(self._boot)
-        footer.append(widgets.label(_("from"), "dim-label"))
-        self._source = OptionButton(
-            "journal.source",
-            [(None, [Option(v, label, help, "-k" if kernel else "") for v, label, help, _t, kernel in SOURCES])],
-            css=("picker",),
-        )
-        footer.append(self._source)
-        for button in (self._since, self._boot, self._source):
-            button.set_direction(Gtk.ArrowType.UP)
-        footer_scroll = widgets.scroller(footer)
-        footer_scroll.add_css_class("journal-footer")
-        self.append(footer_scroll)
         self._update_pickers()
 
     # -- public API -------------------------------------------------------
@@ -377,6 +347,7 @@ class JournalView(Gtk.Box):
         self._analysis_key = None
         self._needs_render = True
         self._render_gen += 1
+        self._select(None)
         self.emit("changed")
 
     def mark_stale(self) -> None:
@@ -473,7 +444,42 @@ class JournalView(Gtk.Box):
     def set_known_units(self, names: set[str]) -> None:
         self._known_units = names
 
+    def knows_unit(self, name: str) -> bool:
+        return name in self._known_units
+
+    @property
+    def boot_id(self) -> str:
+        return self._boot_id
+
     # -- internals --------------------------------------------------------
+
+    def _sidebar_group(self, heading: str, child: Gtk.Widget) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=12, margin_start=12, margin_end=12)
+        box.append(widgets.label(heading, "dim-label", "caption-heading", margin_start=6))
+        box.append(child)
+        return box
+
+    def _on_filter_row_selected(self, _listbox, row):
+        if row is not None and row.value != self._state("filter"):
+            self._actions.activate_action("filter", GLib.Variant("s", row.value))
+
+    def _select(self, item: Issue | LogEntry | None) -> None:
+        if item is not self.selected:
+            self.selected = item
+            self.emit("selected", item)
+
+    def _on_row_selected(self, listbox, row, other: Gtk.ListBox):
+        # One selection across the problems and the timeline.
+        if row is None:
+            return
+        if other is not None:
+            other.unselect_all()
+        self._select(getattr(row, "issue", None) or getattr(row, "entry", None))
+
+    def _on_row_activated(self, _listbox, row):
+        item = getattr(row, "issue", None) or getattr(row, "entry", None)
+        if item is not None:
+            self.emit("activated", item)
 
     def _state(self, name: str) -> str:
         return self._actions.lookup_action(name).get_state().get_string()
@@ -484,19 +490,20 @@ class JournalView(Gtk.Box):
         action.set_state(value)
         if name == "preset" and value.get_string():
             self._actions.lookup_action("filter").set_state(GLib.Variant("s", "all"))
+        self.filter_list.select_row(self._filter_rows[self._state("filter")])
         self._update_pickers()
         if name in ("since", "boot", "source"):
             self.reload()
         else:
-            # The chips filter the timeline below the problems; without this, a click changes nothing in view.
+            # The filters change the timeline below the problems; without this, a click changes nothing in view.
             self._jump_to_timeline = name == "filter"
             self._shown = PAGE
             self._refresh()
 
     def _update_pickers(self) -> None:
         self._since.set_text(_pick(SINCE, self._state("since"))[1])
-        self._boot.set_text(_pick(BOOTS, self._state("boot"))[3])
-        self._source.set_text(_pick(SOURCES, self._state("source"))[3])
+        self._boot.set_text(_pick(BOOTS, self._state("boot"))[1])
+        self._source.set_text(_pick(SOURCES, self._state("source"))[1])
 
     def _refresh(self, *, ui: bool = True) -> None:
         if self._result is None:
@@ -543,13 +550,13 @@ class JournalView(Gtk.Box):
             self._counts_ready = True
 
         entries, flagged = self._entries, self._flagged
-        for value, chip in self._chips.items():
-            chip.set_count(self._filter_counts.get(value, 0))
+        for value, row in self._filter_rows.items():
+            row.set_count(self._filter_counts.get(value, 0))
         if preset:
             self._presets.set_text(f"{PRESET_TEXT[preset.id][0]}  {len(entries)}")
             self._presets.set_css_classes(["chip", "preset-active"])
         else:
-            self._presets.set_text(_("Presets"))
+            self._presets.set_text(_("No preset"))
             self._presets.set_css_classes(["chip"])
         self._clear_preset.set_visible(preset is not None)
 
@@ -623,6 +630,15 @@ class JournalView(Gtk.Box):
         widgets.clear(self._simple)
         severity, none_found = CARD_FILTERS.get(flt, (None, _("No problems found in this range")))
         issues = [i for i in self.issues if severity in (None, i.severity)]
+        selected = self.selected
+        # The same problem after a refetch is a new object with the same id.
+        if isinstance(selected, Issue):
+            selected = next((i for i in issues if i.id == selected.id), None)
+            self._select(selected)
+        elif selected is not None and not any(e is selected for _i, e in shown[: self._shown]):
+            selected = None
+            self._select(None)
+        problems = timeline_list = None
         if issues:
             n = len(issues)
             section = widgets.Section(
@@ -630,9 +646,12 @@ class JournalView(Gtk.Box):
                 _("Found by scanning the journal for errors and repeated warnings"),
                 title_css="error",
             )
+            problems = section.list
             for issue in issues:
-                unit = issue.unit if issue.unit in self._known_units else ""
-                section.list.append(IssueRow(issue, (lambda name: self.emit("open-unit", name)) if unit else None))
+                row = IssueRow(issue)
+                problems.append(row)
+                if issue is selected:
+                    problems.select_row(row)
             self._simple.append(section.box)
         else:
             ok = Gtk.Box(spacing=12, css_classes=["ok-banner"])
@@ -642,6 +661,12 @@ class JournalView(Gtk.Box):
 
         title = _pick(FILTERS, flt)[3]
         timeline = widgets.Section(title, _("Newest first"))
+        timeline_list = timeline.list
+        for listbox, other in ((problems, timeline_list), (timeline_list, problems)):
+            if listbox is not None:
+                listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+                listbox.connect("row-selected", self._on_row_selected, other)
+                listbox.connect("row-activated", self._on_row_activated)
         self._simple.append(timeline.box)
         self.stack.set_visible_child_name("simple")
         if self._jump_to_timeline:
@@ -669,7 +694,10 @@ class JournalView(Gtk.Box):
                 badge, css = ("", "")
                 if issue:
                     badge, css = issue_text(issue)[0], "error" if issue.severity == ERROR else "warning"
-                timeline.list.append(widgets.log_row(entry, badge=badge, badge_css=css))
+                row = widgets.log_row(entry, badge=badge, badge_css=css, activatable=True)
+                timeline.list.append(row)
+                if entry is selected:
+                    timeline.list.select_row(row)
             state["pos"] = end
             if state["pos"] < target:
                 return GLib.SOURCE_CONTINUE
@@ -682,7 +710,7 @@ class JournalView(Gtk.Box):
                     margin_bottom=6,
                 )
                 more.connect("clicked", self._show_more)
-                timeline.list.append(Gtk.ListBoxRow(child=more, activatable=False))
+                timeline.list.append(Gtk.ListBoxRow(child=more, activatable=False, selectable=False))
             return GLib.SOURCE_REMOVE
 
         GLib.idle_add(add_chunk)
@@ -745,4 +773,4 @@ class JournalView(Gtk.Box):
         box.append(Gtk.Image(icon_name="computer-symbolic"))
         current = boot_id == self._boot_id
         box.append(widgets.label(_("This boot") if current else _("Earlier boot · {id}").format(id=boot_id[:8])))
-        return Gtk.ListBoxRow(child=box, activatable=False)
+        return Gtk.ListBoxRow(child=box, activatable=False, selectable=False)

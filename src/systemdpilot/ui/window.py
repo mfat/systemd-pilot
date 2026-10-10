@@ -23,7 +23,7 @@ from ..i18n import _, ngettext
 from . import prompts
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
-from .journal_page import JournalPage
+from .journal_details import JournalDetails, JournalDetailsDialog
 from .journal_view import JournalView
 from .operations import Operations, describe
 from .resources import app_icon, template
@@ -35,6 +35,9 @@ from .widgets import count_badge, dot, set_count_badge
 
 # The services list beside the details: its header bar needs about this much.
 DETAILS_LIST_MIN_WIDTH = 360
+# What the window shows, in the order of the sidebar's dropdown.
+MODES = ("services", "journal")
+MODES_PAGES = ("main", "journal")  # the content stack's page for each
 
 
 class MachineRow(Gtk.ListBoxRow):
@@ -68,8 +71,8 @@ class Window(Adw.ApplicationWindow):
     __gtype_name__ = "SystemdPilotWindow"
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
-    nav_view: Adw.NavigationView = Gtk.Template.Child()
     split_view: Adw.OverlaySplitView = Gtk.Template.Child()
+    mode_dropdown: Gtk.DropDown = Gtk.Template.Child()
     filters_bin: Adw.Bin = Gtk.Template.Child()
     # The machine selector at the bottom of the sidebar.
     machine_button: Gtk.MenuButton = Gtk.Template.Child()
@@ -87,6 +90,7 @@ class Window(Adw.ApplicationWindow):
     loading_label: Gtk.Label = Gtk.Template.Child()
     cancel_connect_button: Gtk.Button = Gtk.Template.Child()
     services_bin: Adw.Bin = Gtk.Template.Child()
+    journal_bin: Adw.Bin = Gtk.Template.Child()
     details_split: Adw.OverlaySplitView = Gtk.Template.Child()
     details_bin: Adw.Bin = Gtk.Template.Child()
     disconnected_page: Adw.StatusPage = Gtk.Template.Child()
@@ -123,14 +127,20 @@ class Window(Adw.ApplicationWindow):
         # With the machine list hidden, details take a bigger share of the window.
         for prop in ("notify::show-sidebar", "notify::collapsed"):
             self.split_view.connect(prop, lambda *_: self._fit_details(self.get_width()))
-        # The journal is a page pushed over the services; its prompts belong to it.
+        # The journal takes the place of the services: its filters, list and details.
         journal_operations = Operations(self, self.toast)
         self.journal = JournalView(journal_operations)
         self.journal.connect("open-unit", lambda _v, name: self._open_unit_by_name(name))
         self.journal.connect("changed", lambda *_: self._update_badges())
-        self.journal_page = JournalPage(self.journal)
-        self.nav_view.add(self.journal_page)
+        self.journal.connect("selected", lambda _v, item: self.journal_details.show(item))
+        self.journal.connect("activated", lambda _v, item: self._on_journal_activated(item))
+        self.journal.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
+        self.journal_bin.set_child(self.journal)
         journal_operations.parent = self.journal
+        self.journal_details = JournalDetails(self.journal)
+        button, self._journal_details_badge = self._journal_button()
+        self.journal_details.add_header_end(button)
+        self.mode_dropdown.connect("notify::selected", lambda d, _p: self._set_mode(MODES[d.get_selected()]))
         self.search_bar.set_key_capture_widget(self.split_view)
         self.search_bar.connect("notify::search-mode-enabled", self._on_search_mode)
 
@@ -171,6 +181,9 @@ class Window(Adw.ApplicationWindow):
         self.add_action(inactive)
 
         add("journal", self.show_journal)
+        mode = Gio.SimpleAction.new_stateful("mode", GLib.VariantType.new("s"), GLib.Variant("s", "services"))
+        mode.connect("change-state", self._on_mode_changed)
+        self.add_action(mode)
 
         order = self.settings.get_string("unit-label-order")
         if order not in ("description-name", "name-description"):
@@ -210,19 +223,45 @@ class Window(Adw.ApplicationWindow):
         return _("Use “Show Inactive Services” in the main menu to include stopped services.")
 
     def show_journal(self):
-        host = self._current_host()
-        self.journal_page.set_machine(host.name if host else _("This Computer"))
-        if not self.journal_shown:
-            self.nav_view.push(self.journal_page)
-        self.journal.show()
+        self._set_mode("journal")
 
     @property
     def journal_shown(self) -> bool:
-        return self.nav_view.get_visible_page() is self.journal_page
+        return self.lookup_action("mode").get_state().get_string() == "journal"
 
     def _close_journal(self):
-        if self.journal_shown:
-            self.nav_view.pop()
+        self._set_mode("services")
+
+    def _set_mode(self, mode: str) -> None:
+        self.lookup_action("mode").change_state(GLib.Variant("s", mode))
+
+    def _on_mode_changed(self, action, value):
+        mode = value.get_string()
+        if mode not in MODES or mode == action.get_state().get_string():
+            return
+        # Each list starts unsearched; the entry's own update would only reach the new one.
+        if self.search_entry.get_text():
+            self.search_entry.set_text("")
+            self.services.set_query("")
+            self.journal.set_query("")
+        action.set_state(value)
+        journal = mode == "journal"
+        self.mode_dropdown.set_selected(MODES.index(mode))
+        self.filters_bin.set_child(self.journal.sidebar if journal else self.services.sidebar)
+        self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search services"))
+        if journal:
+            self.details_bin.set_child(self.journal_details)
+        else:
+            self.details_bin.set_child(self._details or self._details_placeholder)
+        if self.content_stack.get_visible_child_name() in MODES_PAGES:
+            self._show_list()
+        if journal:
+            self.journal.show()
+
+    def _on_journal_activated(self, item):
+        # Beside the list, selecting it already showed it.
+        if self.details_split.get_collapsed():
+            JournalDetailsDialog(self.journal, item).present(self)
 
     def _on_unit_label_order_changed(self, action, value):
         action.set_state(value)
@@ -238,7 +277,12 @@ class Window(Adw.ApplicationWindow):
         if issues:
             found = ngettext("{n} problem found", "{n} problems found", issues).format(n=issues)
             tooltip = f"{tooltip}. {found}"
-        for badge in (self._placeholder_journal_badge, self._details and self._details.journal_badge):
+        badges = (
+            self._placeholder_journal_badge,
+            self._journal_details_badge,
+            self._details and self._details.journal_badge,
+        )
+        for badge in badges:
             if badge:
                 set_count_badge(badge, issues)
                 badge.get_ancestor(Gtk.Button).set_tooltip_text(tooltip)
@@ -321,7 +365,6 @@ class Window(Adw.ApplicationWindow):
         self._close_details()
         self.journal.set_manager(self.sessions.get(self.machine_id))
         host = self._current_host()
-        self.journal_page.set_machine(host.name if host else _("This Computer"))
         if self.journal_shown:
             self.journal.show()
         if self.sessions.is_connected(self.machine_id):
@@ -588,7 +631,7 @@ class Window(Adw.ApplicationWindow):
         self._schedule_journal_badge()
 
     def _show_list(self) -> None:
-        self.content_stack.set_visible_child_name("main")
+        self.content_stack.set_visible_child_name(MODES_PAGES[self.journal_shown])
         self.spinner.stop()
 
     def _schedule_journal_badge(self) -> None:
@@ -738,11 +781,14 @@ class Window(Adw.ApplicationWindow):
         if self._details:
             self._details.discard()
             self._details = None
-        self.details_bin.set_child(self._details_placeholder)
+        if not self.journal_shown:
+            self.details_bin.set_child(self._details_placeholder)
 
     def _on_details_collapsed(self, split, _pspec):
-        # Too narrow for two columns: the open service moves to a dialog.
-        if split.get_collapsed() and self._details:
+        # Too narrow for two columns: the open service moves to a dialog, unless the journal is shown.
+        if split.get_collapsed() and self._details and self.journal_shown:
+            self._close_details()
+        elif split.get_collapsed() and self._details:
             unit = self._details.unit
             self._close_details()
             self.show_unit(unit)
@@ -773,6 +819,8 @@ class Window(Adw.ApplicationWindow):
     def _open_unit_by_name(self, name: str):
         """From the journal: back to the services, with that one open."""
         unit = next((u for u in self.services.units if u.name == name), None)
+        if isinstance(dialog := self.get_visible_dialog(), JournalDetailsDialog):
+            dialog.close()
         self._close_journal()
         self.show_unit(unit or Unit(name))
 

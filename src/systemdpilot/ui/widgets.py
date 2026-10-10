@@ -39,23 +39,6 @@ def set_count_badge(badge: Gtk.Label, count: int) -> None:
     badge.set_visible(count > 0)
 
 
-class Chip(Gtk.ToggleButton):
-    """A filter pill: optional dot, label and a count. Bound to a string action."""
-
-    def __init__(self, text: str, action_name: str, value: str, dot_kind: str | None = None):
-        super().__init__(action_name=action_name, action_target=GLib.Variant("s", value), css_classes=["chip"])
-        box = Gtk.Box(spacing=7)
-        if dot_kind:
-            box.append(dot(dot_kind, small=True))
-        box.append(Gtk.Label(label=text))
-        self.count = Gtk.Label(css_classes=["chip-count"])
-        box.append(self.count)
-        self.set_child(box)
-
-    def set_count(self, count: int) -> None:
-        self.count.set_label(str(count))
-
-
 @dataclass(frozen=True)
 class Option:
     value: str
@@ -141,6 +124,29 @@ class OptionButton(Gtk.MenuButton):
             self._titles[value].set_css_classes([] if count else ["dim-label"])
 
 
+class FilterRow(Gtk.ListBoxRow):
+    """A filter in the window sidebar: icon or dot, name and how many match."""
+
+    def __init__(self, value: str, text: str, dot_kind: str | None = None, icon_name: str = "", **props):
+        super().__init__(**props)
+        self.value = value
+        box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
+        if dot_kind:
+            mark = Gtk.Box(width_request=16, valign=Gtk.Align.CENTER)  # dots line up with the icons
+            mark.append(dot(dot_kind, small=True))
+        else:
+            mark = Gtk.Image(icon_name=icon_name or "cogged-wheel-symbolic")
+        box.append(mark)
+        box.append(label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        self.count = label("", "dim-label", "numeric")
+        box.append(self.count)
+        self.set_child(box)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [text])
+
+    def set_count(self, count: int) -> None:
+        self.count.set_label(str(count))
+
+
 class Section:
     """A heading and a hint over a boxed list, as in the design's grouped lists."""
 
@@ -158,7 +164,9 @@ class Section:
         self.box.append(self.list)
 
 
-def log_row(entry: LogEntry, *, show_source: bool = True, badge: str = "", badge_css: str = "") -> Gtk.ListBoxRow:
+def log_row(
+    entry: LogEntry, *, show_source: bool = True, badge: str = "", badge_css: str = "", activatable: bool = False
+) -> Gtk.ListBoxRow:
     """One journal entry: time, a dot for its level, the message and where it came from."""
     grid = Gtk.Box(spacing=12, margin_top=10, margin_bottom=10, margin_start=16, margin_end=16)
     when = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, width_request=52, valign=Gtk.Align.START)
@@ -197,7 +205,8 @@ def log_row(entry: LogEntry, *, show_source: bool = True, badge: str = "", badge
                 tooltip_text=badge,
             )
         )
-    row = Gtk.ListBoxRow(child=grid, activatable=False)
+    row = Gtk.ListBoxRow(child=grid, activatable=activatable)
+    row.entry = entry
     if badge:
         row.add_css_class(f"flagged-{badge_css}")
     return row
@@ -217,6 +226,7 @@ def placeholder_row(text: str) -> Gtk.ListBoxRow:
     return Gtk.ListBoxRow(
         child=label(text, "dim-label", margin_top=12, margin_bottom=12, margin_start=16, margin_end=16),
         activatable=False,
+        selectable=False,
     )
 
 
