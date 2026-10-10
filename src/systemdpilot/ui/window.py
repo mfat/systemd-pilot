@@ -671,7 +671,7 @@ class Window(Adw.ApplicationWindow):
             unit,
             self.scope,
             self.operations,
-            mode=self.lookup_action("mode"),
+            advanced=self.mode == "advanced",
             on_changed=self.reload,
             action_message=self._action_message,
         )

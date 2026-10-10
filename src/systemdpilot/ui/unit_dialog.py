@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from gettext import gettext as _
 
-from gi.repository import Adw, Gio, GLib, Gtk, Pango
+from gi.repository import Adw, GLib, Gtk, Pango
 
 from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
@@ -72,7 +72,7 @@ class UnitDialog(Adw.Dialog):
         scope: Scope,
         operations: Operations,
         *,
-        mode: Gio.SimpleAction,
+        advanced: bool = False,
         on_changed: Callable[[], None],
         action_message: Callable[[Unit, UnitAction], str],
     ):
@@ -81,7 +81,7 @@ class UnitDialog(Adw.Dialog):
         self.unit = unit
         self.scope = scope
         self.operations = operations
-        self._mode = mode
+        self._advanced = advanced
         self._on_changed = on_changed
         self._action_message = action_message
         self._properties: dict[str, str] = {}
@@ -98,9 +98,7 @@ class UnitDialog(Adw.Dialog):
         self.set_title(unit.short_name)
         self.name_label.set_label(unit.name)
 
-        # The mode is the window's, so both stay in step.
-        self._mode_handler = mode.connect("notify::state", lambda *_: self._apply_mode())
-        self.mode_switch.set_active(self.advanced)
+        self.mode_switch.set_active(self._advanced)
         self.mode_switch.connect("notify::active", self._on_switch)
         self._apply_mode(initial=True)
 
@@ -114,15 +112,16 @@ class UnitDialog(Adw.Dialog):
 
     @property
     def advanced(self) -> bool:
-        return self._mode.get_state().get_string() == "advanced"
+        return self._advanced
 
     def _on_closed(self, *_args):
         self._closed = True
-        self._mode.disconnect(self._mode_handler)
 
     def _on_switch(self, switch, _pspec):
-        if switch.get_active() != self.advanced:
-            self._mode.change_state(GLib.Variant("s", "advanced" if switch.get_active() else "simple"))
+        advanced = switch.get_active()
+        if advanced != self._advanced:
+            self._advanced = advanced
+            self._apply_mode()
 
     def _apply_mode(self, initial: bool = False):
         advanced = self.advanced
