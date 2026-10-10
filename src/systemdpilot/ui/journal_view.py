@@ -52,13 +52,6 @@ CARD_FILTERS = {
     "errors": (ERROR, _("No errors found in this range")),
     "warnings": (WARNING, _("No warnings found in this range")),
 }
-PRESET_GROUPS = (
-    ("stability", _("System stability & crashes")),
-    ("security", _("Security, auth & privileges")),
-    ("desktop", _("Desktop & session")),
-    ("network", _("Networking & peripherals")),
-    ("lifecycle", _("Lifecycle & startup")),
-)
 PRESET_TEXT = {
     "coredump": (_("Core Dumps & Segfaults"), _("Crashed programs, aborted processes, stack traces")),
     "oom": (_("Out of Memory"), _("Kernel OOM kills, cgroup memory exhaustion")),
@@ -74,6 +67,22 @@ PRESET_TEXT = {
     "boot": (_("Boot Problems"), _("Services that failed or timed out during this boot")),
     "packages": (_("Package Updates"), _("Installs, upgrades and failed transactions")),
 }
+PRESET_ICONS = {
+    "coredump": "computer-fail-symbolic",
+    "oom": "process-stop-symbolic",
+    "storage": "drive-harddisk-symbolic",
+    "sudo": "dialog-password-symbolic",
+    "ssh": "network-server-symbolic",
+    "mac": "security-high-symbolic",
+    "gpu": "video-display-symbolic",
+    "audio": "audio-speakers-symbolic",
+    "flatpak": "application-x-addon-symbolic",
+    "network": "network-wireless-symbolic",
+    "usb": "media-removable-symbolic",
+    "boot": "system-reboot-symbolic",
+    "packages": "system-software-install-symbolic",
+}
+PRESET_ROW = "preset:"  # the value of a preset's row in the sidebar, before its id
 
 _FILTER_MATCH: dict[str, Callable[[int, LogEntry, dict], bool]] = {
     "problems": lambda i, _e, flagged: i in flagged,
@@ -259,7 +268,6 @@ class JournalView(Gtk.Box):
         self._known_units: set[str] = set()
         self._shown = PAGE
         self.issues: list[Issue] = []
-        self.entry_count = 0
         self.loaded = False
         self._loading = False
         self._stale = False
@@ -269,7 +277,6 @@ class JournalView(Gtk.Box):
         self.selected: Issue | LogEntry | None = None  # shown in the details column
         # Cached filter work: recomputed when the entry set, query or preset changes.
         self._analysis_key: tuple | None = None
-        self._entries: list[LogEntry] = []
         self._ranged: list[LogEntry] = []
         self._flagged: dict = {}
         self._filter_counts: dict[str, int] = {}
@@ -284,7 +291,8 @@ class JournalView(Gtk.Box):
         self._actions = actions
         self.insert_action_group("journal", actions)
 
-        # The filters, presets and range live in the window sidebar.
+        # The filters, presets and range live in the window sidebar. Presets are filters
+        # too, in the same list: choosing one shows the entries it finds.
         self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_bottom=12)
         self.sidebar.insert_action_group("journal", actions)
         self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
@@ -294,35 +302,15 @@ class JournalView(Gtk.Box):
             row = FilterRow(value, label, None if icon else mark, icon)
             self._filter_rows[value] = row
             self.filter_list.append(row)
+        for preset in PRESETS:
+            title, help_text = PRESET_TEXT[preset.id]
+            row = FilterRow(PRESET_ROW + preset.id, title, icon_name=PRESET_ICONS[preset.id], tooltip_text=help_text)
+            self._filter_rows[row.value] = row
+            self.filter_list.append(row)
+        self.filter_list.set_header_func(self._filter_header)
         self.filter_list.select_row(self._filter_rows["problems"])
         self.filter_list.connect("row-selected", self._on_filter_row_selected)
         self.sidebar.append(self.filter_list)
-
-        groups = []
-        for group, heading in PRESET_GROUPS:
-            options = [Option(p.id, *PRESET_TEXT[p.id]) for p in PRESETS if p.group == group]
-            groups.append((heading, options))
-        self._presets = OptionButton(
-            "journal.preset",
-            groups,
-            intro=_("Ready-made searches for common problems. Counts use the range below."),
-            width=420,
-            counts=True,
-        )
-        self._presets.set_hexpand(True)
-        self._presets.set_text(_("No preset"))
-        self._clear_preset = Gtk.Button(
-            icon_name="window-close-symbolic",
-            tooltip_text=_("Remove Preset"),
-            visible=False,
-            css_classes=["chip", "preset-active", "preset-clear"],
-            action_name="journal.preset",
-            action_target=GLib.Variant("s", ""),
-        )
-        preset_box = Gtk.Box(css_classes=["linked"])
-        preset_box.append(self._presets)
-        preset_box.append(self._clear_preset)
-        self.sidebar.append(self._sidebar_group(_("Presets"), preset_box))
 
         # The range the entries come from.
         self._since = OptionButton(
@@ -514,8 +502,23 @@ class JournalView(Gtk.Box):
         box.append(child)
         return box
 
+    def _filter_header(self, row, before):
+        first_preset = row.value.startswith(PRESET_ROW) and not before.value.startswith(PRESET_ROW)
+        if first_preset and row.get_header() is None:
+            heading = widgets.label(_("Presets"), "dim-label", "caption-heading", margin_top=12, margin_start=12)
+            heading.set_margin_bottom(6)
+            row.set_header(heading)
+
+    def _selected_filter_row(self) -> FilterRow:
+        preset = self._state("preset")
+        return self._filter_rows[PRESET_ROW + preset if preset else self._state("filter")]
+
     def _on_filter_row_selected(self, _listbox, row):
-        if row is not None and row.value != self._state("filter"):
+        if row is None or row is self._selected_filter_row():
+            return
+        if row.value.startswith(PRESET_ROW):
+            self._actions.activate_action("preset", GLib.Variant("s", row.value.removeprefix(PRESET_ROW)))
+        else:
             self._actions.activate_action("filter", GLib.Variant("s", row.value))
 
     def _select(self, item: Issue | LogEntry | None) -> None:
@@ -543,15 +546,18 @@ class JournalView(Gtk.Box):
         if name == "preset" and value.get_string() == action.get_state().get_string():
             value = GLib.Variant("s", "")  # choosing the active preset again removes it
         action.set_state(value)
+        # One choice in the sidebar: a preset shows all the entries it finds, a filter replaces the preset.
         if name == "preset" and value.get_string():
             self._actions.lookup_action("filter").set_state(GLib.Variant("s", "all"))
-        self.filter_list.select_row(self._filter_rows[self._state("filter")])
+        elif name == "filter":
+            self._actions.lookup_action("preset").set_state(GLib.Variant("s", ""))
+        self.filter_list.select_row(self._selected_filter_row())
         self._update_pickers()
         if name in ("since", "boot", "source"):
             self.reload()
         else:
             # The filters change the timeline below the problems; without this, a click changes nothing in view.
-            self._jump_to_timeline = name == "filter"
+            self._jump_to_timeline = name in ("filter", "preset")
             self._shown = PAGE
             self._refresh()
 
@@ -564,10 +570,10 @@ class JournalView(Gtk.Box):
         if self._result is None:
             return
         query = self._query
-        preset_id = self._state("preset")
-        preset = PRESETS_BY_ID.get(preset_id)
-        # Searching, changing preset, or a new fetch: re-scan. Filter changes reuse this.
-        analysis_key = (id(self._result), query, preset_id, self._boot_id)
+        preset = PRESETS_BY_ID.get(self._state("preset"))
+        # Searching or a new fetch: re-scan. Filter and preset changes reuse this, so
+        # the problems, and every count in the sidebar, are of the whole range.
+        analysis_key = (id(self._result), query, self._boot_id)
         if analysis_key != self._analysis_key:
             self._analysis_key = analysis_key
             ranged = [
@@ -575,12 +581,9 @@ class JournalView(Gtk.Box):
                 for e in self._result.entries
                 if not query or query in e.message.lower() or query in e.identifier.lower()
             ]
-            entries = [e for e in ranged if preset.matches(e, self._boot_id)] if preset else ranged
-            self.issues, flagged = find_issues(entries)
+            self.issues, flagged = find_issues(ranged)
             self._ranged = ranged
-            self._entries = entries
             self._flagged = flagged
-            self.entry_count = len(entries)
             self._counts_ready = False
             self._needs_render = True
 
@@ -592,7 +595,7 @@ class JournalView(Gtk.Box):
         if not self._counts_ready:
             flagged = self._flagged
             self._filter_counts = {
-                value: sum(1 for i, e in enumerate(self._entries) if match(i, e, flagged))
+                value: sum(1 for i, e in enumerate(self._ranged) if match(i, e, flagged))
                 for value, match in _FILTER_MATCH.items()
             }
             # Problems, as on the cards and the bell, not their entries.
@@ -603,25 +606,21 @@ class JournalView(Gtk.Box):
                     if p.matches(entry, self._boot_id):
                         preset_counts[p.id] += 1
             for p in PRESETS:
-                self._presets.set_option_count(p.id, preset_counts[p.id])
+                self._filter_counts[PRESET_ROW + p.id] = preset_counts[p.id]
             self._counts_ready = True
 
-        entries, flagged = self._entries, self._flagged
+        flagged = self._flagged
         for value, row in self._filter_rows.items():
             row.set_count(self._filter_counts.get(value, 0))
-        if preset:
-            self._presets.set_text(f"{PRESET_TEXT[preset.id][0]}  {len(entries)}")
-            self._presets.set_css_classes(["chip", "preset-active"])
-        else:
-            self._presets.set_text(_("No preset"))
-            self._presets.set_css_classes(["chip"])
-        self._clear_preset.set_visible(preset is not None)
 
         self._update_banner()
 
         flt = self._state("filter")
-        shown = [(i, e) for i, e in enumerate(entries) if _FILTER_MATCH[flt](i, e, flagged)]
-        self._render_simple(shown, flagged, flt)
+        if preset:
+            shown = [(i, e) for i, e in enumerate(self._ranged) if preset.matches(e, self._boot_id)]
+        else:
+            shown = [(i, e) for i, e in enumerate(self._ranged) if _FILTER_MATCH[flt](i, e, flagged)]
+        self._render_simple(shown, flagged, flt, PRESET_TEXT[preset.id][0] if preset else "")
         self._needs_render = False
         self.emit("changed")
 
@@ -681,7 +680,7 @@ class JournalView(Gtk.Box):
             manager, manager.grant_journal_access, on_success=granted, error_heading=_("Could Not Allow Access")
         )
 
-    def _render_simple(self, shown, flagged, flt) -> None:
+    def _render_simple(self, shown, flagged, flt, preset_title="") -> None:
         self._render_gen += 1
         gen = self._render_gen
         widgets.clear(self._simple)
@@ -722,7 +721,7 @@ class JournalView(Gtk.Box):
 
         timeline = None
         if show_timeline:
-            timeline = widgets.Section(_pick(FILTERS, flt)[3], _("Newest first"))
+            timeline = widgets.Section(preset_title or _pick(FILTERS, flt)[3], _("Newest first"))
             timeline_list = timeline.list
             self._simple.append(timeline.box)
         for listbox, other in ((problems, timeline_list), (timeline_list, problems)):

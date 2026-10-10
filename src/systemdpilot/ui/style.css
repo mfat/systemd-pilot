@@ -76,15 +76,6 @@ button.chip:checked {
   background-color: alpha(@accent_bg_color, 0.15);
   color: @accent_color;
 }
-.chip-count { font-weight: normal; opacity: 0.6; }
-
-menubutton.chip.preset-active > button,
-button.preset-active {
-  background-color: @accent_bg_color;
-  color: @accent_fg_color;
-}
-.linked > menubutton.chip:not(:last-child) > button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-button.preset-clear { min-width: 30px; padding: 0 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
 /* Option lists in popovers. */
 popover.options > contents { padding: 6px; }
