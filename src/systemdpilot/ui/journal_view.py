@@ -691,10 +691,13 @@ class JournalView(Gtk.Box):
                     timeline.list.append(self._boot_row(entry.boot_id))
                     state["last_boot"] = entry.boot_id
                 issue = flagged.get(index)
-                badge, css = ("", "")
+                badge = css = tooltip = ""
                 if issue:
-                    badge, css = issue_text(issue)[0], "error" if issue.severity == ERROR else "warning"
-                row = widgets.log_row(entry, badge=badge, badge_css=css, activatable=True)
+                    # The unit it is about; the problem's title, cut short, would hide it.
+                    badge = (issue.unit or issue.source).removesuffix(".service")
+                    css = "error" if issue.severity == ERROR else "warning"
+                    tooltip = issue_text(issue)[0]
+                row = widgets.log_row(entry, badge=badge, badge_css=css, badge_tooltip=tooltip, activatable=True)
                 timeline.list.append(row)
                 if entry is selected:
                     timeline.list.select_row(row)

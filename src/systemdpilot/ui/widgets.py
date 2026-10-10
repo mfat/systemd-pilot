@@ -165,7 +165,13 @@ class Section:
 
 
 def log_row(
-    entry: LogEntry, *, show_source: bool = True, badge: str = "", badge_css: str = "", activatable: bool = False
+    entry: LogEntry,
+    *,
+    show_source: bool = True,
+    badge: str = "",
+    badge_css: str = "",
+    badge_tooltip: str = "",
+    activatable: bool = False,
 ) -> Gtk.ListBoxRow:
     """One journal entry: time, a dot for its level, the message and where it came from."""
     grid = Gtk.Box(spacing=12, margin_top=10, margin_bottom=10, margin_start=16, margin_end=16)
@@ -201,8 +207,9 @@ def log_row(
                 css_classes=["badge", badge_css],
                 valign=Gtk.Align.START,
                 ellipsize=Pango.EllipsizeMode.END,
+                width_chars=min(len(badge), 12),  # a unit name stays readable beside a long message
                 max_width_chars=16,
-                tooltip_text=badge,
+                tooltip_text=badge_tooltip or badge,
             )
         )
     row = Gtk.ListBoxRow(child=grid, activatable=activatable)
