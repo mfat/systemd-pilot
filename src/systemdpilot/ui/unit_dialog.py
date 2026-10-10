@@ -442,9 +442,14 @@ class UnitDialog(Adw.Dialog):
         path = props.get("FragmentPath") or ""
         file_row = self._row(_("Configuration file"), path or _("None"), mono=True)
         if path and unit_file_body(details.unit_file):
-            file_row.set_activatable(True)
-            file_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
-            file_row.connect("activated", lambda *_: self._edit_unit_file())
+            edit = Gtk.Button(
+                label=_("_Edit"),
+                use_underline=True,
+                valign=Gtk.Align.CENTER,
+                css_classes=["small-pill"],
+            )
+            edit.connect("clicked", lambda *_: self._edit_unit_file())
+            file_row.add_suffix(edit)
         where.add(file_row)
         program = self._program(props)
         if program:

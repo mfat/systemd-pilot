@@ -255,6 +255,9 @@
                                 <property name="valign">center</property>
                                 <property name="sensitive">False</property>
                                 <signal name="clicked" handler="on_edit_file_clicked"/>
+                                <style>
+                                  <class name="small-pill"/>
+                                </style>
                               </object>
                             </child>
                           </object>
