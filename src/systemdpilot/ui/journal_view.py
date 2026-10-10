@@ -40,12 +40,12 @@ SOURCES = (
     ("all", _("Everything"), _("Services, programs and the kernel"), _("all sources"), False),
     ("kernel", _("Kernel only"), _("Hardware, drivers and memory messages"), _("the kernel only"), True),
 )
-# value, sidebar label, dot (or icon), timeline title
+# value, sidebar label, dot (or icon), timeline title; in the order of the services' filters
 FILTERS = (
-    ("problems", _("Flagged"), "dialog-warning-symbolic", _("Flagged entries")),
+    ("all", _("All entries"), "bell-symbolic", _("All entries")),
+    ("problems", _("Needs attention"), "dialog-warning-symbolic", _("Flagged entries")),
     ("errors", _("Errors"), "failed", _("Errors")),
     ("warnings", _("Warnings"), "warning", _("Warnings")),
-    ("all", _("All entries"), "bell-symbolic", _("All entries")),
 )
 # Chips that keep only the problem cards of one severity, and what to say when there are none.
 CARD_FILTERS = {
@@ -555,6 +555,8 @@ class JournalView(Gtk.Box):
                 value: sum(1 for i, e in enumerate(self._entries) if match(i, e, flagged))
                 for value, match in _FILTER_MATCH.items()
             }
+            # Problems, as on the cards and the bell, not their entries.
+            self._filter_counts["problems"] = len(self.issues)
             preset_counts = dict.fromkeys((p.id for p in PRESETS), 0)
             for entry in self._ranged:
                 for p in PRESETS:
