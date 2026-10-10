@@ -101,20 +101,10 @@ def ago(when: datetime | None, now: datetime | None = None) -> str:
 
 
 def unit_subtitle(unit: Unit, order: str = "name-description") -> str:
-    """Status line under the title in the services list (no uptime — that was costly)."""
-    kind = unit.kind
-    if unit.active_state == "activating":
-        text = _("Starting up")
-    elif kind == "running":
-        text = _("Running")
-    elif kind == "exited":
-        text = _("Ran and finished")
-    elif kind == "failed":
-        text = _("Stopped with an error")
-    else:
-        text = _("Not running")
-    detail = unit_description(unit) if order == "name-description" else unit.short_name
-    return f"{text} · {detail}" if detail else text
+    """Secondary label under the title (status is shown separately on the row)."""
+    if order == "name-description":
+        return unit_description(unit)
+    return unit.short_name
 
 
 def state_sentence(unit: Unit, now: datetime | None = None) -> str:
