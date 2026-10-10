@@ -679,7 +679,7 @@ class Window(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback()
     def on_search_changed(self, entry):
-        self.services.set_query(entry.get_text())
+        (self.journal if self.journal_shown else self.services).set_query(entry.get_text())
 
     def _on_search_mode(self, bar, _pspec):
         if not bar.get_search_mode():
