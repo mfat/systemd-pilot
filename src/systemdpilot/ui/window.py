@@ -676,6 +676,7 @@ class Window(Adw.ApplicationWindow):
             action_message=self._action_message,
         )
         dialog.present(self)
+        GLib.idle_add(lambda: (dialog.start_loading(), False)[-1])
 
     def _open_unit_by_name(self, name: str):
         unit = next((u for u in self.services.units if u.name == name), None)

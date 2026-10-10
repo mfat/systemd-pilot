@@ -105,7 +105,11 @@ class UnitDialog(Adw.Dialog):
         self._apply_mode(initial=True)
 
         self._show_unit(unit)
-        self._show_placeholder()
+        self._build_shell()
+        self._activity_loading()
+
+    def start_loading(self) -> None:
+        """Fetch fresh data in the background (call after :meth:`present`)."""
         self.load()
 
     @property
@@ -175,13 +179,82 @@ class UnitDialog(Adw.Dialog):
         self.action_box.set_sensitive(not busy)
         self.overview_box.set_sensitive(not busy)
 
+    def _set_fetching(self, fetching: bool) -> None:
+        """Background refresh: keep start/stop/enable usable while details load."""
+        self.refresh_button.set_sensitive(not fetching)
+
     # -- loading ----------------------------------------------------------
 
     def load(self):
-        self._set_busy(True)
-        manager, name, scope, elevated = self.manager, self.unit.name, self.scope, self._elevated
+        manager, name, scope = self.manager, self.unit.name, self.scope
         self._loads += 1
         load = self._loads
+        self._set_fetching(True)
+
+        def fetch_core() -> tuple[dict[str, str], Unit]:
+            props = manager.properties(name, scope)
+            fresh = Unit(
+                name=name,
+                description=props.get("Description", self.unit.description),
+                load_state=props.get("LoadState", ""),
+                active_state=props.get("ActiveState", ""),
+                sub_state=props.get("SubState", ""),
+                file_state=props.get("UnitFileState", ""),
+            )
+            return props, manager.add_runtime([fresh], scope)[0]
+
+        def core_done(result: tuple[dict[str, str], Unit]):
+            if self._closed or load != self._loads:
+                return
+            props, unit = result
+            self._properties = props
+            self._show_unit(unit)
+            self._build_overview(
+                _Details(unit=unit, status="", properties=props, unit_file="", logs=LogResult([], ""))
+            )
+            self._load_heavy(props, unit, load)
+
+        def core_failed(error):
+            if self._closed or load != self._loads:
+                return
+            self._set_fetching(False)
+            self._on_load_failed(error)
+
+        if self._elevated:
+            self._load_heavy_elevated(load)
+            return
+
+        run_in_thread(fetch_core, on_done=core_done, on_error=core_failed)
+
+    def _load_heavy(self, props: dict[str, str], unit: Unit, load: int) -> None:
+        manager, name, scope, elevated = self.manager, self.unit.name, self.scope, self._elevated
+
+        def fetch_heavy() -> tuple[str, str, LogResult]:
+            return (
+                manager.status_text(name, scope),
+                manager.unit_file(name, scope),
+                manager.logs(name, scope, privileged=elevated),
+            )
+
+        def heavy_done(result: tuple[str, str, LogResult]):
+            if self._closed or load != self._loads:
+                return
+            status, unit_file, logs = result
+            self._on_loaded(
+                _Details(unit=unit, status=status, properties=props, unit_file=unit_file, logs=logs),
+                load,
+            )
+
+        def heavy_failed(error):
+            if self._closed or load != self._loads:
+                return
+            self._set_fetching(False)
+            self._on_load_failed(error)
+
+        run_in_thread(fetch_heavy, on_done=heavy_done, on_error=heavy_failed)
+
+    def _load_heavy_elevated(self, load: int) -> None:
+        manager, name, scope = self.manager, self.unit.name, self.scope
 
         def fetch() -> _Details:
             props = manager.properties(name, scope)
@@ -199,20 +272,14 @@ class UnitDialog(Adw.Dialog):
                 status=manager.status_text(name, scope),
                 properties=props,
                 unit_file=manager.unit_file(name, scope),
-                logs=manager.logs(name, scope, privileged=elevated),
+                logs=manager.logs(name, scope, privileged=True),
             )
 
-        if not elevated:
-            run_in_thread(fetch, on_done=self._on_loaded, on_error=self._on_load_failed)
-            return
-
         def finished():
-            # Cancelled or failed (the error was shown): go back to what the user can read.
             if not self._closed and load == self._loads and self._details_load != load:
                 self._elevated = False
                 self.load()
 
-        # Asks for the sudo password when needed, once per connection.
         self.operations.run(
             manager,
             fetch,
@@ -230,7 +297,7 @@ class UnitDialog(Adw.Dialog):
             return
         self._details_load = load
         self._details = details
-        self._set_busy(False)
+        self._set_fetching(False)
         self._show_unit(details.unit)
         self.status_view.get_buffer().set_text(details.status)
         self.file_view.get_buffer().set_text(details.unit_file or _("No unit file found."))
@@ -244,7 +311,12 @@ class UnitDialog(Adw.Dialog):
         self.logs_banner.set_revealed(bool(details.logs.warning))
         GLib.idle_add(self._scroll_logs_to_end)
         self._build_overview(details)
-        self._build_activity(details)
+        GLib.idle_add(self._build_activity_idle, details)
+
+    def _build_activity_idle(self, details: _Details):
+        if not self._closed:
+            self._build_activity(details)
+        return GLib.SOURCE_REMOVE
 
     def _scroll_logs_to_end(self):
         adj = self.logs_scroll.get_vadjustment()
@@ -254,7 +326,7 @@ class UnitDialog(Adw.Dialog):
     def _on_load_failed(self, error):
         if self._closed:
             return
-        self._set_busy(False)
+        self._set_fetching(False)
         message = describe(error)
         self.status_view.get_buffer().set_text(message)
         widgets.clear(self.overview_box)
@@ -267,9 +339,27 @@ class UnitDialog(Adw.Dialog):
         )
         self.toast_overlay.add_toast(Adw.Toast(title=_("Could not load details"), timeout=3))
 
-    def _show_placeholder(self):
-        spinner = Gtk.Spinner(spinning=True, width_request=32, height_request=32, margin_top=48)
-        self.overview_box.append(spinner)
+    def _build_shell(self) -> None:
+        """Overview from the list row so the dialog can open immediately."""
+        unit = self.unit
+        box = self.overview_box
+        widgets.clear(box)
+        if unit.is_failed:
+            banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
+            banner.append(Gtk.Image(icon_name="dialog-error-symbolic", css_classes=["error"]))
+            banner.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
+            box.append(banner)
+        behavior = Adw.PreferencesGroup(title=_("Behavior"))
+        behavior.add(
+            self._row(_("Enabled"), _("Loading…"), _("Checking whether this starts at boot"))
+        )
+        box.append(behavior)
+
+    def _activity_loading(self) -> None:
+        widgets.clear(self.activity_box)
+        self.activity_box.append(
+            Gtk.Spinner(spinning=True, width_request=32, height_request=32, margin_top=48, halign=Gtk.Align.CENTER)
+        )
 
     # -- simple pages -----------------------------------------------------
 
@@ -278,8 +368,13 @@ class UnitDialog(Adw.Dialog):
         box = self.overview_box
         widgets.clear(box)
 
-        if unit.is_failed:
+        if unit.is_failed and details.logs.entries:
             box.append(self._error_banner(details))
+        elif unit.is_failed:
+            banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
+            banner.append(Gtk.Image(icon_name="dialog-error-symbolic", css_classes=["error"]))
+            banner.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
+            box.append(banner)
 
         behavior = Adw.PreferencesGroup(title=_("Behavior"))
         if unit.kind == "running" and unit.main_pid:
@@ -343,18 +438,19 @@ class UnitDialog(Adw.Dialog):
             where.add(self._row(_("Program"), program, mono=True))
         box.append(where)
 
-        recent = [e for e in reversed(details.logs.entries[-3:])]
-        activity = Adw.PreferencesGroup(title=_("Recent activity"))
-        more = Gtk.Button(label=_("All Activity"), css_classes=["flat"], valign=Gtk.Align.CENTER)
-        more.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
-        activity.set_header_suffix(more)
-        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
-        for entry in recent:
-            listbox.append(self._recent_row(entry))
-        if not recent:
-            listbox.append(widgets.placeholder_row(_("Nothing logged yet")))
-        activity.add(listbox)
-        box.append(activity)
+        if details.logs.entries or details.status:
+            recent = [e for e in reversed(details.logs.entries[-3:])]
+            activity = Adw.PreferencesGroup(title=_("Recent activity"))
+            more = Gtk.Button(label=_("All Activity"), css_classes=["flat"], valign=Gtk.Align.CENTER)
+            more.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
+            activity.set_header_suffix(more)
+            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
+            for entry in recent:
+                listbox.append(self._recent_row(entry))
+            if not recent:
+                listbox.append(widgets.placeholder_row(_("Nothing logged yet")))
+            activity.add(listbox)
+            box.append(activity)
 
     def _error_banner(self, details: _Details) -> Gtk.Widget:
         banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
