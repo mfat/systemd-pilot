@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from gi.repository import GLib, Gtk, Pango
+from gi.repository import Gtk, Pango
 
 from ..core.models import LogEntry
 from ..i18n import _
@@ -47,81 +47,67 @@ class Option:
     flag: str = ""  # the matching command-line option, shown dimmed
 
 
-class OptionButton(Gtk.MenuButton):
-    """A pill that opens a list of options for a string action.
+class OptionDropDown(Gtk.DropDown):
+    """A dropdown of :class:`Option` values. The open list shows each option's help and flag too."""
 
-    ``groups`` is a list of (heading, options); a heading may be None.
-    """
+    def __init__(self, options: list[Option], **props):
+        super().__init__(model=Gtk.StringList.new([o.value for o in options]), **props)
+        self.options = options
 
-    def __init__(
-        self,
-        action_name: str,
-        groups: list[tuple[str | None, list[Option]]],
-        *,
-        intro: str = "",
-        width: int = 300,
-        counts: bool = False,
-        css: tuple[str, ...] = ("chip",),
-    ):
-        super().__init__(css_classes=list(css), always_show_arrow=True)
-        self._label = Gtk.Label()
-        self._icon = Gtk.Image(visible=False)
-        content = Gtk.Box(spacing=7)
-        content.append(self._icon)
-        content.append(self._label)
-        self.set_child(content)
-        self._counts: dict[str, Gtk.Label] = {}
-        self._titles: dict[str, Gtk.Label] = {}
+        button = Gtk.SignalListItemFactory()
+        button.connect("setup", lambda _f, item: item.set_child(Gtk.Label(xalign=0)))
+        button.connect("bind", lambda _f, item: item.get_child().set_label(self._option(item).label))
+        self.set_factory(button)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, width_request=width)
-        if intro:
-            box.append(label(intro, "dim-label", "caption", wrap=True, margin_start=10, margin_end=10, margin_top=4))
-        for heading, options in groups:
-            if heading:
-                box.append(label(heading.upper(), "option-heading"))
-            for option in options:
-                box.append(self._option(action_name, option, counts))
+        # A custom list loses the dropdown's own check mark on the current choice, so rows draw one.
+        self._checks: dict[Gtk.ListItem, Gtk.Image] = {}
+        rows = Gtk.SignalListItemFactory()
+        rows.connect("setup", self._setup_row)
+        rows.connect("bind", self._bind_row)
+        rows.connect("unbind", lambda _f, item: self._checks.pop(item, None))
+        self.set_list_factory(rows)
+        self.connect("notify::selected", lambda *_: self._sync_checks())
 
-        scroll = Gtk.ScrolledWindow(
-            child=box, hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True, max_content_height=470
-        )
-        popover = Gtk.Popover(child=scroll, css_classes=["options"])
-        self.set_popover(popover)
+    @property
+    def value(self) -> str:
+        return self.options[self.get_selected()].value
 
-    def _option(self, action_name: str, option: Option, counts: bool) -> Gtk.Widget:
-        button = Gtk.ToggleButton(
-            action_name=action_name, action_target=GLib.Variant("s", option.value), css_classes=["flat", "option"]
-        )
-        row = Gtk.Box(spacing=12)
-        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True)
-        title = label(option.label, wrap=True)
-        self._titles[option.value] = title
-        text.append(title)
-        if option.help:
-            text.append(label(option.help, "dim-label", "caption", wrap=True))
+    def set_value(self, value: str) -> None:
+        index = next((i for i, o in enumerate(self.options) if o.value == value), 0)
+        if index != self.get_selected():
+            self.set_selected(index)
+
+    def _option(self, item: Gtk.ListItem) -> Option:
+        return self.options[item.get_position()]
+
+    @staticmethod
+    def _setup_row(_factory, item: Gtk.ListItem) -> None:
+        row = Gtk.Box(spacing=12, margin_top=2, margin_bottom=2)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True, valign=Gtk.Align.CENTER)
+        text.append(label())
+        text.append(label("", "dim-label", "caption"))
         row.append(text)
-        if option.flag:
-            row.append(label(option.flag, "dim-label", "monospace", "caption", valign=Gtk.Align.CENTER))
-        if counts:
-            count = Gtk.Label(css_classes=["option-count"], valign=Gtk.Align.CENTER)
-            self._counts[option.value] = count
-            row.append(count)
-        button.set_child(row)
-        button.connect("clicked", lambda *_: self.popdown())
-        return button
+        row.append(label("", "dim-label", "monospace", "caption", valign=Gtk.Align.CENTER))
+        row.append(Gtk.Image(icon_name="object-select-symbolic", valign=Gtk.Align.CENTER))
+        item.set_child(row)
 
-    def set_text(self, text: str, icon_name: str | None = None) -> None:
-        self._label.set_label(text)
-        self._icon.set_visible(bool(icon_name))
-        if icon_name:
-            self._icon.set_from_icon_name(icon_name)
+    def _bind_row(self, _factory, item: Gtk.ListItem) -> None:
+        option = self._option(item)
+        text = item.get_child().get_first_child()
+        title, help_label = text.get_first_child(), text.get_last_child()
+        flag = text.get_next_sibling()
+        self._checks[item] = item.get_child().get_last_child()
+        self._sync_checks()
+        title.set_label(option.label)
+        help_label.set_label(option.help)
+        help_label.set_visible(bool(option.help))
+        flag.set_label(option.flag)
+        flag.set_visible(bool(option.flag))
 
-    def set_option_count(self, value: str, count: int) -> None:
-        badge = self._counts.get(value)
-        if badge:
-            badge.set_label(str(count))
-            badge.set_css_classes(["option-count"] + ([] if count else ["empty"]))
-            self._titles[value].set_css_classes([] if count else ["dim-label"])
+    def _sync_checks(self) -> None:
+        selected = self.get_selected()
+        for item, check in self._checks.items():
+            check.set_opacity(1 if item.get_position() == selected else 0)
 
 
 class FilterRow(Gtk.ListBoxRow):

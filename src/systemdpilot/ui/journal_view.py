@@ -14,7 +14,7 @@ from ..i18n import _, ngettext
 from . import prompts, widgets, words
 from .operations import Operations, describe
 from .tasks import run_in_thread
-from .widgets import FilterRow, Option, OptionButton
+from .widgets import FilterRow, Option, OptionDropDown
 
 LIMIT = 1500  # newest entries fetched; enough to spot problems without a slow transfer over SSH
 PAGE = 300  # rows shown in the simple timeline before “Show More”
@@ -313,28 +313,14 @@ class JournalView(Gtk.Box):
         self.sidebar.append(self.filter_list)
 
         # The range the entries come from.
-        self._since = OptionButton(
-            "journal.since",
-            [(None, [Option(v, label, "", f"--since “{flag}”" if flag else "") for v, label, _p, flag in SINCE])],
-            css=("picker",),
+        self._since = OptionDropDown(
+            [Option(v, label, "", f"--since “{flag}”" if flag else "") for v, label, _p, flag in SINCE]
         )
-        self._boot = OptionButton(
-            "journal.boot",
-            [
-                (
-                    None,
-                    [
-                        Option(v, label, help, f"-b {b}" if b else ("-b" if b == 0 else ""))
-                        for v, label, help, _t, b in BOOTS
-                    ],
-                )
-            ],
-            css=("picker",),
+        self._boot = OptionDropDown(
+            [Option(v, label, help, f"-b {b}" if b else ("-b" if b == 0 else "")) for v, label, help, _t, b in BOOTS]
         )
-        self._source = OptionButton(
-            "journal.source",
-            [(None, [Option(v, label, help, "-k" if kernel else "") for v, label, help, _t, kernel in SOURCES])],
-            css=("picker",),
+        self._source = OptionDropDown(
+            [Option(v, label, help, "-k" if kernel else "") for v, label, help, _t, kernel in SOURCES]
         )
         # Pinned over the list, as it decides what every filter finds; wraps when the column is narrow.
         pickers = Gtk.FlowBox(
@@ -348,15 +334,16 @@ class JournalView(Gtk.Box):
             margin_start=24,
             margin_end=24,
         )
-        for button, tooltip in (
-            (self._since, _("Time")),
-            (self._boot, _("Startup")),
-            (self._source, _("Source")),
+        for name, dropdown, tooltip in (
+            ("since", self._since, _("Time")),
+            ("boot", self._boot, _("Startup")),
+            ("source", self._source, _("Source")),
         ):
-            button.set_tooltip_text(tooltip)
-            button.set_halign(Gtk.Align.START)
-            pickers.append(button)
-            button.get_parent().set_focusable(False)  # the button inside takes focus
+            dropdown.set_tooltip_text(tooltip)
+            dropdown.set_halign(Gtk.Align.START)
+            dropdown.connect("notify::selected", self._on_picked, name)
+            pickers.append(dropdown)
+            dropdown.get_parent().set_focusable(False)  # the dropdown inside takes focus
         self.append(pickers)
 
         self._banner = Adw.Banner()
@@ -573,10 +560,13 @@ class JournalView(Gtk.Box):
             self._shown = PAGE
             self._refresh()
 
+    def _on_picked(self, dropdown, _pspec, name):
+        if dropdown.value != self._state(name):
+            self._actions.activate_action(name, GLib.Variant("s", dropdown.value))
+
     def _update_pickers(self) -> None:
-        self._since.set_text(_pick(SINCE, self._state("since"))[1])
-        self._boot.set_text(_pick(BOOTS, self._state("boot"))[1])
-        self._source.set_text(_pick(SOURCES, self._state("source"))[1])
+        for name, dropdown in (("since", self._since), ("boot", self._boot), ("source", self._source)):
+            dropdown.set_value(self._state(name))
 
     def _refresh(self, *, ui: bool = True) -> None:
         if self._result is None:
