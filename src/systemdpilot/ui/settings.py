@@ -9,6 +9,7 @@ from pathlib import Path
 from gi.repository import Gio, GLib
 
 from .. import APP_ID
+from ..core.paths import app_config_dir
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class Settings:
         source = Gio.SettingsSchemaSource.get_default()
         self._gsettings = Gio.Settings.new(APP_ID) if source and source.lookup(APP_ID, True) else None
         self._memory = dict(_DEFAULTS)
-        self._path = path or Path(GLib.get_user_config_dir()) / "systemd-pilot" / "settings.json"
+        self._path = path or app_config_dir() / "settings.json"
         self._file: dict = {}
         self._load_file()
 

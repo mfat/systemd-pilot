@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from systemdpilot.core.paths import app_config_dir
 from systemdpilot.ui.settings import Settings
 
 
@@ -25,3 +26,10 @@ def test_file_overrides_ignored_defaults(tmp_path):
 
     assert settings.get_string("view-mode") == "advanced"
     assert settings.get_string("unit-label-order") == "description-name"
+
+
+def test_default_settings_path_is_under_xdg_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    settings = Settings()
+    assert settings._path == app_config_dir() / "settings.json"
+    assert settings._path == tmp_path / "systemd-pilot" / "settings.json"

@@ -9,11 +9,12 @@ from pathlib import Path
 
 from .errors import PilotError
 from .models import AuthMethod, Host
+from .paths import xdg_config_home
 from .secrets import SecretStore
 
 log = logging.getLogger(__name__)
 
-LEGACY_CONFIG = Path.home() / ".config" / "systemd-manager" / "hosts.json"
+LEGACY_CONFIG = xdg_config_home() / "systemd-manager" / "hosts.json"
 
 
 class HostStore:

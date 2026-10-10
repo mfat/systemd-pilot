@@ -87,7 +87,9 @@ def ui_report() -> None:
     app = Adw.Application(application_id="io.github.mfat.systemdpilot.benchmark")
 
     def activate(app):
-        config = Path(GLib.get_user_config_dir()) / "systemd-pilot"
+        from systemdpilot.core.paths import app_config_dir
+
+        config = app_config_dir()
         config.mkdir(parents=True, exist_ok=True)
         sessions = Sessions(HostStore(config, MemorySecretStore()), KnownHosts(config / "known_hosts"))
 

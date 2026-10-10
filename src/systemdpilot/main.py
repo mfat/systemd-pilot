@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import sys
 from gettext import gettext as _
-from pathlib import Path
 
 import gi
 
@@ -16,6 +15,7 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from . import APP_ID, RESOURCE_PATH, WEBSITE  # noqa: E402
 from .core.hosts import HostStore  # noqa: E402
 from .core.known_hosts import KnownHosts  # noqa: E402
+from .core.paths import app_config_dir  # noqa: E402
 from .core.secrets import LibsecretStore, MemorySecretStore  # noqa: E402
 from .core.session import Sessions  # noqa: E402
 from .ui.resources import load_css_from_source  # noqa: E402
@@ -55,7 +55,7 @@ class Application(Adw.Application):
         Adw.Application.do_startup(self)
         load_css_from_source()
 
-        config_dir = Path(GLib.get_user_config_dir()) / "systemd-pilot"
+        config_dir = app_config_dir()
         try:
             secrets = LibsecretStore()
         except (ValueError, ImportError) as e:
