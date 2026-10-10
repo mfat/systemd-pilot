@@ -85,7 +85,9 @@ class UnitList(Gtk.ScrolledWindow):
         self.view.connect("activate", self._on_activate)
 
         name_col = self._add_column(_("Unit"), "name", self._setup_name, self._render_name, expand=True)
-        self._add_column(_("Description"), "description", self._setup_label, self._render_description, expand=True)
+        self._description_col = self._add_column(
+            _("Description"), "description", self._setup_label, self._render_description, expand=True
+        )
         self._add_column(_("Active (Sub)"), "state", self._setup_label, self._render_state)
         # Enable / unit-file state is only in the details dialog (list-unit-files is slow).
         self._add_column(_("Memory"), "memory", self._setup_number, self._render_memory, numeric=True)
@@ -132,6 +134,10 @@ class UnitList(Gtk.ScrolledWindow):
     def selected_unit(self) -> Unit | None:
         item = self.selection.get_selected_item()
         return item.unit if item else None
+
+    def set_compact(self, compact: bool) -> None:
+        """Beside the details panel the description is shown there; the name gets its room."""
+        self._description_col.set_visible(not compact)
 
     def select_name(self, name: str) -> None:
         for i in range(self._sorted.get_n_items()):
@@ -238,7 +244,8 @@ class UnitList(Gtk.ScrolledWindow):
             valign=Gtk.Align.CENTER,
         )
         box.append(widgets.dot("dead"))
-        box.append(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True))
+        # A narrow table scrolls sideways rather than hiding the names.
+        box.append(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True, width_chars=16))
         list_item.set_child(box)
         self._add_context_gestures(box, list_item)
 

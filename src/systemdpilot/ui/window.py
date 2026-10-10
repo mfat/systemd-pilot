@@ -7,6 +7,7 @@ from gettext import gettext as _
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
+from .. import APP_ID
 from ..core.errors import (
     AuthenticationFailed,
     ConnectionCancelled,
@@ -28,8 +29,11 @@ from .resources import template
 from .services_view import ServicesView
 from .settings import Settings
 from .tasks import run_in_thread
-from .unit_dialog import UnitDialog
+from .unit_dialog import UnitDialog, UnitPanel
 from .widgets import dot, set_count_badge
+
+# The services list beside the details: its header bar needs about this much.
+DETAILS_LIST_MIN_WIDTH = 360
 
 
 class MachineRow(Gtk.ListBoxRow):
@@ -76,6 +80,8 @@ class Window(Adw.ApplicationWindow):
     cancel_connect_button: Gtk.Button = Gtk.Template.Child()
     view_stack: Gtk.Stack = Gtk.Template.Child()
     services_bin: Adw.Bin = Gtk.Template.Child()
+    details_split: Adw.OverlaySplitView = Gtk.Template.Child()
+    details_bin: Adw.Bin = Gtk.Template.Child()
     journal_bin: Adw.Bin = Gtk.Template.Child()
     disconnected_page: Adw.StatusPage = Gtk.Template.Child()
     error_page: Adw.StatusPage = Gtk.Template.Child()
@@ -93,6 +99,7 @@ class Window(Adw.ApplicationWindow):
         self._journal_badge_source = 0
         self._connecting: dict[str, SSHRunner] = {}  # host id -> connection attempt
         self.operations = Operations(self, self.toast)
+        self._details: UnitPanel | None = None  # the panel beside the services list
 
         self.set_default_size(settings.get_int("window-width"), settings.get_int("window-height"))
         if settings.get_boolean("window-maximized"):
@@ -103,6 +110,13 @@ class Window(Adw.ApplicationWindow):
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_header())
         self.services_bin.set_child(self.services)
+        self._details_placeholder = self._build_details_placeholder()
+        self.details_bin.set_child(self._details_placeholder)
+        self.details_split.connect("notify::show-sidebar", lambda *_: self._fit_table())
+        self.details_split.connect("notify::collapsed", self._on_details_collapsed)
+        # With the machine list hidden, details take a bigger share of the window.
+        for prop in ("notify::show-sidebar", "notify::collapsed"):
+            self.split_view.connect(prop, lambda *_: self._fit_details(self.get_width()))
         # The advanced table; its selection drives the "unit" actions and context menu.
         self.unit_list = self.services.unit_list
         self.unit_list.connect("selection-changed", lambda *_: self._update_actions())
@@ -114,6 +128,7 @@ class Window(Adw.ApplicationWindow):
         self.search_bar.connect("notify::search-mode-enabled", self._on_search_mode)
 
         self._setup_actions()
+        self._sync_details_shown()
         self.services.set_scope(self.scope)
         self.services.set_empty_hint(self._empty_hint())
         self._apply_mode()
@@ -201,6 +216,7 @@ class Window(Adw.ApplicationWindow):
         action.set_state(value)
         self.scope = Scope(value.get_string())
         self.services.set_scope(self.scope)
+        self._close_details()
         manager = self.sessions.get(self.machine_id)
         if manager:
             manager.invalidate_unit_files()
@@ -223,6 +239,7 @@ class Window(Adw.ApplicationWindow):
         self.view_stack.set_visible_child_name("journal" if journal else "services")
         self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search services"))
         self.search_bar.set_search_mode(False)
+        self._sync_details_shown()
         if journal:
             self.journal.show()
         self._update_header()
@@ -249,6 +266,8 @@ class Window(Adw.ApplicationWindow):
     def _apply_mode(self):
         self.services.set_mode(self.mode)
         self.journal.set_mode(self.mode)
+        if self._details:
+            self._details.set_advanced(self.mode == "advanced")
         if self.mode == "advanced":
             self._load_runtime()
 
@@ -301,6 +320,7 @@ class Window(Adw.ApplicationWindow):
         self.machine_id = row.machine_id
         self._generation += 1  # results still on their way belong to the previous machine
         self.services.clear()
+        self._close_details()
         self.journal.set_manager(self.sessions.get(self.machine_id))
         host = self._current_host()
         if self.sessions.is_connected(self.machine_id):
@@ -672,22 +692,87 @@ class Window(Adw.ApplicationWindow):
         return headings[action].format(unit=unit.short_name)
 
     def show_unit(self, unit: Unit | None):
+        """Beside the list in the services view; in a dialog in the journal or on narrow windows."""
         manager = self.sessions.get(self.machine_id)
         if not unit or not manager:
             return
         host = self._current_host()
-        dialog = UnitDialog(
-            manager,
-            unit,
-            self.scope,
-            self.operations,
+        options = dict(
             advanced=self.mode == "advanced",
             machine_label=host.name if host else _("This Computer"),
             on_changed=self.reload,
             action_message=self._action_message,
         )
+        if self.view == "services" and not self.details_split.get_collapsed():
+            if self._details:
+                self._details.discard()
+            panel = UnitPanel(manager, unit, self.scope, self.operations, in_pane=True, **options)
+            panel.connect("close-requested", lambda *_: self._close_details())
+            self._details = panel
+            self.details_bin.set_child(panel)
+            panel.start_loading()
+            return
+        dialog = UnitDialog(manager, unit, self.scope, self.operations, **options)
         dialog.present(self)
         GLib.idle_add(lambda: (dialog.start_loading(), False)[-1])
+
+    @staticmethod
+    def _build_details_placeholder() -> Gtk.Widget:
+        view = Adw.ToolbarView()
+        view.add_top_bar(Adw.HeaderBar(show_title=False))  # keeps the window buttons on this side
+        view.set_content(
+            Adw.StatusPage(
+                icon_name=APP_ID,
+                title=_("No Service Selected"),
+                description=_("Select a service to see what it does and to start, stop or restart it."),
+            )
+        )
+        return view
+
+    def _sync_details_shown(self):
+        """The details column belongs to the services view, beside the list when there is room."""
+        split = self.details_split
+        split.set_show_sidebar(self.view == "services" and not split.get_collapsed())
+
+    def _close_details(self):
+        if self._details:
+            self._details.discard()
+            self._details = None
+        self.details_bin.set_child(self._details_placeholder)
+
+    def _on_details_collapsed(self, split, _pspec):
+        # Too narrow for two columns: the open service moves to a dialog.
+        if split.get_collapsed() and self._details:
+            unit = self._details.unit
+            self._close_details()
+            if self.view == "services":
+                self.show_unit(unit)
+        self._sync_details_shown()
+
+    def _fit_details(self, width: int):
+        """Details take 60% of the whole window, 70% with the machine list hidden.
+
+        The split view's fraction is of its own width, which excludes the machine
+        list, so it is worked out from the window width. The services list keeps
+        room for its header bar, so on smaller windows details get less.
+        """
+        if width <= 0:
+            return
+        split = self.split_view
+        machines = 0
+        if split.get_show_sidebar() and not split.get_collapsed():
+            share = width * split.get_sidebar_width_fraction()
+            machines = min(max(share, split.get_min_sidebar_width()), split.get_max_sidebar_width())
+        available = width - machines
+        if available <= 0:
+            return
+        details = min((0.6 if machines else 0.7) * width, available - DETAILS_LIST_MIN_WIDTH)
+        fraction = max(details / available, 0)
+        if abs(fraction - self.details_split.get_sidebar_width_fraction()) > 0.001:
+            self.details_split.set_sidebar_width_fraction(fraction)
+
+    def _fit_table(self):
+        self.unit_list.set_compact(self.details_split.get_show_sidebar())
 
     def _open_unit_by_name(self, name: str):
         unit = next((u for u in self.services.units if u.name == name), None)
@@ -760,6 +845,10 @@ class Window(Adw.ApplicationWindow):
         self.toast_overlay.add_toast(Adw.Toast(title=message, use_markup=False, timeout=3))
 
     # -- lifecycle --------------------------------------------------------
+
+    def do_size_allocate(self, width: int, height: int, baseline: int):
+        self._fit_details(width)
+        Adw.ApplicationWindow.do_size_allocate(self, width, height, baseline)
 
     def do_close_request(self):
         if not self.is_maximized():

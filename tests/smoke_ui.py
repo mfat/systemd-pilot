@@ -28,6 +28,7 @@ else:
 
 from systemdpilot.core.models import AuthMethod, Host, Unit  # noqa: E402
 from systemdpilot.main import Application  # noqa: E402
+from systemdpilot.ui.unit_dialog import UnitDialog  # noqa: E402
 
 errors = []
 progress = {"step": 0}
@@ -50,9 +51,14 @@ def run_steps(window):
         lambda: window.get_visible_dialog().close(),
         window.add_host,
         lambda: window.get_visible_dialog().close(),
+        # The services view always has a details column; a service opens there, the scope change clears it.
+        lambda: check(window.details_split.get_show_sidebar(), "no details column"),
+        lambda: check(window.details_bin.get_child() is window._details_placeholder, "no placeholder"),
         lambda: window.show_unit(unit),
-        lambda: window.get_visible_dialog().close(),
+        lambda: check(not isinstance(window.get_visible_dialog(), UnitDialog), "details opened as a dialog"),
+        lambda: check(window.details_bin.get_child() is window._details, "details panel not shown"),
         lambda: window.activate_action("win.scope", GLib.Variant("s", "user")),
+        lambda: check(window.details_bin.get_child() is window._details_placeholder, "details panel still shown"),
         lambda: window.activate_action("win.show-inactive", None),
         lambda: window.activate_action("win.search", None),
         # The redesign: filters, both detail levels, the journal and its problems.
@@ -62,9 +68,14 @@ def run_steps(window):
         lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
         lambda: window.show_unit(unit),
         lambda: window.activate_action("win.mode", GLib.Variant("s", "simple")),
-        lambda: check(window.get_visible_dialog().stack.get_visible_child_name() == "overview", "no overview page"),
-        lambda: window.get_visible_dialog().close(),
+        lambda: check(window._details.stack.get_visible_child_name() == "overview", "no overview page"),
+        lambda: window._details.close_button.emit("clicked"),
+        lambda: check(window._details is None, "details panel not closed"),
         lambda: window.activate_action("win.view", GLib.Variant("s", "journal")),
+        # Outside the services view, details open in a dialog.
+        lambda: window.show_unit(unit),
+        lambda: check(window.get_visible_dialog() is not None, "no details dialog in the journal"),
+        lambda: window.get_visible_dialog().close(),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "ssh")),
         lambda: window.journal.activate_action("journal.filter", GLib.Variant("s", "all")),
         lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),

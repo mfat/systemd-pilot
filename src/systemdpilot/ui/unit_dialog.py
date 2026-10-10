@@ -1,4 +1,4 @@
-"""Details, logs and controls for one unit."""
+"""Details, logs and controls for one unit, as a side panel or a dialog."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from gettext import gettext as _
 
-from gi.repository import Adw, GLib, Gtk, Pango
+from gi.repository import Adw, GLib, GObject, Gtk, Pango
 
 from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
@@ -38,11 +38,16 @@ class _Details:
 
 
 @template("unit-dialog.ui")
-class UnitDialog(Adw.Dialog):
-    __gtype_name__ = "SystemdPilotUnitDialog"
+class UnitPanel(Adw.BreakpointBin):
+    """Shown beside the services list, or inside :class:`UnitDialog`."""
+
+    __gtype_name__ = "SystemdPilotUnitPanel"
+    __gsignals__ = {"close-requested": (GObject.SignalFlags.RUN_FIRST, None, ())}
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     refresh_button: Gtk.Button = Gtk.Template.Child()
+    close_button: Gtk.Button = Gtk.Template.Child()
+    mode_box: Gtk.Box = Gtk.Template.Child()
     mode_switch: Gtk.Switch = Gtk.Template.Child()
     state_dot: Gtk.Box = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
@@ -78,6 +83,7 @@ class UnitDialog(Adw.Dialog):
         machine_label: str = "",
         on_changed: Callable[[], None],
         action_message: Callable[[Unit, UnitAction], str],
+        in_pane: bool = False,
     ):
         super().__init__()
         self.manager = manager
@@ -97,9 +103,16 @@ class UnitDialog(Adw.Dialog):
         self._loads = 0
         self._details_load: int | None = None  # the load the shown details came from
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
-        self.connect("closed", self._on_closed)
 
-        self.set_title(unit.short_name)
+        # Beside the list the window's Simple/Advanced switch applies.
+        self.mode_box.set_visible(not in_pane)
+        self.close_button.set_visible(in_pane)
+        if in_pane:
+            # Too narrow to share a line with the name: actions go below the state line.
+            row = self.action_box.get_parent()
+            row.remove(self.action_box)
+            row.get_parent().append(self.action_box)
+            self.action_box.set_halign(Gtk.Align.START)
 
         self.mode_switch.set_active(self._advanced)
         self.mode_switch.connect("notify::active", self._on_switch)
@@ -117,14 +130,17 @@ class UnitDialog(Adw.Dialog):
     def advanced(self) -> bool:
         return self._advanced
 
-    def _on_closed(self, *_args):
+    def discard(self) -> None:
+        """No longer shown: results still on their way are dropped."""
         self._closed = True
 
-    def _on_switch(self, switch, _pspec):
-        advanced = switch.get_active()
+    def set_advanced(self, advanced: bool) -> None:
         if advanced != self._advanced:
             self._advanced = advanced
             self._apply_mode()
+
+    def _on_switch(self, switch, _pspec):
+        self.set_advanced(switch.get_active())
 
     def _apply_mode(self, initial: bool = False):
         advanced = self.advanced
@@ -537,6 +553,7 @@ class UnitDialog(Adw.Dialog):
                 wrap_mode=Pango.WrapMode.WORD_CHAR,
                 selectable=True,
                 xalign=1,
+                width_chars=min(len(value), 12),  # short values like “4.5 MB” never break
                 max_width_chars=48,
             )
         )
@@ -562,6 +579,10 @@ class UnitDialog(Adw.Dialog):
     @Gtk.Template.Callback()
     def on_refresh_clicked(self, _button):
         self.load()
+
+    @Gtk.Template.Callback()
+    def on_close_clicked(self, _button):
+        self.emit("close-requested")
 
     @Gtk.Template.Callback()
     def on_edit_file_clicked(self, _button):
@@ -622,3 +643,17 @@ class UnitDialog(Adw.Dialog):
             on_finish=finish,
             error_heading=_("Action Failed"),
         )
+
+
+class UnitDialog(Adw.Dialog):
+    """:class:`UnitPanel` in a dialog, for units opened outside the services list."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(content_width=800, content_height=680, width_request=360, height_request=294)
+        self.panel = UnitPanel(*args, **kwargs)
+        self.set_child(self.panel)
+        self.set_title(self.panel.unit.short_name)
+        self.connect("closed", lambda *_: self.panel.discard())
+
+    def start_loading(self) -> None:
+        self.panel.start_loading()
