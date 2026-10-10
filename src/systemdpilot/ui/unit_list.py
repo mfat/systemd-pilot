@@ -86,7 +86,7 @@ class UnitList(Gtk.ScrolledWindow):
         name_col = self._add_column(_("Unit"), "name", self._setup_label, self._render_name, expand=True)
         self._add_column(_("Description"), "description", self._setup_label, self._render_description, expand=True)
         self._add_column(_("Active (Sub)"), "state", self._setup_label, self._render_state)
-        self._add_column(_("Unit File State"), "startup", self._setup_label, self._render_startup)
+        # Enable / unit-file state is only in the details dialog (list-unit-files is slow).
         self._add_column(_("Memory"), "memory", self._setup_number, self._render_memory, numeric=True)
         self._add_column(_("PID"), "pid", self._setup_number, self._render_pid, numeric=True)
         self.view.sort_by_column(name_col, Gtk.SortType.ASCENDING)
@@ -253,11 +253,6 @@ class UnitList(Gtk.ScrolledWindow):
     def _render_state(self, list_item):
         item = list_item.get_item()
         self._set(list_item, item.state, "monospace", state_css_class(item.unit))
-
-    def _render_startup(self, list_item):
-        item = list_item.get_item()
-        dim = item.startup not in ("enabled", "enabled-runtime")
-        self._set(list_item, item.startup or "—", "monospace", *(["dim-label"] if dim else []))
 
     def _render_memory(self, list_item):
         memory = list_item.get_item().unit.memory

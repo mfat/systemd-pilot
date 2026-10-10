@@ -503,23 +503,26 @@ class Window(Adw.ApplicationWindow):
         else:
             self.journal.mark_stale()
 
-        # Loaded units come back almost instantly. File states (enable switches)
-        # follow next; uptimes/PID/memory last — that systemctl show is slow and
-        # used to freeze the list when applied together with the file-state pass.
+        # list-units is fast. Enable/disabled state is not shown in the list (details
+        # dialog loads it). list-unit-files is only needed to add unloaded units when
+        # “Show Inactive” is on. Advanced mode then fills PID/memory.
         def done(units):
             if generation != self._generation:
                 return
             self._on_units_loaded(units)
-            run_in_thread(
-                manager.attach_file_states,
-                units,
-                scope,
-                include_inactive,
-                on_done=file_states_done,
-                on_error=incomplete,
-            )
+            if include_inactive:
+                run_in_thread(
+                    manager.attach_file_states,
+                    units,
+                    scope,
+                    True,
+                    on_done=inactive_done,
+                    on_error=incomplete,
+                )
+            elif self.mode == "advanced":
+                self._load_runtime(units, generation)
 
-        def file_states_done(units):
+        def inactive_done(units):
             if generation != self._generation:
                 return
             self._on_units_loaded(units)
@@ -528,7 +531,7 @@ class Window(Adw.ApplicationWindow):
 
         def incomplete(error):
             if generation == self._generation:
-                self.toast(_("Could not load startup states: {error}").format(error=describe(error)))
+                self.toast(_("Could not load inactive services: {error}").format(error=describe(error)))
 
         def failed(error):
             if generation != self._generation:
@@ -630,6 +633,7 @@ class Window(Adw.ApplicationWindow):
             lambda: manager.control(unit.name, action, scope),
             on_success=lambda _r: self.toast(self._action_message(unit, action)),
             # Also after a failure or cancel, so a pending enable switch goes back.
+            # Also after a failure or cancel (e.g. pending UI), so the list matches reality.
             on_finish=finish,
             error_heading=self._action_error_heading(unit, action),
         )

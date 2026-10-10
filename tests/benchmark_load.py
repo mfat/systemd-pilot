@@ -68,12 +68,13 @@ def backend_report(manager: SystemdManager, scope: Scope) -> None:
         print(f"{time.perf_counter() - t0:.3f}s)")
 
     time_call("list_units (active)", lambda: manager.list_units(scope, False))
-    time_call("attach_file_states", lambda: manager.attach_file_states(units, scope, False))
+    time_call("attach_file_states (inactive)", lambda: manager.attach_file_states(units, scope, True))
     time_call("add_runtime", lambda: manager.add_runtime(units, scope))
     t0 = time.perf_counter()
     manager.journal(since="24 hours ago", lines=1500)
     print(f"  {'journal 1500/24h':32s}  {time.perf_counter() - t0:.3f}s")
     print(f"  active services listed: {len(units)}")
+    print("  (attach_file_states only runs when “Show Inactive” is on)")
 
 
 def ui_report() -> None:
@@ -101,24 +102,20 @@ def ui_report() -> None:
         pump(80)
         results["first_paint_simple_list"] = time.perf_counter() - t0
 
-        with_files = manager.attach_file_states(units, scope, False)
-        t0 = time.perf_counter()
-        win._on_units_loaded(with_files)
-        pump(40)
-        results["update_after_file_states"] = time.perf_counter() - t0
-
         t0 = time.perf_counter()
         win.reload()
         deadline = time.perf_counter() + 15
         while time.perf_counter() < deadline and win.content_stack.get_visible_child_name() == "loading":
             pump(5)
-        results["reload_cached_files_wall"] = time.perf_counter() - t0
+        # Wait for list-units to paint (no list-unit-files on the default path).
+        while time.perf_counter() < deadline and not win.services.units:
+            pump(5)
+        results["reload_default_wall"] = time.perf_counter() - t0
         pump(40)
 
         print(f"  {'window_init':32s}  {results['window_init']:.3f}s")
         print(f"  {'first_paint_simple_list':32s}  {results['first_paint_simple_list']:.3f}s")
-        print(f"  {'update_after_file_states':32s}  {results['update_after_file_states']:.3f}s")
-        print(f"  {'reload (cached file states)':32s}  {results['reload_cached_files_wall']:.3f}s")
+        print(f"  {'reload (default, no file states)':32s}  {results['reload_default_wall']:.3f}s")
         app.quit()
 
     app.connect("activate", activate)
@@ -132,10 +129,10 @@ def main() -> int:
     backend_report(SystemdManager(LocalRunner()), Scope.SYSTEM)
     ui_report()
     print("\nNotes:")
-    print("  • list-unit-files dominates cold load; it is cached across reloads now.")
+    print("  • Default load is list-units only (~15ms); enable state is only in the details dialog.")
+    print("  • list-unit-files runs only with “Show Inactive” (to list unloaded units).")
     print("  • add_runtime is skipped in Simple mode until you open Advanced.")
-    print("  • Simple rows are built in idle chunks; first_paint should stay well under 0.5s.")
-    print("  • Journal badge fetch is deferred 45s unless you open the Journal tab.")
+    print("  • Simple rows are built in idle chunks; Journal badge is deferred 45s.")
     return 0
 
 

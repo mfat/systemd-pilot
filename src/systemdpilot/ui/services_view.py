@@ -26,8 +26,11 @@ def mode_switch() -> Gtk.Widget:
 
 
 class UnitRow(Gtk.ListBoxRow):
-    """A service in the simple view. Start/stop buttons show while hovered or focused,
-    and the switch enables or disables it."""
+    """A service in the simple view. Start/stop buttons show while hovered or focused.
+
+    Enable/disable lives in the details dialog — fetching unit-file state for every
+    row was the main load bottleneck.
+    """
 
     def __init__(self, unit: Unit, view: ServicesView):
         super().__init__(activatable=True)
@@ -53,19 +56,15 @@ class UnitRow(Gtk.ListBoxRow):
         )
         box.append(self._actions)
 
-        state = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, width_request=110, valign=Gtk.Align.CENTER)
-        self._state = widgets.label(words.state_word(unit), "state-word", words.state_css(unit), xalign=1)
-        self._boot = widgets.label(words.boot_text(unit.file_state), "dim-label", "caption", xalign=1)
-        state.append(self._state)
-        state.append(self._boot)
-        box.append(state)
-
-        # Same width with or without a switch, so the columns line up.
-        self._enable = Gtk.Box(width_request=52, halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
-        self._switch: Gtk.Switch | None = None
-        self._switch_handler = 0
-        self._sync_switch()
-        box.append(self._enable)
+        self._state = widgets.label(
+            words.state_word(unit),
+            "state-word",
+            words.state_css(unit),
+            xalign=1,
+            valign=Gtk.Align.CENTER,
+            width_request=90,
+        )
+        box.append(self._state)
         box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"]))
         self.set_child(box)
         self._sync_a11y()
@@ -83,12 +82,9 @@ class UnitRow(Gtk.ListBoxRow):
     def update(self, unit: Unit) -> None:
         """Refresh labels and controls without rebuilding the row widget tree."""
         old = self.unit
-        # Runtime details (uptime, PID, memory) are not shown on the row; keep the
-        # unit object current but skip widget work when nothing visible changed.
         if (
             unit.kind == old.kind
             and unit.active_state == old.active_state
-            and unit.file_state == old.file_state
             and unit.description == old.description
             and unit.name == old.name
         ):
@@ -103,8 +99,6 @@ class UnitRow(Gtk.ListBoxRow):
         self._subtitle.set_label(words.unit_subtitle(unit))
         self._state.set_label(words.state_word(unit))
         self._state.set_css_classes(["state-word", words.state_css(unit)])
-        self._boot.set_label(words.boot_text(unit.file_state))
-        self._sync_switch()
         self._sync_a11y()
 
     def _fill_actions(self) -> None:
@@ -121,37 +115,10 @@ class UnitRow(Gtk.ListBoxRow):
             button.connect("clicked", lambda _b, a=action: self._view.emit("unit-action", self.unit, a.value))
             self._action_box.append(button)
 
-    def _sync_switch(self) -> None:
-        can_toggle = words.can_toggle_startup(self.unit)
-        if can_toggle and self._switch is None:
-            switch = Gtk.Switch(valign=Gtk.Align.CENTER)
-            switch.update_property([Gtk.AccessibleProperty.LABEL], [_("Enabled")])
-            self._switch_handler = switch.connect("state-set", self._on_enable_set)
-            self._enable.append(switch)
-            self._switch = switch
-        elif not can_toggle and self._switch is not None:
-            self._enable.remove(self._switch)
-            self._switch = None
-            self._switch_handler = 0
-        if self._switch is not None:
-            enabled = words.starts_at_boot(self.unit)
-            self._switch.handler_block(self._switch_handler)
-            self._switch.set_active(enabled)
-            self._switch.handler_unblock(self._switch_handler)
-            self._switch.set_tooltip_text(
-                _("Disable (don’t start at boot)") if enabled else _("Enable (start at boot)")
-            )
-
     def _sync_a11y(self) -> None:
         self.update_property(
             [Gtk.AccessibleProperty.LABEL], [f"{words.unit_title(self.unit)}, {words.state_word(self.unit)}"]
         )
-
-    def _on_enable_set(self, _switch, state):
-        if state != words.starts_at_boot(self.unit):
-            self._view.emit("unit-action", self.unit, (UnitAction.ENABLE if state else UnitAction.DISABLE).value)
-        # Leave the switch pending; the list is refreshed once the action has finished.
-        return True
 
     def _set_hover(self, hovered: bool | None = None, focused: bool | None = None):
         if hovered is not None:
@@ -357,7 +324,7 @@ class ServicesView(Gtk.Box):
                 plan.append((kind, title, hint, css, units))
         structure = tuple((kind, tuple(u.name for u in units)) for kind, _t, _h, _c, units in plan)
         # Same services in the same groups: update labels in place (common after
-        # startup states load, and after enable/disable).
+        # start/stop or a background refresh).
         if structure == self._structure and self._update_rows(plan):
             return
 

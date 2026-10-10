@@ -233,6 +233,7 @@ def test_attach_file_states_caches_unit_files(runner):
     manager.attach_file_states(loaded)
     assert sum(1 for call in runner.calls if "list-unit-files" in call["argv"]) == 1
     manager.invalidate_unit_files()
+    runner.replies.clear()
     runner.reply(
         "systemctl",
         "--no-pager",
