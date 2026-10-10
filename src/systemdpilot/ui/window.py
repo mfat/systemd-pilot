@@ -286,16 +286,21 @@ class Window(Adw.ApplicationWindow):
 
     def _journal_button(self) -> tuple[Gtk.Button, Gtk.Label]:
         """For the details column's header bar: one each for the placeholder and the panel."""
-        box = Gtk.Box(spacing=8)
-        box.append(Gtk.Label(label=_("_Journal"), use_underline=True))
+        # A bell, with the count of problems on its corner.
+        bell = Gtk.Overlay(child=Gtk.Image(icon_name="preferences-system-notifications-symbolic"))
         badge = count_badge("error")
+        badge.add_css_class("on-icon")
         badge.set_xalign(0.5)
-        box.append(badge)
+        badge.set_halign(Gtk.Align.END)
+        badge.set_valign(Gtk.Align.START)
+        badge.set_can_target(False)
+        bell.add_overlay(badge)
         button = Gtk.Button(
-            child=box,
+            child=bell,
             action_name="win.journal",
             tooltip_text=_("Open system log"),
         )
+        button.update_property([Gtk.AccessibleProperty.LABEL], [_("Journal")])
         return button, badge
 
     @property

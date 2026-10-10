@@ -55,6 +55,14 @@ textview.output {
   background-color: @error_bg_color;
   color: @error_fg_color;
 }
+/* On the Journal button's bell: small, over its top right corner. */
+.count-badge.on-icon {
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0 3px;
+  font-size: 9px;
+  margin: -9px -13px 0 0;
+}
 
 /* Filter pills. */
 button.chip, menubutton.chip > button {
