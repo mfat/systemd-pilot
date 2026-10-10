@@ -348,7 +348,7 @@ class ServicesView(Gtk.Box):
         action.set_state(value)
         self.filter_list.select_row(self._filter_rows[value.get_string()])
         self.unit_list.set_kind(value.get_string())
-        self._refresh()
+        self._refresh(switched=True)
         self.emit("filter-changed")
 
     def _matching(self) -> list[Unit]:
@@ -359,7 +359,8 @@ class ServicesView(Gtk.Box):
         kind = self.kind_filter
         return [u for u in self._matching() if matches_filter(u, kind)]
 
-    def _refresh(self) -> None:
+    def _refresh(self, switched: bool = False) -> None:
+        """``switched``: the user picked another filter, so a spinner may replace the list."""
         matching = self._matching()
         for value, row in self._filter_rows.items():
             row.set_count(sum(1 for u in matching if matches_filter(u, value)))
@@ -372,7 +373,7 @@ class ServicesView(Gtk.Box):
             else:
                 self.stack.set_visible_child_name("advanced")
             return
-        if self._rebuild_groups(visible):
+        if self._rebuild_groups(visible, switched):
             self.stack.set_visible_child_name("simple")
 
     def _stop_building(self) -> None:
@@ -391,7 +392,7 @@ class ServicesView(Gtk.Box):
             self.empty_page.set_description(GLib.markup_escape_text(self._empty_hint))
         self.stack.set_visible_child_name("empty")
 
-    def _rebuild_groups(self, visible: list[Unit]) -> bool:
+    def _rebuild_groups(self, visible: list[Unit], switched: bool = False) -> bool:
         """False while the rows are still being added; the list then shows itself when done."""
         ordered = sorted(visible, key=lambda u: (u.name.lower(), u.is_user))
         plan: list[tuple[str, str, str, str | None, list[Unit]]] = []
@@ -414,9 +415,12 @@ class ServicesView(Gtk.Box):
         widgets.clear(self._groups)
         self._structure = structure
         # Many new rows (first paint, or a bigger filter): add them in batches behind
-        # a spinner, so the window stays responsive.
+        # a spinner, so the window stays responsive. A list already on screen that a
+        # background refresh grows (inactive services, runtime details) is rebuilt in
+        # place instead: swapping it for a spinner would make it flicker.
         new_rows = sum(1 for *_rest, units in plan for u in units if u.key not in existing)
-        if new_rows > SIMPLE_CHUNK:
+        on_screen = bool(existing) and self.stack.get_visible_child_name() == "simple"
+        if new_rows > SIMPLE_CHUNK and (switched or not on_screen):
             self._rebuild_groups_chunked(plan, existing, adjustment, position, focused, gen=self._build_gen)
             return False
         self._building_spinner.stop()
