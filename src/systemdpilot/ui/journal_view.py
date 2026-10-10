@@ -132,6 +132,21 @@ def issue_text(issue: Issue) -> tuple[str, str]:
     return title, explanation
 
 
+def issue_badge(issue: Issue) -> str:
+    """The problem in a word or two, without the names, for the badge on its entries."""
+    if issue.kind == "unit-failed":
+        failures = sum(1 for e in issue.entries if "Failed with result" in e.message)
+        return _("Keeps failing") if failures > 1 else _("Failed")
+    badges = {
+        "crash": _("Crashed"),
+        "oom": _("Out of memory"),
+        "ssh": _("Failed login"),
+        "storage": _("Storage error"),
+        "errors": _("Errors"),
+    }
+    return badges.get(issue.kind, _("Repeated"))
+
+
 class IssueRow(Gtk.ListBoxRow):
     """A problem card. Selecting it shows its entries, and its service, in the details column."""
 
@@ -693,8 +708,7 @@ class JournalView(Gtk.Box):
                 issue = flagged.get(index)
                 badge = css = tooltip = ""
                 if issue:
-                    # The unit it is about; the problem's title, cut short, would hide it.
-                    badge = (issue.unit or issue.source).removesuffix(".service")
+                    badge = issue_badge(issue)
                     css = "error" if issue.severity == ERROR else "warning"
                     tooltip = issue_text(issue)[0]
                 row = widgets.log_row(entry, badge=badge, badge_css=css, badge_tooltip=tooltip, activatable=True)

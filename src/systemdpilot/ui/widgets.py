@@ -206,9 +206,6 @@ def log_row(
                 label=badge,
                 css_classes=["badge", badge_css],
                 valign=Gtk.Align.START,
-                ellipsize=Pango.EllipsizeMode.END,
-                width_chars=min(len(badge), 12),  # a unit name stays readable beside a long message
-                max_width_chars=16,
                 tooltip_text=badge_tooltip or badge,
             )
         )
