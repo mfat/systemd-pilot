@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from gi.repository import Adw, Gio, GLib, GObject, Gtk
+from gi.repository import Adw, Gio, GLib, GObject, Graphene, Gtk
 
 from ..core.journal import ERROR, PRESETS, PRESETS_BY_ID, Issue, find_issues
 from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
@@ -231,6 +231,7 @@ class JournalView(Gtk.Box):
         self._stale = False
         self._needs_render = True  # False after a UI render matches the current analysis
         self._render_gen = 0  # cancels in-flight chunked timeline paints
+        self._jump_to_timeline = False  # a chip was clicked: bring its entries into view
         # Cached filter work: recomputed when the entry set, query or preset changes.
         self._analysis_key: tuple | None = None
         self._entries: list[LogEntry] = []
@@ -482,6 +483,8 @@ class JournalView(Gtk.Box):
         if name in ("since", "boot", "source"):
             self.reload()
         else:
+            # The chips filter the timeline below the problems; without this, a click changes nothing in view.
+            self._jump_to_timeline = name == "filter"
             self._shown = PAGE
             self._refresh()
 
@@ -634,6 +637,9 @@ class JournalView(Gtk.Box):
         timeline = widgets.Section(title, _("Newest first"))
         self._simple.append(timeline.box)
         self.stack.set_visible_child_name("simple")
+        if self._jump_to_timeline:
+            self._jump_to_timeline = False
+            self._scroll_to(timeline.box, gen)
 
         if not shown:
             message = widgets.no_results(self._query) if self._query else _("No entries")
@@ -673,6 +679,29 @@ class JournalView(Gtk.Box):
             return GLib.SOURCE_REMOVE
 
         GLib.idle_add(add_chunk)
+
+    def _scroll_to(self, widget: Gtk.Widget, gen: int) -> None:
+        """Scroll the timeline's heading to the top once the new widgets are laid out.
+
+        Rows are painted in chunks, so the page may be too short to reach it at
+        first; keep going until it gets there, for a second at most.
+        """
+        frames = {"left": 60}
+
+        def tick(_scroll, _clock):
+            frames["left"] -= 1
+            if gen != self._render_gen or not frames["left"]:
+                return GLib.SOURCE_REMOVE
+            if not widget.get_height():
+                return GLib.SOURCE_CONTINUE  # not allocated until the next frame
+            ok, point = widget.compute_point(self._simple, Graphene.Point())
+            if not ok:
+                return GLib.SOURCE_REMOVE
+            adjustment = self._simple_scroll.get_vadjustment()
+            adjustment.set_value(point.y)
+            return GLib.SOURCE_REMOVE if adjustment.get_value() >= point.y - 1 else GLib.SOURCE_CONTINUE
+
+        self._simple_scroll.add_tick_callback(tick)
 
     def _show_more(self, _button):
         position = self._simple_scroll.get_vadjustment().get_value()
