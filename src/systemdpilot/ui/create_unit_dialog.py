@@ -1,4 +1,4 @@
-"""Write a new unit file and optionally start or enable it."""
+"""Write a new unit file, or edit an existing one, and optionally start or enable it."""
 
 from __future__ import annotations
 
@@ -76,22 +76,42 @@ class CreateUnitDialog(Adw.Dialog):
         operations: Operations,
         *,
         on_created: Callable[[str], None],
+        edit_name: str = "",
+        edit_content: str = "",
     ):
         super().__init__()
         self.manager = manager
         self.scope = scope
         self.operations = operations
         self._on_created = on_created
+        self._editing = bool(edit_name)
         self._edited = False
 
         scope_label = _("user service") if scope is Scope.USER else _("system service")
-        self.header_title.set_title(_("New Service"))
+        if self._editing:
+            short = edit_name.removesuffix(".service") if edit_name.endswith(".service") else edit_name
+            self.set_title(_("Edit Service"))
+            self.header_title.set_title(_("Edit {unit}").format(unit=short))
+            self.create_button.set_label(_("_Save"))
+            self.create_button.set_sensitive(True)
+            self.name_row.set_text(edit_name)
+            self.name_row.set_sensitive(False)
+            self.template_row.set_visible(False)
+            self.enable_row.set_visible(False)
+            self.start_row.set_visible(False)
+        else:
+            self.header_title.set_title(_("New Service"))
         self.header_title.set_subtitle(f"{machine_label} · {scope_label}")
 
         self.view, self.buffer = _make_editor()
         self.editor_scroll.set_child(self.view)
         self.template_row.set_model(Gtk.StringList.new([t.title for t in TEMPLATES]))
-        self._load_template()
+        if self._editing:
+            self._loading = True
+            self.buffer.set_text(edit_content)
+            self._loading = False
+        else:
+            self._load_template()
         self.buffer.connect("changed", self._on_buffer_changed)
 
     def _load_template(self):
@@ -113,6 +133,8 @@ class CreateUnitDialog(Adw.Dialog):
 
     @Gtk.Template.Callback()
     def on_name_changed(self, row):
+        if self._editing:
+            return
         valid = self._name() is not None
         empty = not row.get_text().strip()
         if valid or empty:
@@ -123,6 +145,8 @@ class CreateUnitDialog(Adw.Dialog):
 
     @Gtk.Template.Callback()
     def on_template_changed(self, _row, _pspec):
+        if self._editing:
+            return
         if not self._edited:
             self._load_template()
             return
@@ -145,8 +169,11 @@ class CreateUnitDialog(Adw.Dialog):
         if not name:
             return
         content = self.buffer.get_text(self.buffer.get_start_iter(), self.buffer.get_end_iter(), True)
-        enable, start = self.enable_row.get_active(), self.start_row.get_active()
+        enable = not self._editing and self.enable_row.get_active()
+        start = not self._editing and self.start_row.get_active()
         manager, scope = self.manager, self.scope
+        if self._editing:
+            overwrite = True
 
         def work():
             path = manager.create_unit(name, content, scope, overwrite=overwrite)
@@ -180,5 +207,5 @@ class CreateUnitDialog(Adw.Dialog):
             on_success=on_success,
             on_error=on_error,
             on_finish=lambda: self.set_sensitive(True),
-            error_heading=_("Could Not Create Service"),
+            error_heading=_("Could Not Save Service") if self._editing else _("Could Not Create Service"),
         )

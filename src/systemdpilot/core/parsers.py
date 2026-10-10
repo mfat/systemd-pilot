@@ -20,6 +20,26 @@ def strip_ansi(text: str) -> str:
     return _ANSI_RE.sub("", text)
 
 
+def unit_file_body(text: str) -> str:
+    """Return the first unit fragment from ``systemctl cat`` output.
+
+    Drops the ``# /path`` header lines systemd inserts, and stops before any
+    drop-in file that follows so an edit rewrites one unit file, not a merge.
+    """
+    body: list[str] = []
+    seen_content = False
+    for line in text.splitlines(keepends=True):
+        if line.startswith("# /") or line.startswith("#/"):
+            if seen_content:
+                break
+            continue
+        if not seen_content and not line.strip():
+            continue
+        seen_content = True
+        body.append(line)
+    return "".join(body)
+
+
 def _parse_json_list(text: str) -> list[dict] | None:
     text = strip_ansi(text).strip()
     if not text:

@@ -687,12 +687,14 @@ class Window(Adw.ApplicationWindow):
         manager = self.sessions.get(self.machine_id)
         if not unit or not manager:
             return
+        host = self._current_host()
         dialog = UnitDialog(
             manager,
             unit,
             self.scope,
             self.operations,
             advanced=self.mode == "advanced",
+            machine_label=host.name if host else _("This Computer"),
             on_changed=self.reload,
             action_message=self._action_message,
         )

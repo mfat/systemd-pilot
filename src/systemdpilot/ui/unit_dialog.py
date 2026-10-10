@@ -11,9 +11,10 @@ from gi.repository import Adw, GLib, Gtk, Pango
 
 from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
-from ..core.parsers import parse_int
+from ..core.parsers import parse_int, unit_file_body
 from ..core.ssh import SSHRunner
 from . import text, widgets, words
+from .create_unit_dialog import CreateUnitDialog
 from .operations import Operations, describe
 from .resources import template
 from .tasks import run_in_thread
@@ -62,6 +63,7 @@ class UnitDialog(Adw.Dialog):
     logs_view: Gtk.TextView = Gtk.Template.Child()
     logs_scroll: Gtk.ScrolledWindow = Gtk.Template.Child()
     file_view: Gtk.TextView = Gtk.Template.Child()
+    edit_file_button: Gtk.Button = Gtk.Template.Child()
     props_view: Gtk.TextView = Gtk.Template.Child()
     props_search: Gtk.SearchEntry = Gtk.Template.Child()
 
@@ -73,6 +75,7 @@ class UnitDialog(Adw.Dialog):
         operations: Operations,
         *,
         advanced: bool = False,
+        machine_label: str = "",
         on_changed: Callable[[], None],
         action_message: Callable[[Unit, UnitAction], str],
     ):
@@ -82,6 +85,7 @@ class UnitDialog(Adw.Dialog):
         self.scope = scope
         self.operations = operations
         self._advanced = advanced
+        self._machine_label = machine_label or _("This Computer")
         self._on_changed = on_changed
         self._action_message = action_message
         self._properties: dict[str, str] = {}
@@ -303,6 +307,7 @@ class UnitDialog(Adw.Dialog):
         self._show_unit(details.unit)
         self.status_view.get_buffer().set_text(details.status)
         self.file_view.get_buffer().set_text(details.unit_file or _("No unit file found."))
+        self.edit_file_button.set_sensitive(bool(unit_file_body(details.unit_file)))
         self._properties = details.properties
         text.set_properties(self.props_view.get_buffer(), self._properties, self.props_search.get_text())
         text.set_logs(self.logs_view.get_buffer(), details.logs.entries)
@@ -434,7 +439,13 @@ class UnitDialog(Adw.Dialog):
             box.append(resources)
 
         where = Adw.PreferencesGroup(title=_("Where it lives"))
-        where.add(self._row(_("Configuration file"), props.get("FragmentPath") or _("None"), mono=True))
+        path = props.get("FragmentPath") or ""
+        file_row = self._row(_("Configuration file"), path or _("None"), mono=True)
+        if path and unit_file_body(details.unit_file):
+            file_row.set_activatable(True)
+            file_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+            file_row.connect("activated", lambda *_: self._edit_unit_file())
+        where.add(file_row)
         program = self._program(props)
         if program:
             where.add(self._row(_("Program"), program, mono=True))
@@ -539,10 +550,40 @@ class UnitDialog(Adw.Dialog):
         self.load()
 
     @Gtk.Template.Callback()
+    def on_edit_file_clicked(self, _button):
+        self._edit_unit_file()
+
+    @Gtk.Template.Callback()
     def on_props_search_changed(self, entry):
         text.set_properties(self.props_view.get_buffer(), self._properties, entry.get_text())
 
     # -- actions ----------------------------------------------------------
+
+    def _edit_unit_file(self):
+        details = self._details
+        if not details:
+            return
+        content = unit_file_body(details.unit_file)
+        if not content:
+            return
+
+        def on_saved(_name: str):
+            self.manager.invalidate_unit_files()
+            if not self._closed:
+                self.toast_overlay.add_toast(Adw.Toast(title=_("Unit file saved"), timeout=3))
+                self.load()
+            self._on_changed()
+
+        dialog = CreateUnitDialog(
+            self.manager,
+            self.scope,
+            self._machine_label,
+            self.operations,
+            on_created=on_saved,
+            edit_name=self.unit.name,
+            edit_content=content,
+        )
+        dialog.present(self)
 
     def _run_action(self, action: UnitAction):
         self._set_busy(True)

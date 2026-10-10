@@ -8,11 +8,31 @@ from systemdpilot.core.parsers import (
     parse_list_units,
     parse_properties,
     strip_ansi,
+    unit_file_body,
 )
 
 
 def test_strip_ansi():
     assert strip_ansi("\x1b[0;1;32m●\x1b[0m sshd.service") == "● sshd.service"
+
+
+def test_unit_file_body_strips_path_and_dropins():
+    text = (
+        "# /usr/lib/systemd/system/demo.service\n"
+        "[Unit]\n"
+        "Description=Demo\n"
+        "# Keep this comment\n"
+        "\n"
+        "# /etc/systemd/system/demo.service.d/override.conf\n"
+        "[Service]\n"
+        "Environment=FOO=1\n"
+    )
+    assert unit_file_body(text) == "[Unit]\nDescription=Demo\n# Keep this comment\n\n"
+
+
+def test_unit_file_body_empty():
+    assert unit_file_body("") == ""
+    assert unit_file_body("# /only/header\n") == ""
 
 
 def test_parse_list_units_json():

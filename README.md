@@ -15,7 +15,7 @@ systemd Pilot is a desktop app for managing systemd services on your local machi
 - Browse system and user services, with instant search (just start typing)
 - Start, stop, restart, enable and disable services
 - Read a service's status, logs, unit file and properties
-- Create new services from templates, optionally enabling and starting them
+- Create and edit unit files, optionally enabling and starting new services
 - Manage remote hosts over SSH with a password, a private key or your SSH agent
 
 ## Install
