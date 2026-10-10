@@ -280,6 +280,7 @@ class SystemdManager:
         self,
         *,
         since: str = "",
+        until: str = "",
         boot: int | None = None,
         kernel: bool = False,
         lines: int = 1500,
@@ -287,7 +288,8 @@ class SystemdManager:
     ) -> LogResult:
         """The newest ``lines`` journal entries, newest first.
 
-        ``since`` is a journalctl time such as "today" or "24 hours ago";
+        ``since`` and ``until`` are journalctl times such as "today", "24 hours ago"
+        or "2026-10-10 14:00:00";
         ``boot`` is 0 for this boot, -1 for the one before, and so on.
         ``privileged`` reads it as root, so nothing is hidden.
         """
@@ -304,6 +306,8 @@ class SystemdManager:
             argv.append(f"--boot={int(boot)}")
         if since:
             argv.append(f"--since={since}")
+        if until:
+            argv.append(f"--until={until}")
         if kernel:
             argv.append("--dmesg")
         result = self.runner.run(argv, privileged=privileged)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 from gi.repository import Adw, Gio, GLib, GObject, Graphene, Gtk
 
@@ -12,6 +13,7 @@ from ..core.models import LogEntry, LogResult
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
 from . import prompts, widgets, words
+from .journal_range import RangeDialog, journal_time, range_text
 from .operations import Operations, describe
 from .tasks import run_in_thread
 from .widgets import FilterRow, Option, OptionDropDown
@@ -27,6 +29,8 @@ SINCE = (
     ("today", _("Today"), _("today"), "today"),
     ("7d", _("Last 7 days"), _("in the last 7 days"), "7 days ago"),
     ("any", _("Any time"), "", ""),
+    # Its start and end are picked in a dialog.
+    ("custom", _("Custom range…"), "", ""),
 )
 # value, option label, help, button text, --boot
 BOOTS = (
@@ -274,6 +278,7 @@ class JournalView(Gtk.Box):
         self._needs_render = True  # False after a UI render matches the current analysis
         self._render_gen = 0  # cancels in-flight chunked timeline paints
         self._jump_to_timeline = False  # a filter was chosen: bring its entries into view
+        self._custom: tuple[datetime, datetime | None] | None = None  # the custom range: start, and end or now
         self.selected: Issue | LogEntry | None = None  # shown in the details column
         # Cached filter work: recomputed when the entry set, query or preset changes.
         self._analysis_key: tuple | None = None
@@ -314,8 +319,12 @@ class JournalView(Gtk.Box):
 
         # The range the entries come from.
         self._since = OptionDropDown(
-            [Option(v, label, "", f"--since “{flag}”" if flag else "") for v, label, _p, flag in SINCE]
+            [Option(v, label, "", f"--since “{flag}”" if flag else "") for v, label, _p, flag in SINCE[:-1]]
+            + [Option("custom", SINCE[-1][1], _("Pick a start and an end"), "--since --until")]
         )
+        # Beside the time picker, which then shows the custom range: changes it.
+        self._range_button = Gtk.Button(icon_name="document-edit-symbolic", tooltip_text=_("Change the Range"))
+        self._range_button.connect("clicked", lambda *_: self._ask_range())
         self._boot = OptionDropDown(
             [Option(v, label, help, f"-b {b}" if b else ("-b" if b == 0 else "")) for v, label, help, _t, b in BOOTS]
         )
@@ -323,17 +332,10 @@ class JournalView(Gtk.Box):
             [Option(v, label, help, "-k" if kernel else "") for v, label, help, _t, kernel in SOURCES]
         )
         # Pinned over the list, as it decides what every filter finds; wraps when the column is narrow.
-        pickers = Gtk.FlowBox(
-            selection_mode=Gtk.SelectionMode.NONE,
-            max_children_per_line=3,
-            column_spacing=6,
-            row_spacing=6,
-            halign=Gtk.Align.START,
-            margin_top=12,
-            margin_bottom=4,
-            margin_start=24,
-            margin_end=24,
-        )
+        pickers = widgets.wrap_box(margin_top=12, margin_bottom=4, margin_start=24, margin_end=24)
+        time = Gtk.Box(css_classes=["linked"], halign=Gtk.Align.START)
+        time.append(self._since)
+        time.append(self._range_button)
         for name, dropdown, tooltip in (
             ("since", self._since, _("Time")),
             ("boot", self._boot, _("Startup")),
@@ -342,8 +344,7 @@ class JournalView(Gtk.Box):
             dropdown.set_tooltip_text(tooltip)
             dropdown.set_halign(Gtk.Align.START)
             dropdown.connect("notify::selected", self._on_picked, name)
-            pickers.append(dropdown)
-            dropdown.get_parent().set_focusable(False)  # the dropdown inside takes focus
+            pickers.append(time if dropdown is self._since else dropdown)
         self.append(pickers)
 
         self._banner = Adw.Banner()
@@ -424,7 +425,10 @@ class JournalView(Gtk.Box):
         self._stale = False
         if ui and self._result is None:
             self.stack.set_visible_child_name("loading")
-        since = _pick(SINCE, self._state("since"))[3]
+        since, until = _pick(SINCE, self._state("since"))[3], ""
+        if self._state("since") == "custom" and self._custom:
+            since = journal_time(self._custom[0])
+            until = journal_time(self._custom[1]) if self._custom[1] else ""
         boot = _pick(BOOTS, self._state("boot"))[4]
         kernel = _pick(SOURCES, self._state("source"))[4]
         need_boot_id = not self._boot_id
@@ -432,7 +436,9 @@ class JournalView(Gtk.Box):
 
         def fetch():
             boot_id = manager.boot_id() if need_boot_id else None
-            result = manager.journal(since=since, boot=boot, kernel=kernel, lines=LIMIT, privileged=elevated)
+            result = manager.journal(
+                since=since, until=until, boot=boot, kernel=kernel, lines=LIMIT, privileged=elevated
+            )
             # Hidden entries: say why, and whether the user can do something about it.
             access = manager.journal_access() if result.warning else ""
             return result, boot_id, access
@@ -544,6 +550,9 @@ class JournalView(Gtk.Box):
     def _on_option(self, action, value, name):
         if name == "preset" and value.get_string() == action.get_state().get_string():
             value = GLib.Variant("s", "")  # choosing the active preset again removes it
+        if name == "since" and value.get_string() == "custom" and not self._custom:
+            self._ask_range()  # applies once a range is picked
+            return
         action.set_state(value)
         # One choice in the sidebar: a preset shows all the entries it finds, a filter replaces the preset.
         if name == "preset" and value.get_string():
@@ -567,6 +576,24 @@ class JournalView(Gtk.Box):
     def _update_pickers(self) -> None:
         for name, dropdown in (("since", self._since), ("boot", self._boot), ("source", self._source)):
             dropdown.set_value(self._state(name))
+        custom = self._state("since") == "custom" and self._custom is not None
+        self._since.set_button_text("custom", range_text(*self._custom) if self._custom else "")
+        self._range_button.set_visible(custom)
+
+    def _ask_range(self) -> None:
+        """Pick the custom range; cancelled, the time picker goes back to what it showed."""
+
+        def apply(since, until):
+            self._custom = (since, until)
+            if self._state("since") == "custom":
+                self._update_pickers()
+                self.reload()
+            else:
+                self._actions.activate_action("since", GLib.Variant("s", "custom"))
+
+        dialog = RangeDialog(*(self._custom or (None, None)), apply)
+        dialog.connect("closed", lambda *_: self._update_pickers())
+        dialog.present(self.get_root())
 
     def _refresh(self, *, ui: bool = True) -> None:
         if self._result is None:

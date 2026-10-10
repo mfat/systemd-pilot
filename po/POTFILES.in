@@ -8,6 +8,7 @@ src/systemdpilot/ui/host-dialog.ui
 src/systemdpilot/ui/host_dialog.py
 src/systemdpilot/ui/journal_view.py
 src/systemdpilot/ui/journal_details.py
+src/systemdpilot/ui/journal_range.py
 src/systemdpilot/ui/operations.py
 src/systemdpilot/ui/prompts.py
 src/systemdpilot/ui/services_view.py

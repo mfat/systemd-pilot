@@ -364,6 +364,12 @@ def test_journal_arguments(runner):
     assert not runner.calls[0]["privileged"]
 
 
+def test_journal_custom_range(runner):
+    SystemdManager(runner).journal(since="2026-10-10 14:00:00", until="2026-10-11 09:30:00")
+    argv = runner.calls[0]["argv"]
+    assert {"--since=2026-10-10 14:00:00", "--until=2026-10-11 09:30:00"} <= set(argv)
+
+
 def test_journal_failure_raises(runner):
     runner.reply("journalctl", returncode=1, stderr="Failed to open journal")
     with pytest.raises(CommandError):

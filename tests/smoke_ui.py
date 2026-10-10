@@ -86,6 +86,14 @@ def run_steps(window):
         lambda: window.journal.activate_action("journal.filter", GLib.Variant("s", "all")),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "")),
         lambda: select_journal_entries(window),
+        # A custom range: picked in a dialog, then shown on the time picker.
+        lambda: window.journal._since.set_value("custom"),
+        lambda: check(window.get_visible_dialog() is not None, "no custom range dialog"),
+        lambda: window.get_visible_dialog()._apply.emit("clicked"),
+        lambda: check(window.journal._state("since") == "custom", "custom range not applied"),
+        lambda: check(window.journal._range_button.get_visible(), "custom range cannot be changed"),
+        lambda: window.journal._since.set_value("24h"),
+        lambda: check(not window.journal._range_button.get_visible(), "custom range still shown"),
         # Hidden entries: the banner offers access, which asks first.
         lambda: show_hidden_entries(window),
         lambda: check(isinstance(window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"),
