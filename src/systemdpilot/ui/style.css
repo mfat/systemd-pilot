@@ -123,6 +123,7 @@ button.row-action { min-width: 32px; min-height: 32px; padding: 0; }
 .table-card { padding: 0; }
 .table-card > scrolledwindow, .table-card columnview { border-radius: 12px; background: none; }
 .command-line { padding: 8px 14px; }
+.command-row .subtitle { font-family: monospace; }
 
 /* Journal. */
 .journal-footer {

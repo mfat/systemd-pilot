@@ -26,6 +26,7 @@ _COUNTERPART = {"activity": "logs", "logs": "activity"}
 _ACTIVITY_LIMIT = 300
 
 _EXEC_PATH_RE = re.compile(r"path=(\S+)")
+_EXEC_ARGV_RE = re.compile(r"argv\[\]=(.*?) ; ignore_errors=")
 
 
 @dataclass
@@ -380,12 +381,10 @@ class UnitPanel(Adw.BreakpointBin):
         status.add(self._state_row(unit))
         if unit.kind == "running" and unit.main_pid:
             program = (props.get("ExecMainPath") or self._program(props)).rsplit("/", 1)[-1] or unit.short_name
-            status.add(
-                self._row(_("Main process"), f"{program} (#{unit.main_pid})", _("The program this service runs"))
-            )
+            status.add(self._row(_("Main PID"), f"{unit.main_pid} ({program})", _("The program this service runs")))
         box.append(status)
 
-        behavior = Adw.PreferencesGroup(title=_("Behavior"))
+        behavior = Adw.PreferencesGroup(title=_("Startup"))
         if words.can_toggle_startup(unit):
             enabled = words.starts_at_boot(unit)
             starts = _("Starts every time you log in") if unit.is_user else _("Starts every time the computer boots")
@@ -436,13 +435,13 @@ class UnitPanel(Adw.BreakpointBin):
             )
             box.append(resources)
 
-        where = Adw.PreferencesGroup(title=_("Where it lives"))
+        where = Adw.PreferencesGroup(title=_("Unit"))
         if unit.is_user:
-            where.add(self._row(_("Runs for"), _("You only"), _("A user service, from login to logout")))
+            where.add(self._row(_("Scope"), _("User"), "systemctl --user"))
         else:
-            where.add(self._row(_("Runs for"), _("Everyone"), _("A system service, shared by all users")))
+            where.add(self._row(_("Scope"), _("System"), "systemctl --system"))
         path = props.get("FragmentPath") or ""
-        file_row = self._row(_("Configuration file"), path or _("None"), mono=True)
+        file_row = self._row(_("Unit file"), path or _("None"), mono=True)
         if path and unit_file_body(details.unit_file):
             edit = Gtk.Button(
                 label=_("_Edit"),
@@ -453,9 +452,11 @@ class UnitPanel(Adw.BreakpointBin):
             edit.connect("clicked", lambda *_: self._edit_unit_file())
             file_row.add_suffix(edit)
         where.add(file_row)
-        program = self._program(props)
-        if program:
-            where.add(self._row(_("Program"), program, mono=True))
+        commands = self._commands(props)
+        if commands:
+            command_row = self._row("ExecStart", commands, mono=True)
+            command_row.add_css_class("command-row")
+            where.add(command_row)
         box.append(where)
 
         if details.logs.entries or details.status:
@@ -515,6 +516,11 @@ class UnitPanel(Adw.BreakpointBin):
     def _program(props: dict[str, str]) -> str:
         match = _EXEC_PATH_RE.search(props.get("ExecStart", ""))
         return match.group(1) if match else ""
+
+    @staticmethod
+    def _commands(props: dict[str, str]) -> str:
+        """ExecStart= as systemd holds it: each command with its arguments, one per line."""
+        return "\n".join(_EXEC_ARGV_RE.findall(props.get("ExecStart", "")))
 
     @staticmethod
     def _state_row(unit: Unit) -> Adw.ActionRow:
