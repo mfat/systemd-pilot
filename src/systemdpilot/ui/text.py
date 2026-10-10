@@ -62,21 +62,47 @@ def _priority_tag(priority: int) -> str | None:
     return None
 
 
+def _insert_entry(buffer: Gtk.TextBuffer, end: Gtk.TextIter, entry: LogEntry) -> None:
+    stamp = entry.timestamp.strftime("%b %d %H:%M:%S") if entry.timestamp else "—"
+    buffer.insert_with_tags_by_name(end, stamp + " ", "dim")
+    source = entry.identifier + (f"[{entry.pid}]" if entry.pid else "")
+    if source:
+        buffer.insert_with_tags_by_name(end, source + ": ", "dim")
+    tag = _priority_tag(entry.priority)
+    if tag:
+        buffer.insert_with_tags_by_name(end, entry.message, tag)
+    else:
+        buffer.insert(end, entry.message)
+
+
 def set_logs(buffer: Gtk.TextBuffer, entries: list[LogEntry]) -> None:
     buffer.set_text("")
     _ensure_tags(buffer)
     end = buffer.get_end_iter()
     for entry in entries:
-        stamp = entry.timestamp.strftime("%b %d %H:%M:%S") if entry.timestamp else "—"
-        buffer.insert_with_tags_by_name(end, stamp + " ", "dim")
-        source = entry.identifier + (f"[{entry.pid}]" if entry.pid else "")
-        if source:
-            buffer.insert_with_tags_by_name(end, source + ": ", "dim")
-        tag = _priority_tag(entry.priority)
-        if tag:
-            buffer.insert_with_tags_by_name(end, entry.message, tag)
-        else:
-            buffer.insert(end, entry.message)
+        _insert_entry(buffer, end, entry)
+        buffer.insert(end, "\n")
+
+
+def set_journal(buffer: Gtk.TextBuffer, entries: list[LogEntry], notes: dict[int, str], boot_id: str = "") -> None:
+    """Entries as journalctl prints them, with "-- Boot … --" separators.
+
+    ``notes`` maps an entry's position to a remark shown after it, such as
+    the problem it was flagged for.
+    """
+    buffer.set_text("")
+    _ensure_tags(buffer)
+    end = buffer.get_end_iter()
+    last_boot = None
+    for position, entry in enumerate(entries):
+        if entry.boot_id and entry.boot_id != last_boot:
+            current = " (this boot)" if entry.boot_id == boot_id else ""
+            buffer.insert_with_tags_by_name(end, f"-- Boot {entry.boot_id}{current} --\n", "dim")
+            last_boot = entry.boot_id
+        _insert_entry(buffer, end, entry)
+        note = notes.get(position)
+        if note:
+            buffer.insert_with_tags_by_name(end, f"  ← {note}", "key")
         buffer.insert(end, "\n")
 
 

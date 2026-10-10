@@ -55,6 +55,22 @@ def run_steps(window):
         lambda: window.activate_action("win.scope", GLib.Variant("s", "user")),
         lambda: window.activate_action("win.show-inactive", None),
         lambda: window.activate_action("win.search", None),
+        # The redesign: filters, both detail levels, the journal and its problems.
+        # One step, so a service list loading in the background can't replace the units in between.
+        lambda: filter_failed(window),
+        lambda: window.services.activate_action("services.filter", GLib.Variant("s", "all")),
+        lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
+        lambda: window.show_unit(unit),
+        lambda: window.activate_action("win.mode", GLib.Variant("s", "simple")),
+        lambda: check(window.get_visible_dialog().stack.get_visible_child_name() == "overview", "no overview page"),
+        lambda: window.get_visible_dialog().close(),
+        lambda: window.activate_action("win.view", GLib.Variant("s", "journal")),
+        lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "ssh")),
+        lambda: window.journal.activate_action("journal.filter", GLib.Variant("s", "all")),
+        lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
+        lambda: window.activate_action("win.mode", GLib.Variant("s", "simple")),
+        lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "")),
+        lambda: window.activate_action("win.view", GLib.Variant("s", "services")),
         # Context menu from the keyboard (Menu / Shift+F10).
         # One step, so a service list loading in the background can't replace the row in between.
         lambda: open_context_menu_from_keyboard(window, unit),
@@ -78,6 +94,19 @@ def run_steps(window):
         window.unit_list.set_units([unit])  # a known row, whatever services the machine has
         window.unit_list.select_name(unit.name)
         check(window.unit_list._popup_for_focus(), "keyboard context menu did not open")
+
+    def filter_failed(window):
+        window.services.set_units(demo_units())
+        window.services.activate_action("services.filter", GLib.Variant("s", "failed"))
+        check(window.services.visible_count == 1, "failed filter did not apply")
+
+    def demo_units():
+        return [
+            unit,
+            Unit("ok.service", "Fine", "loaded", "active", "running", "enabled", main_pid=42, memory=5 << 20),
+            Unit("once.service", "Once", "loaded", "active", "exited", "static"),
+            Unit("broken.service", "Broken", "loaded", "failed", "failed", "enabled"),
+        ]
 
     def add_demo_host(window):
         host = Host("demo", "demo.invalid", "me", auth=AuthMethod.AGENT)

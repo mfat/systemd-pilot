@@ -179,3 +179,64 @@ def test_create_user_unit_overwrite(runner, tmp_path, monkeypatch):
     unit_dir = tmp_path / ".config/systemd/user"
     assert (unit_dir / "demo.service").read_text() == "[Unit]\nDescription=new\n"
     assert [p.name for p in unit_dir.iterdir()] == ["demo.service"]  # no temp files left behind
+
+
+def test_complete_units_adds_runtime(runner):
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "show",
+        stdout=(
+            "Id=a.service\nMainPID=42\nMemoryCurrent=1048576\nActiveEnterTimestamp=@1700000000\n"
+            "StateChangeTimestamp=@1700000000\n\n"
+            "Id=b.service\nMainPID=0\nMemoryCurrent=[not set]\nActiveEnterTimestamp=\n"
+            "StateChangeTimestamp=@1700000100\n"
+        ),
+    )
+    loaded = [
+        Unit("a.service", active_state="active", sub_state="running"),
+        Unit("b.service", active_state="failed", sub_state="failed"),
+        Unit("c.service", active_state="inactive", sub_state="dead"),
+    ]
+    a, b, c = SystemdManager(runner).complete_units(loaded)
+    assert (a.main_pid, a.memory, a.since.timestamp()) == (42, 1048576, 1700000000)
+    assert (b.main_pid, b.memory, b.since.timestamp()) == (0, None, 1700000100)
+    assert c == Unit("c.service", active_state="inactive", sub_state="dead", file_state="")
+    show = next(call["argv"] for call in runner.calls if "show" in call["argv"])
+    assert "--timestamp=unix" in show
+    assert show[-2:] == ["a.service", "b.service"]  # inactive units have nothing to show
+
+
+def test_runtime_without_unix_timestamps(runner):
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "show",
+        "--property=Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,StateChangeTimestamp",
+        "--timestamp=unix",
+        returncode=1,
+        stderr="unrecognized option '--timestamp=unix'",
+    )
+    runner.reply("systemctl", "--no-pager", "show", stdout="Id=a.service\nMainPID=7\n")
+    (unit,) = SystemdManager(runner).add_runtime([Unit("a.service", active_state="active", sub_state="running")])
+    assert unit.main_pid == 7 and unit.since is None
+
+
+def test_journal_arguments(runner):
+    runner.reply("journalctl", stdout=json.dumps({"MESSAGE": "hi", "PRIORITY": "4"}))
+    result = SystemdManager(runner).journal(since="24 hours ago", boot=-1, kernel=True, lines=10)
+    argv = runner.calls[0]["argv"]
+    assert {"--reverse", "--lines=10", "--boot=-1", "--since=24 hours ago", "--dmesg", "--all"} <= set(argv)
+    assert [e.message for e in result.entries] == ["hi"]
+    assert not runner.calls[0]["privileged"]
+
+
+def test_journal_failure_raises(runner):
+    runner.reply("journalctl", returncode=1, stderr="Failed to open journal")
+    with pytest.raises(CommandError):
+        SystemdManager(runner).journal()
+
+
+def test_boot_id(runner):
+    runner.reply("cat", stdout="e8a1f04c-1111-2222-3333-444455556666\n")
+    assert SystemdManager(runner).boot_id() == "e8a1f04c111122223333444455556666"

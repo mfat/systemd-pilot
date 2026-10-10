@@ -24,5 +24,14 @@
       <default>"default"</default>
       <summary>Color scheme</summary>
     </key>
+    <key name="view-mode" type="s">
+      <choices>
+        <choice value="simple"/>
+        <choice value="advanced"/>
+      </choices>
+      <default>"simple"</default>
+      <summary>Detail level</summary>
+      <description>Simple shows services and the journal in plain words; advanced shows raw systemd output.</description>
+    </key>
   </schema>
 </schemalist>

@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
-from .errors import CommandError, PilotError, UnitExists
+import dataclasses
+
+from .errors import CommandError, InvalidUnitName, PilotError, UnitExists
 from .models import LogResult, Scope, Unit, UnitAction
-from .parsers import merge_units, parse_journal, parse_list_unit_files, parse_list_units, parse_properties, strip_ansi
+from .parsers import (
+    merge_units,
+    parse_int,
+    parse_journal,
+    parse_list_unit_files,
+    parse_list_units,
+    parse_properties,
+    parse_show_units,
+    parse_unix_timestamp,
+    strip_ansi,
+)
 from .runner import CommandRunner
 from .validation import validate_unit_name
 
@@ -35,6 +47,26 @@ systemctl "$@" daemon-reload
 """
 
 _JOURNAL_PERMISSION_HINTS = ("insufficient permissions", "no journal files were opened", "not seeing messages")
+
+_RUNTIME_PROPERTIES = "Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,StateChangeTimestamp"
+
+# Only what the journal view shows; keeps the JSON small over SSH.
+_JOURNAL_FIELDS = ",".join(
+    (
+        "MESSAGE",
+        "PRIORITY",
+        "SYSLOG_IDENTIFIER",
+        "_COMM",
+        "_PID",
+        "SYSLOG_PID",
+        "UNIT",
+        "USER_UNIT",
+        "_SYSTEMD_UNIT",
+        "_SYSTEMD_USER_UNIT",
+        "_BOOT_ID",
+        "_TRANSPORT",
+    )
+)
 
 
 class SystemdManager:
@@ -69,14 +101,51 @@ class SystemdManager:
     def complete_units(
         self, loaded: list[Unit], scope: Scope = Scope.SYSTEM, include_unloaded: bool = False
     ) -> list[Unit]:
-        """Add startup states to ``loaded``, and optionally services that have a unit file but are not loaded.
+        """Add startup states and runtime details (PID, memory, since when) to ``loaded``.
 
+        Optionally adds services that have a unit file but are not loaded.
         This asks systemd for every unit file's state, which can take seconds.
         """
         result = self._list(scope, ["list-unit-files", "--type=service"])
         # Startup states are a nice-to-have; don't fail the listing over them.
         files = parse_list_unit_files(result.stdout) if result.ok else {}
-        return merge_units(loaded, files, include_unloaded=include_unloaded)
+        return self.add_runtime(merge_units(loaded, files, include_unloaded=include_unloaded), scope)
+
+    def add_runtime(self, units: list[Unit], scope: Scope = Scope.SYSTEM) -> list[Unit]:
+        """Fill in main PID, memory and since when, for units that are or were running."""
+        names = []
+        for unit in units:
+            if unit.is_active or unit.is_failed or unit.active_state == "deactivating":
+                try:
+                    names.append(validate_unit_name(unit.name))
+                except InvalidUnitName:
+                    pass
+        if not names:
+            return units
+        show = ["show", f"--property={_RUNTIME_PROPERTIES}"]
+        result = self.runner.run(self._systemctl(scope, *show, "--timestamp=unix", "--", *names))
+        if not result.ok and "timestamp" in result.stderr.lower():
+            # systemd < 248 has no --timestamp; times are then left out.
+            result = self.runner.run(self._systemctl(scope, *show, "--", *names))
+        if not result.ok:
+            return units
+        shown = parse_show_units(result.stdout)
+        completed = []
+        for unit in units:
+            props = shown.get(unit.name)
+            if props is None:
+                completed.append(unit)
+                continue
+            since = props.get("ActiveEnterTimestamp", "") if unit.kind == "running" else ""
+            completed.append(
+                dataclasses.replace(
+                    unit,
+                    main_pid=parse_int(props.get("MainPID", "")) or 0,
+                    memory=parse_int(props.get("MemoryCurrent", "")),
+                    since=parse_unix_timestamp(since or props.get("StateChangeTimestamp", "")),
+                )
+            )
+        return completed
 
     def _list(self, scope: Scope, args: list[str]):
         """Run a list command as JSON, falling back to plain text on systemd < 246."""
@@ -120,6 +189,47 @@ class SystemdManager:
         elif not result.ok and not entries:
             raise CommandError(argv, result.returncode, result.stderr)
         return LogResult(entries, warning)
+
+    def journal(
+        self, *, since: str = "", boot: int | None = None, kernel: bool = False, lines: int = 1500
+    ) -> LogResult:
+        """The newest ``lines`` journal entries, newest first.
+
+        ``since`` is a journalctl time such as "today" or "24 hours ago";
+        ``boot`` is 0 for this boot, -1 for the one before, and so on.
+        """
+        argv = [
+            "journalctl",
+            "--no-pager",
+            "--output=json",
+            f"--output-fields={_JOURNAL_FIELDS}",
+            "--all",  # long messages, such as crash reports, are otherwise left out
+            "--reverse",
+            f"--lines={int(lines)}",
+        ]
+        if boot is not None:
+            argv.append(f"--boot={int(boot)}")
+        if since:
+            argv.append(f"--since={since}")
+        if kernel:
+            argv.append("--dmesg")
+        result = self.runner.run(argv)
+        entries = parse_journal(result.stdout)
+        stderr = strip_ansi(result.stderr).strip()
+        warning = ""
+        if any(h in stderr.lower() for h in _JOURNAL_PERMISSION_HINTS):
+            warning = (
+                "Some entries may be hidden: the user is not allowed to read the full system journal. "
+                "Adding the user to the “systemd-journal” group shows all entries."
+            )
+        elif not result.ok and not entries and "no such boot" not in stderr.lower():
+            raise CommandError(argv, result.returncode, result.stderr)
+        return LogResult(entries, warning)
+
+    def boot_id(self) -> str:
+        """This boot's ID as the journal writes it, or "" if unknown."""
+        result = self.runner.run(["cat", "/proc/sys/kernel/random/boot_id"])
+        return result.stdout.strip().replace("-", "") if result.ok else ""
 
     # -- changes ----------------------------------------------------------
 

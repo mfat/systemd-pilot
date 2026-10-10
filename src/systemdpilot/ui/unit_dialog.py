@@ -2,27 +2,28 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from gettext import gettext as _
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from ..core.manager import SystemdManager
-from ..core.models import LogResult, Scope, Unit, UnitAction
-from . import text
+from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
+from ..core.parsers import parse_int
+from . import text, widgets, words
 from .operations import Operations, describe
 from .resources import template
 from .tasks import run_in_thread
-from .unit_list import state_css_class
 
-_BUTTONS = (
-    (UnitAction.START, _("_Start"), "media-playback-start-symbolic"),
-    (UnitAction.STOP, _("S_top"), "media-playback-stop-symbolic"),
-    (UnitAction.RESTART, _("_Restart"), "view-refresh-symbolic"),
-    (UnitAction.ENABLE, _("_Enable"), "emblem-ok-symbolic"),
-    (UnitAction.DISABLE, _("_Disable"), "window-close-symbolic"),
-)
+_SIMPLE_PAGES = ("overview", "activity")
+_ADVANCED_PAGES = ("status", "logs", "file", "properties")
+# The matching page when switching between simple and advanced.
+_COUNTERPART = {"activity": "logs", "logs": "activity"}
+_ACTIVITY_LIMIT = 300
+
+_EXEC_PATH_RE = re.compile(r"path=(\S+)")
 
 
 @dataclass
@@ -40,11 +41,21 @@ class UnitDialog(Adw.Dialog):
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     refresh_button: Gtk.Button = Gtk.Template.Child()
+    mode_switch: Gtk.Switch = Gtk.Template.Child()
+    state_dot: Gtk.Box = Gtk.Template.Child()
+    title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
-    description_label: Gtk.Label = Gtk.Template.Child()
-    active_badge: Gtk.Label = Gtk.Template.Child()
-    startup_badge: Gtk.Label = Gtk.Template.Child()
     action_box: Gtk.FlowBox = Gtk.Template.Child()
+    state_label: Gtk.Label = Gtk.Template.Child()
+    stack: Adw.ViewStack = Gtk.Template.Child()
+    overview_page: Adw.ViewStackPage = Gtk.Template.Child()
+    activity_page: Adw.ViewStackPage = Gtk.Template.Child()
+    status_page: Adw.ViewStackPage = Gtk.Template.Child()
+    logs_page: Adw.ViewStackPage = Gtk.Template.Child()
+    file_page: Adw.ViewStackPage = Gtk.Template.Child()
+    properties_page: Adw.ViewStackPage = Gtk.Template.Child()
+    overview_box: Gtk.Box = Gtk.Template.Child()
+    activity_box: Gtk.Box = Gtk.Template.Child()
     status_view: Gtk.TextView = Gtk.Template.Child()
     logs_banner: Adw.Banner = Gtk.Template.Child()
     logs_view: Gtk.TextView = Gtk.Template.Child()
@@ -60,6 +71,7 @@ class UnitDialog(Adw.Dialog):
         scope: Scope,
         operations: Operations,
         *,
+        mode: Gio.SimpleAction,
         on_changed: Callable[[], None],
         action_message: Callable[[Unit, UnitAction], str],
     ):
@@ -68,52 +80,93 @@ class UnitDialog(Adw.Dialog):
         self.unit = unit
         self.scope = scope
         self.operations = operations
+        self._mode = mode
         self._on_changed = on_changed
         self._action_message = action_message
         self._properties: dict[str, str] = {}
-        self._buttons: dict[UnitAction, Gtk.Button] = {}
+        self._details: _Details | None = None
         self._closed = False
         self.connect("closed", self._on_closed)
 
         self.set_title(unit.short_name)
         self.name_label.set_label(unit.name)
-        self.description_label.set_label(unit.description)
-        self.description_label.set_visible(bool(unit.description))
 
-        for action, label, icon in _BUTTONS:
-            content = Adw.ButtonContent(label=label, icon_name=icon, use_underline=True)
-            button = Gtk.Button(child=content)
-            if action is UnitAction.STOP:
-                button.add_css_class("destructive-action")
-            button.connect("clicked", lambda _b, a=action: self._run_action(a))
-            self.action_box.append(button)
-            self._buttons[action] = button
+        # The mode is the window's, so both stay in step.
+        self._mode_handler = mode.connect("notify::state", lambda *_: self._apply_mode())
+        self.mode_switch.set_active(self.advanced)
+        self.mode_switch.connect("notify::active", self._on_switch)
+        self._apply_mode(initial=True)
 
         self._show_unit(unit)
+        self._show_placeholder()
         self.load()
+
+    @property
+    def advanced(self) -> bool:
+        return self._mode.get_state().get_string() == "advanced"
 
     def _on_closed(self, *_args):
         self._closed = True
+        self._mode.disconnect(self._mode_handler)
+
+    def _on_switch(self, switch, _pspec):
+        if switch.get_active() != self.advanced:
+            self._mode.change_state(GLib.Variant("s", "advanced" if switch.get_active() else "simple"))
+
+    def _apply_mode(self, initial: bool = False):
+        advanced = self.advanced
+        if self.mode_switch.get_active() != advanced:
+            self.mode_switch.set_active(advanced)
+        current = self.stack.get_visible_child_name()
+        for name in _SIMPLE_PAGES:
+            getattr(self, f"{name}_page").set_visible(not advanced)
+        for name in _ADVANCED_PAGES:
+            getattr(self, f"{name}_page").set_visible(advanced)
+        if initial or current not in (_ADVANCED_PAGES if advanced else _SIMPLE_PAGES):
+            fallback = "status" if advanced else "overview"
+            self.stack.set_visible_child_name(_COUNTERPART.get(current, fallback) if not initial else fallback)
+        self._show_actions(self.unit)
+
+    # -- header -----------------------------------------------------------
 
     def _show_unit(self, unit: Unit):
         self.unit = unit
-        self.active_badge.set_label(unit.state_label)
-        self.active_badge.set_css_classes(["badge", state_css_class(unit)])
-        file_state = unit.file_state or ""
-        enabled = file_state.startswith("enabled")
-        can_toggle = file_state not in ("", "static", "masked", "generated", "transient", "indirect", "alias")
-        self.startup_badge.set_label(file_state)
-        self.startup_badge.set_visible(bool(file_state))
-        self.startup_badge.set_css_classes(["badge", "accent" if enabled else "dim-label"])
+        self.title_label.set_label(words.unit_title(unit))
+        self.title_label.set_tooltip_text(unit.description or None)
+        widgets.set_dot(self.state_dot, unit.kind)
+        self.state_dot.add_css_class("large")
+        word = GLib.markup_escape_text(words.state_word(unit))
+        sentence = GLib.markup_escape_text(words.state_sentence(unit))
+        self.state_label.set_markup(f'<span weight="bold">{word}</span> · {sentence}')
+        self.state_label.set_css_classes(["state-line"])
+        self._show_actions(unit)
 
-        self._buttons[UnitAction.START].set_sensitive(not unit.is_active)
-        self._buttons[UnitAction.STOP].set_sensitive(unit.is_active)
-        self._buttons[UnitAction.ENABLE].set_sensitive(can_toggle and not enabled)
-        self._buttons[UnitAction.DISABLE].set_sensitive(can_toggle and enabled)
+    def _show_actions(self, unit: Unit):
+        widgets.clear(self.action_box)
+        if unit.kind == "running":
+            buttons = [
+                (UnitAction.RESTART, _("_Restart"), "view-refresh-symbolic", None),
+                (UnitAction.STOP, _("S_top"), "media-playback-stop-symbolic", "destructive-action"),
+            ]
+        else:
+            label = _("_Try Again") if unit.is_failed else _("_Start")
+            buttons = [(UnitAction.START, label, "media-playback-start-symbolic", "suggested-action")]
+        if self.advanced and words.can_toggle_startup(unit):
+            if words.starts_at_boot(unit):
+                buttons.append((UnitAction.DISABLE, _("_Disable"), "window-close-symbolic", None))
+            else:
+                buttons.append((UnitAction.ENABLE, _("_Enable"), "emblem-ok-symbolic", None))
+        for action, label, icon, css in buttons:
+            button = Gtk.Button(child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True))
+            if css:
+                button.add_css_class(css)
+            button.connect("clicked", lambda _b, a=action: self._run_action(a))
+            self.action_box.append(button)
 
     def _set_busy(self, busy: bool):
         self.refresh_button.set_sensitive(not busy)
         self.action_box.set_sensitive(not busy)
+        self.overview_box.set_sensitive(not busy)
 
     # -- loading ----------------------------------------------------------
 
@@ -131,6 +184,7 @@ class UnitDialog(Adw.Dialog):
                 sub_state=props.get("SubState", ""),
                 file_state=props.get("UnitFileState", ""),
             )
+            unit = manager.add_runtime([unit], scope)[0]
             return _Details(
                 unit=unit,
                 status=manager.status_text(name, scope),
@@ -144,6 +198,7 @@ class UnitDialog(Adw.Dialog):
     def _on_loaded(self, details: _Details):
         if self._closed:
             return
+        self._details = details
         self._set_busy(False)
         self._show_unit(details.unit)
         self.status_view.get_buffer().set_text(details.status)
@@ -156,6 +211,8 @@ class UnitDialog(Adw.Dialog):
         self.logs_banner.set_title(GLib.markup_escape_text(details.logs.warning))
         self.logs_banner.set_revealed(bool(details.logs.warning))
         GLib.idle_add(self._scroll_logs_to_end)
+        self._build_overview(details)
+        self._build_activity(details)
 
     def _scroll_logs_to_end(self):
         adj = self.logs_scroll.get_vadjustment()
@@ -168,7 +225,173 @@ class UnitDialog(Adw.Dialog):
         self._set_busy(False)
         message = describe(error)
         self.status_view.get_buffer().set_text(message)
+        widgets.clear(self.overview_box)
+        self.overview_box.append(
+            Adw.StatusPage(
+                icon_name="dialog-warning-symbolic",
+                title=_("Could Not Load Details"),
+                description=GLib.markup_escape_text(message),
+            )
+        )
         self.toast_overlay.add_toast(Adw.Toast(title=_("Could not load details"), timeout=3))
+
+    def _show_placeholder(self):
+        spinner = Gtk.Spinner(spinning=True, width_request=32, height_request=32, margin_top=48)
+        self.overview_box.append(spinner)
+
+    # -- simple pages -----------------------------------------------------
+
+    def _build_overview(self, details: _Details):
+        unit, props = details.unit, details.properties
+        box = self.overview_box
+        widgets.clear(box)
+
+        if unit.is_failed:
+            box.append(self._error_banner(details))
+
+        behavior = Adw.PreferencesGroup(title=_("Behavior"))
+        if unit.kind == "running" and unit.main_pid:
+            program = (props.get("ExecMainPath") or self._program(props)).rsplit("/", 1)[-1] or unit.short_name
+            behavior.add(
+                self._row(_("Main process"), f"{program} (#{unit.main_pid})", _("The program this service runs"))
+            )
+        if words.can_toggle_startup(unit):
+            enabled = words.starts_at_boot(unit)
+            row = Adw.SwitchRow(
+                title=_("Start automatically"),
+                subtitle=_("Starts every time the computer boots") if enabled else _("Only runs when you start it"),
+                active=enabled,
+            )
+            row.connect("notify::active", self._on_startup_toggled)
+            behavior.add(row)
+        else:
+            help_text = (
+                _("Other services start this one when they need it")
+                if unit.file_state in ("static", "indirect")
+                else _("Can’t be turned on or off at boot")
+            )
+            behavior.add(self._row(_("Start automatically"), words.boot_text(unit.file_state), help_text))
+        box.append(behavior)
+
+        if unit.kind == "running":
+            resources = Adw.PreferencesGroup(title=_("Resources"))
+            memory = parse_int(props.get("MemoryCurrent", ""))
+            peak = parse_int(props.get("MemoryPeak", ""))
+            resources.add(
+                self._row(
+                    _("Memory"),
+                    words.size(memory),
+                    _("Highest so far: {size}").format(size=words.size(peak)) if peak else "",
+                )
+            )
+            resources.add(
+                self._row(
+                    _("Processor time"),
+                    words.cpu_time(parse_int(props.get("CPUUsageNSec", ""))),
+                    _("Total since it started"),
+                )
+            )
+            tasks = parse_int(props.get("TasksCurrent", ""))
+            limit = parse_int(props.get("TasksMax", ""))
+            resources.add(
+                self._row(
+                    _("Tasks"),
+                    str(tasks) if tasks is not None else "—",
+                    _("Threads and child processes, limit {n}").format(n=f"{limit:,}")
+                    if limit
+                    else _("Threads and child processes"),
+                )
+            )
+            box.append(resources)
+
+        where = Adw.PreferencesGroup(title=_("Where it lives"))
+        where.add(self._row(_("Configuration file"), props.get("FragmentPath") or _("None"), mono=True))
+        program = self._program(props)
+        if program:
+            where.add(self._row(_("Program"), program, mono=True))
+        box.append(where)
+
+        recent = [e for e in reversed(details.logs.entries[-3:])]
+        activity = Adw.PreferencesGroup(title=_("Recent activity"))
+        more = Gtk.Button(label=_("All Activity"), css_classes=["flat"], valign=Gtk.Align.CENTER)
+        more.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
+        activity.set_header_suffix(more)
+        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
+        for entry in recent:
+            listbox.append(self._recent_row(entry))
+        if not recent:
+            listbox.append(widgets.placeholder_row(_("Nothing logged yet")))
+        activity.add(listbox)
+        box.append(activity)
+
+    def _error_banner(self, details: _Details) -> Gtk.Widget:
+        banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
+        banner.append(Gtk.Image(icon_name="dialog-error-symbolic", valign=Gtk.Align.START, css_classes=["error"]))
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
+        texts.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
+        errors = [e for e in details.logs.entries if e.priority <= 3]
+        reason = errors[-1].message if errors else details.properties.get("Result", "")
+        if reason:
+            texts.append(widgets.label(reason, "issue-explanation", wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR))
+        banner.append(texts)
+        button = Gtk.Button(label=_("See What Happened"), valign=Gtk.Align.START, css_classes=["small-pill"])
+        button.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
+        banner.append(button)
+        return banner
+
+    def _build_activity(self, details: _Details):
+        box = self.activity_box
+        widgets.clear(box)
+        if details.logs.warning:
+            box.append(widgets.label(details.logs.warning, "dim-label", "caption", wrap=True, margin_bottom=8))
+        entries = list(reversed(details.logs.entries))[:_ACTIVITY_LIMIT]
+        section = widgets.Section(_("Activity"), _("Newest first"))
+        for entry in entries:
+            section.list.append(widgets.log_row(entry, show_source=False))
+        if not entries:
+            section.list.append(widgets.placeholder_row(_("No log entries.")))
+        box.append(section.box)
+
+    @staticmethod
+    def _program(props: dict[str, str]) -> str:
+        match = _EXEC_PATH_RE.search(props.get("ExecStart", ""))
+        return match.group(1) if match else ""
+
+    @staticmethod
+    def _row(title: str, value: str, help_text: str = "", mono: bool = False) -> Adw.ActionRow:
+        row = Adw.ActionRow(title=title, subtitle=help_text, title_selectable=False)
+        # Short values stay on one line; long paths wrap.
+        value_label = widgets.label(
+            value,
+            "dim-label",
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
+            selectable=True,
+            xalign=1,
+            width_chars=min(len(value), 24),
+            max_width_chars=48,
+        )
+        if mono:
+            value_label.add_css_class("monospace")
+        row.add_suffix(value_label)
+        return row
+
+    @staticmethod
+    def _recent_row(entry: LogEntry) -> Gtk.ListBoxRow:
+        box = Gtk.Box(spacing=14, margin_top=10, margin_bottom=10, margin_start=16, margin_end=16)
+        box.append(widgets.dot(words.level_dot(entry.priority), small=True))
+        message = widgets.label(entry.message, hexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        css = words.level(entry.priority)[1]
+        if css:
+            message.add_css_class(css)
+        box.append(message)
+        box.append(widgets.label(words.ago(entry.timestamp), "dim-label", "caption", valign=Gtk.Align.START))
+        return Gtk.ListBoxRow(child=box, activatable=False)
+
+    def _on_startup_toggled(self, row, _pspec):
+        if row.get_active() == words.starts_at_boot(self.unit):
+            return
+        self._run_action(UnitAction.ENABLE if row.get_active() else UnitAction.DISABLE)
 
     @Gtk.Template.Callback()
     def on_refresh_clicked(self, _button):

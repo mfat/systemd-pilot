@@ -12,6 +12,7 @@ _DEFAULTS = {
     "window-maximized": GLib.Variant("b", False),
     "show-inactive": GLib.Variant("b", False),
     "color-scheme": GLib.Variant("s", "default"),
+    "view-mode": GLib.Variant("s", "simple"),
 }
 
 
@@ -21,11 +22,15 @@ class Settings:
         self._gsettings = Gio.Settings.new(APP_ID) if source and source.lookup(APP_ID, True) else None
         self._memory = dict(_DEFAULTS)
 
+    def _stored(self, key) -> bool:
+        # An older installed schema may lack newer keys; GSettings aborts on unknown keys.
+        return self._gsettings is not None and self._gsettings.props.settings_schema.has_key(key)
+
     def _get(self, key):
-        return self._gsettings.get_value(key) if self._gsettings else self._memory[key]
+        return self._gsettings.get_value(key) if self._stored(key) else self._memory[key]
 
     def _set(self, key, value):
-        if self._gsettings:
+        if self._stored(key):
             self._gsettings.set_value(key, value)
         else:
             self._memory[key] = value

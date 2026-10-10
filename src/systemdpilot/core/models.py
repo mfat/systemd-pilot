@@ -39,6 +39,10 @@ class Unit:
     sub_state: str = ""
     # enabled, disabled, static, masked, …; "" if there is no unit file, None if not known yet
     file_state: str | None = None
+    # Filled in with the startup states; see SystemdManager.complete_units.
+    main_pid: int = 0
+    memory: int | None = None  # bytes
+    since: datetime | None = None  # when it entered its current state
 
     @property
     def short_name(self) -> str:
@@ -51,6 +55,17 @@ class Unit:
     @property
     def is_failed(self) -> bool:
         return self.active_state == "failed"
+
+    @property
+    def kind(self) -> str:
+        """``failed``, ``running``, ``exited`` (ran and finished) or ``dead`` (not running)."""
+        if self.is_failed:
+            return "failed"
+        if self.active_state == "active" and self.sub_state == "exited":
+            return "exited"
+        if self.is_active or self.active_state == "deactivating":
+            return "running"
+        return "dead"
 
     @property
     def state_label(self) -> str:
@@ -100,6 +115,9 @@ class LogEntry:
     identifier: str
     pid: str
     message: str
+    unit: str = ""  # the unit the entry is about, or comes from
+    boot_id: str = ""
+    kernel: bool = False
 
 
 @dataclass(frozen=True)

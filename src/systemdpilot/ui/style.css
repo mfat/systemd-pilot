@@ -14,3 +14,136 @@
 textview.output {
   padding: 6px 12px;
 }
+
+/* Status dots: filled while running or failed, a ring when finished or stopped. */
+.status-dot {
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 999px;
+}
+.status-dot.small { min-width: 8px; min-height: 8px; }
+.status-dot.large { min-width: 14px; min-height: 14px; }
+.status-dot.running { background-color: @success_color; }
+.status-dot.failed { background-color: @error_color; }
+.status-dot.warning { background-color: @warning_color; }
+.status-dot.notice { background-color: @accent_color; }
+.status-dot.info { background-color: alpha(currentColor, 0.2); }
+.status-dot.exited,
+.status-dot.dead {
+  min-width: 6px;
+  min-height: 6px;
+  border: 2px solid @accent_color;
+}
+.status-dot.dead { border-color: alpha(currentColor, 0.3); }
+.status-dot.large.exited,
+.status-dot.large.dead { min-width: 10px; min-height: 10px; }
+
+/* Counts on the Services and Journal buttons. */
+.count-badge {
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: bold;
+  background-color: @error_bg_color;
+  color: @error_fg_color;
+}
+
+.view-switch > button { padding-left: 14px; padding-right: 12px; font-weight: bold; }
+
+/* Filter pills. */
+button.chip, menubutton.chip > button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+button.chip:checked {
+  background-color: alpha(@accent_bg_color, 0.15);
+  color: @accent_color;
+}
+.chip-count { font-weight: normal; opacity: 0.6; }
+
+menubutton.chip.preset-active > button,
+button.preset-active {
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+}
+.linked > menubutton.chip > button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+button.preset-clear { min-width: 30px; padding: 0 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+.mode-switch > button { min-height: 30px; padding: 0 14px; font-size: 13px; font-weight: bold; }
+
+/* Option lists in popovers. */
+popover.options > contents { padding: 6px; }
+button.option { padding: 8px 10px; border-radius: 6px; font-weight: normal; }
+button.option:checked {
+  background-color: alpha(@accent_bg_color, 0.12);
+  color: inherit;
+  font-weight: bold;
+}
+.option-heading {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: bold;
+  opacity: 0.55;
+}
+.option-count {
+  min-width: 24px;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: bold;
+  background-color: alpha(currentColor, 0.08);
+}
+.option-count.empty { background: none; opacity: 0.35; }
+button.option:checked .option-count { background-color: @accent_bg_color; color: @accent_fg_color; }
+
+/* Service rows. */
+.unit-title { font-weight: 600; }
+.state-word { font-size: 13px; font-weight: 600; }
+button.row-action { min-width: 32px; min-height: 32px; padding: 0; }
+.state-line { font-size: 15px; }
+
+.table-card { padding: 0; }
+.table-card > scrolledwindow, .table-card columnview { border-radius: 12px; background: none; }
+.command-line { padding: 8px 14px; }
+
+/* Journal. */
+.journal-footer {
+  border-top: 1px solid alpha(currentColor, 0.1);
+  background-color: @headerbar_bg_color;
+  font-size: 13px;
+}
+menubutton.picker > button {
+  min-height: 28px;
+  padding: 0 8px 0 10px;
+  font-weight: bold;
+  background-color: alpha(currentColor, 0.08);
+}
+.boot-header {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: bold;
+  background-color: alpha(currentColor, 0.04);
+}
+.boot-header > label { opacity: 0.7; }
+row.flagged-error { background-color: alpha(@error_color, 0.05); }
+row.flagged-warning { background-color: alpha(@warning_color, 0.07); }
+.issue-explanation { opacity: 0.8; }
+.issue-lines {
+  margin: 0 16px 14px 48px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background-color: alpha(currentColor, 0.05);
+}
+button.small-pill { min-height: 30px; padding: 0 12px; font-size: 13px; font-weight: bold; }
+.ok-banner, .error-banner {
+  padding: 14px 16px;
+  border-radius: 12px;
+}
+.ok-banner { background-color: alpha(@success_color, 0.1); }
+.error-banner { background-color: alpha(@error_color, 0.08); }

@@ -1,7 +1,8 @@
-"""Main window: machines in the sidebar, their services in the content pane."""
+"""Main window: machines in the sidebar, their services or journal in the content pane."""
 
 from __future__ import annotations
 
+import dataclasses
 from gettext import gettext as _
 from gettext import ngettext
 
@@ -21,12 +22,14 @@ from ..core.ssh import SSHRunner
 from . import prompts
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
+from .journal_view import JournalView
 from .operations import Operations, describe
 from .resources import template
+from .services_view import ServicesView
 from .settings import Settings
 from .tasks import run_in_thread
 from .unit_dialog import UnitDialog
-from .unit_list import UnitList
+from .widgets import dot, set_count_badge
 
 
 class MachineRow(Gtk.ListBoxRow):
@@ -41,9 +44,9 @@ class MachineRow(Gtk.ListBoxRow):
             Gtk.Label(label=subtitle, xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["dim-label", "caption"])
         )
         box.append(labels)
-        self.status = Gtk.Image(
-            icon_name="network-wired-symbolic", visible=False, tooltip_text=_("Connected"), css_classes=["success"]
-        )
+        self.status = dot("running", small=True)
+        self.status.set_tooltip_text(_("Connected"))
+        self.status.set_visible(False)
         box.append(self.status)
         self.set_child(box)
         self.update_property([Gtk.AccessibleProperty.LABEL], [title])
@@ -57,10 +60,14 @@ class Window(Adw.ApplicationWindow):
     __gtype_name__ = "SystemdPilotWindow"
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
-    split_view: Adw.NavigationSplitView = Gtk.Template.Child()
+    split_view: Adw.OverlaySplitView = Gtk.Template.Child()
     machine_list: Gtk.ListBox = Gtk.Template.Child()
-    content_page: Adw.NavigationPage = Gtk.Template.Child()
     window_title: Adw.WindowTitle = Gtk.Template.Child()
+    failed_badge: Gtk.Label = Gtk.Template.Child()
+    issues_badge: Gtk.Label = Gtk.Template.Child()
+    # The same switch at the bottom of narrow windows.
+    failed_badge_bottom: Gtk.Label = Gtk.Template.Child()
+    issues_badge_bottom: Gtk.Label = Gtk.Template.Child()
     host_menu_button: Gtk.MenuButton = Gtk.Template.Child()
     search_bar: Gtk.SearchBar = Gtk.Template.Child()
     search_entry: Gtk.SearchEntry = Gtk.Template.Child()
@@ -68,8 +75,9 @@ class Window(Adw.ApplicationWindow):
     spinner: Gtk.Spinner = Gtk.Template.Child()
     loading_label: Gtk.Label = Gtk.Template.Child()
     cancel_connect_button: Gtk.Button = Gtk.Template.Child()
-    unit_list_bin: Adw.Bin = Gtk.Template.Child()
-    empty_page: Adw.StatusPage = Gtk.Template.Child()
+    view_stack: Gtk.Stack = Gtk.Template.Child()
+    services_bin: Adw.Bin = Gtk.Template.Child()
+    journal_bin: Adw.Bin = Gtk.Template.Child()
     disconnected_page: Adw.StatusPage = Gtk.Template.Child()
     error_page: Adw.StatusPage = Gtk.Template.Child()
     error_edit_button: Gtk.Button = Gtk.Template.Child()
@@ -89,14 +97,25 @@ class Window(Adw.ApplicationWindow):
         if settings.get_boolean("window-maximized"):
             self.maximize()
 
-        self.unit_list = UnitList(self.unit_menu)
-        self.unit_list.connect("unit-activated", lambda _l, unit: self.show_unit(unit))
+        self.services = ServicesView(self.unit_menu)
+        self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
+        self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
+        self.services.connect("filter-changed", lambda *_: self._update_header())
+        self.services_bin.set_child(self.services)
+        # The advanced table; its selection drives the "unit" actions and context menu.
+        self.unit_list = self.services.unit_list
         self.unit_list.connect("selection-changed", lambda *_: self._update_actions())
-        self.unit_list_bin.set_child(self.unit_list)
+        self.journal = JournalView()
+        self.journal.connect("open-unit", lambda _v, name: self._open_unit_by_name(name))
+        self.journal.connect("changed", lambda *_: self._update_header())
+        self.journal_bin.set_child(self.journal)
         self.search_bar.set_key_capture_widget(self)
         self.search_bar.connect("notify::search-mode-enabled", self._on_search_mode)
 
         self._setup_actions()
+        self.services.set_scope(self.scope)
+        self.services.set_empty_hint(self._empty_hint())
+        self._apply_mode()
         self._rebuild_machine_list()
         self.machine_list.select_row(self.machine_list.get_row_at_index(0))
 
@@ -130,6 +149,17 @@ class Window(Adw.ApplicationWindow):
         inactive.connect("change-state", self._on_show_inactive_changed)
         self.add_action(inactive)
 
+        view = Gio.SimpleAction.new_stateful("view", GLib.VariantType.new("s"), GLib.Variant("s", "services"))
+        view.connect("change-state", self._on_view_changed)
+        self.add_action(view)
+
+        mode = self.settings.get_string("view-mode")
+        mode = Gio.SimpleAction.new_stateful(
+            "mode", GLib.VariantType.new("s"), GLib.Variant("s", mode if mode == "advanced" else "simple")
+        )
+        mode.connect("change-state", self._on_mode_changed)
+        self.add_action(mode)
+
         self.unit_actions = Gio.SimpleActionGroup()
         for action in UnitAction:
             if action is not UnitAction.RELOAD:
@@ -148,7 +178,7 @@ class Window(Adw.ApplicationWindow):
         self._enable("disconnect", remote and connected)
         self._enable("edit-host", remote)
         self._enable("remove-host", remote)
-        for name in ("refresh", "daemon-reload", "create-unit", "scope", "show-inactive"):
+        for name in ("refresh", "daemon-reload", "create-unit", "scope", "show-inactive", "view"):
             self._enable(name, connected)
         self._enable("refresh", connected or (remote and not connecting))
         has_unit = connected and self.unit_list.selected_unit is not None
@@ -159,12 +189,64 @@ class Window(Adw.ApplicationWindow):
     def _on_scope_changed(self, action, value):
         action.set_state(value)
         self.scope = Scope(value.get_string())
+        self.services.set_scope(self.scope)
         self.reload(show_spinner=True)
 
     def _on_show_inactive_changed(self, action, value):
         action.set_state(value)
         self.settings.set_boolean("show-inactive", value.get_boolean())
+        self.services.set_empty_hint(self._empty_hint())
         self.reload()
+
+    def _empty_hint(self) -> str:
+        if self.show_inactive:
+            return ""
+        return _("Use “Show Inactive Services” in the main menu to include stopped services.")
+
+    def _on_view_changed(self, action, value):
+        action.set_state(value)
+        journal = value.get_string() == "journal"
+        self.view_stack.set_visible_child_name("journal" if journal else "services")
+        self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search services"))
+        self.search_bar.set_search_mode(False)
+        if journal:
+            self.journal.ensure_loaded()
+        self._update_header()
+
+    @property
+    def view(self) -> str:
+        return self.lookup_action("view").get_state().get_string()
+
+    def _on_mode_changed(self, action, value):
+        action.set_state(value)
+        self.settings.set_string("view-mode", value.get_string())
+        self._apply_mode()
+
+    @property
+    def mode(self) -> str:
+        return self.lookup_action("mode").get_state().get_string()
+
+    def _apply_mode(self):
+        self.services.set_mode(self.mode)
+        self.journal.set_mode(self.mode)
+
+    def _update_header(self):
+        """Badges, and the title's subtitle for the current machine and view."""
+        connected = self.sessions.is_connected(self.machine_id)
+        failed = self.services.failed_count if connected else 0
+        issues = len(self.journal.issues) if connected else 0
+        for badge in (self.failed_badge, self.failed_badge_bottom):
+            set_count_badge(badge, failed)
+        for badge in (self.issues_badge, self.issues_badge_bottom):
+            set_count_badge(badge, issues)
+        if not connected or self.content_stack.get_visible_child_name() != "main":
+            self.window_title.set_subtitle("")
+        elif self.view == "journal":
+            self.window_title.set_subtitle(self.journal.summary())
+        else:
+            scope = _("User services") if self.scope is Scope.USER else _("System services")
+            n = len(self.services.units)
+            self.window_title.set_subtitle(f"{scope} · " + ngettext("{n} service", "{n} services", n).format(n=n))
 
     @property
     def show_inactive(self) -> bool:
@@ -200,14 +282,14 @@ class Window(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback()
     def on_machine_selected(self, _listbox, row):
-        if row is None or row.machine_id == self.machine_id and self.unit_list.store.get_n_items():
+        if row is None or row.machine_id == self.machine_id and self.services.units:
             return
         self.machine_id = row.machine_id
         self._generation += 1  # results still on their way belong to the previous machine
-        self.unit_list.clear()
+        self.services.clear()
+        self.journal.set_manager(self.sessions.get(self.machine_id))
         host = self._current_host()
-        self.content_page.set_title(host.name if host else _("This Computer"))
-        self.window_title.set_title(self.content_page.get_title())
+        self.window_title.set_title(host.name if host else _("This Computer"))
         self.window_title.set_subtitle("")
         if self.sessions.is_connected(self.machine_id):
             self.reload(show_spinner=True)
@@ -221,7 +303,8 @@ class Window(Adw.ApplicationWindow):
     def on_machine_activated(self, _listbox, row):
         if row.machine_id != LOCAL_ID and not self.sessions.is_connected(row.machine_id):
             self.connect_current()
-        self.split_view.set_show_content(True)
+        if self.split_view.get_collapsed():
+            self.split_view.set_show_sidebar(False)
 
     # -- connecting -------------------------------------------------------
 
@@ -261,6 +344,7 @@ class Window(Adw.ApplicationWindow):
         del self._connecting[host.id]
         self._refresh_row_status(host.id)
         if self.machine_id == host.id:
+            self.journal.set_manager(self.sessions.get(host.id))
             self._update_actions()
             self.reload(show_spinner=True)
         else:
@@ -330,7 +414,8 @@ class Window(Adw.ApplicationWindow):
         self._generation += 1
         self.sessions.disconnect(self.machine_id)
         self._refresh_row_status(self.machine_id)
-        self.unit_list.clear()
+        self.services.clear()
+        self.journal.set_manager(None)
         self._show_disconnected()
         self._update_actions()
 
@@ -397,8 +482,11 @@ class Window(Adw.ApplicationWindow):
         self._generation += 1
         generation = self._generation
         machine_id, scope, include_inactive = self.machine_id, self.scope, self.show_inactive
-        if show_spinner or not self.unit_list.store.get_n_items():
+        if show_spinner or not self.services.units:
             self._show_loading(_("Loading services…"))
+        self.journal.set_manager(manager)
+        if self.view == "journal" or self.journal.loaded:
+            self.journal.reload()
 
         # Loaded units come back almost instantly; startup states and units
         # that are not loaded take systemd much longer, so they follow later.
@@ -423,6 +511,7 @@ class Window(Adw.ApplicationWindow):
                 return
             if isinstance(error, ConnectionFailed) and machine_id != LOCAL_ID:
                 self.sessions.disconnect(machine_id)
+                self.journal.set_manager(None)
                 self._refresh_row_status(machine_id)
                 self._update_actions()
                 self._show_error(_("Connection Lost"), describe(error))
@@ -432,45 +521,42 @@ class Window(Adw.ApplicationWindow):
         run_in_thread(manager.list_units, scope, include_inactive, on_done=done, on_error=failed)
 
     def _on_units_loaded(self, units: list[Unit]):
-        self.unit_list.set_units(units)
-        scope = _("User services") if self.scope is Scope.USER else _("System services")
-        count = ngettext("{n} service", "{n} services", len(units)).format(n=len(units))
-        self.window_title.set_subtitle(f"{scope} · {count}")
-        self._update_list_page()
-        self._update_actions()
-
-    def _update_list_page(self):
-        if self.unit_list.visible_count:
-            self.content_stack.set_visible_child_name("units")
-            self.spinner.stop()
-            return
-        query = self.search_entry.get_text().strip()
-        if query:
-            self.empty_page.set_title(_("No Results Found"))
-            message = _("Nothing matches “{query}”.").format(query=query)
-            self.empty_page.set_description(GLib.markup_escape_text(message))
-        else:
-            self.empty_page.set_title(_("No Services Found"))
-            self.empty_page.set_description(
-                _("Use “Show Inactive Services” in the main menu to include stopped services.")
-                if not self.show_inactive
-                else ""
-            )
-        self.content_stack.set_visible_child_name("empty")
+        self.services.set_units(self._carry_over(units))
+        self.journal.set_known_units({u.name for u in units})
+        self.content_stack.set_visible_child_name("main")
         self.spinner.stop()
+        self._update_header()
+        self._update_actions()
+        self.journal.ensure_loaded()  # in the background, for the badge
+
+    def _carry_over(self, units: list[Unit]) -> list[Unit]:
+        """While startup states and runtime details load, keep the previous ones."""
+        previous = {u.name: u for u in self.services.units}
+        carried = []
+        for unit in units:
+            old = previous.get(unit.name)
+            if unit.file_state is None and old is not None:
+                unit = dataclasses.replace(unit, file_state=old.file_state)
+                if old.active_state == unit.active_state:
+                    unit = dataclasses.replace(unit, main_pid=old.main_pid, memory=old.memory, since=old.since)
+            carried.append(unit)
+        return carried
 
     @Gtk.Template.Callback()
     def on_search_changed(self, entry):
-        self.unit_list.set_query(entry.get_text())
-        if self.content_stack.get_visible_child_name() in ("units", "empty"):
-            self._update_list_page()
+        if self.view == "journal":
+            self.journal.set_query(entry.get_text())
+        else:
+            self.services.set_query(entry.get_text())
 
     def _on_search_mode(self, bar, _pspec):
         if not bar.get_search_mode():
             self.search_entry.set_text("")
 
     def control_selected(self, action: UnitAction):
-        unit = self.unit_list.selected_unit
+        self.control_unit(self.unit_list.selected_unit, action)
+
+    def control_unit(self, unit: Unit | None, action: UnitAction):
         manager = self.sessions.get(self.machine_id)
         if not unit or not manager:
             return
@@ -511,9 +597,19 @@ class Window(Adw.ApplicationWindow):
         if not unit or not manager:
             return
         dialog = UnitDialog(
-            manager, unit, self.scope, self.operations, on_changed=self.reload, action_message=self._action_message
+            manager,
+            unit,
+            self.scope,
+            self.operations,
+            mode=self.lookup_action("mode"),
+            on_changed=self.reload,
+            action_message=self._action_message,
         )
         dialog.present(self)
+
+    def _open_unit_by_name(self, name: str):
+        unit = next((u for u in self.services.units if u.name == name), None)
+        self.show_unit(unit or Unit(name))
 
     def daemon_reload(self):
         manager = self.sessions.get(self.machine_id)
@@ -548,6 +644,7 @@ class Window(Adw.ApplicationWindow):
         self.cancel_connect_button.set_visible(cancellable)
         self.spinner.start()
         self.content_stack.set_visible_child_name("loading")
+        self._update_header()
 
     def _show_disconnected(self):
         host = self._current_host()
@@ -557,6 +654,7 @@ class Window(Adw.ApplicationWindow):
                 GLib.markup_escape_text(f"{host.username}@{host.hostname}:{host.port}")
             )
         self.content_stack.set_visible_child_name("disconnected")
+        self._update_header()
 
     def _show_error(self, title: str, message: str, offer_edit: bool = False):
         self.spinner.stop()
@@ -564,6 +662,7 @@ class Window(Adw.ApplicationWindow):
         self.error_page.set_description(GLib.markup_escape_text(message))
         self.error_edit_button.set_visible(offer_edit and self.machine_id != LOCAL_ID)
         self.content_stack.set_visible_child_name("error")
+        self._update_header()
 
     def toast(self, message: str):
         self.toast_overlay.add_toast(Adw.Toast(title=message, use_markup=False, timeout=3))

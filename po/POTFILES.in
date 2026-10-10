@@ -6,10 +6,14 @@ src/systemdpilot/ui/create-unit-dialog.ui
 src/systemdpilot/ui/create_unit_dialog.py
 src/systemdpilot/ui/host-dialog.ui
 src/systemdpilot/ui/host_dialog.py
+src/systemdpilot/ui/journal_view.py
 src/systemdpilot/ui/operations.py
 src/systemdpilot/ui/prompts.py
+src/systemdpilot/ui/services_view.py
 src/systemdpilot/ui/unit-dialog.ui
 src/systemdpilot/ui/unit_dialog.py
 src/systemdpilot/ui/unit_list.py
+src/systemdpilot/ui/widgets.py
 src/systemdpilot/ui/window.py
 src/systemdpilot/ui/window.ui
+src/systemdpilot/ui/words.py

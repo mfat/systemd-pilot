@@ -17,6 +17,8 @@ class UnitItem(GObject.Object):
     description = GObject.Property(type=str, default="")
     state = GObject.Property(type=str, default="")
     startup = GObject.Property(type=str, default="")
+    memory = GObject.Property(type=GObject.TYPE_INT64, default=-1)
+    pid = GObject.Property(type=int, default=0)
 
     def __init__(self, unit: Unit):
         super().__init__()
@@ -31,6 +33,8 @@ class UnitItem(GObject.Object):
         self.description = unit.description
         self.state = unit.state_label
         self.startup = unit.file_state or ""
+        self.memory = unit.memory if unit.memory is not None else -1
+        self.pid = unit.main_pid
 
 
 def state_css_class(unit: Unit) -> str:
@@ -44,7 +48,7 @@ def state_css_class(unit: Unit) -> str:
 
 
 class UnitList(Gtk.ScrolledWindow):
-    """Shows units in a :class:`Gtk.ColumnView`.
+    """Shows units in a :class:`Gtk.ColumnView`: the advanced services view.
 
     Emits ``unit-activated`` when a row is activated. Right-clicking (or
     long-pressing) a row selects it and shows ``context_menu``.
@@ -57,8 +61,9 @@ class UnitList(Gtk.ScrolledWindow):
     }
 
     def __init__(self, context_menu: Gio.MenuModel):
-        super().__init__(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        super().__init__(vexpand=True)
         self._query = ""
+        self._kind = "all"
         self._handlers: dict[Gtk.ListItem, tuple[UnitItem, int]] = {}
 
         self.store = Gio.ListStore(item_type=UnitItem)
@@ -78,9 +83,12 @@ class UnitList(Gtk.ScrolledWindow):
         self.view.set_model(self.selection)
         self.view.connect("activate", self._on_activate)
 
-        name_col = self._add_column(_("Service"), "name", self._setup_name, self._render_name, expand=True)
-        self._add_column(_("State"), "state", self._setup_label, self._render_state)
-        self._add_column(_("Startup"), "startup", self._setup_label, self._render_startup)
+        name_col = self._add_column(_("Unit"), "name", self._setup_label, self._render_name, expand=True)
+        self._add_column(_("Description"), "description", self._setup_label, self._render_description, expand=True)
+        self._add_column(_("Active (Sub)"), "state", self._setup_label, self._render_state)
+        self._add_column(_("Unit File State"), "startup", self._setup_label, self._render_startup)
+        self._add_column(_("Memory"), "memory", self._setup_number, self._render_memory, numeric=True)
+        self._add_column(_("PID"), "pid", self._setup_number, self._render_pid, numeric=True)
         self.view.sort_by_column(name_col, Gtk.SortType.ASCENDING)
 
         self._menu = Gtk.PopoverMenu.new_from_model(context_menu)
@@ -131,6 +139,12 @@ class UnitList(Gtk.ScrolledWindow):
                 return
         self.selection.set_selected(Gtk.INVALID_LIST_POSITION)
 
+    def set_kind(self, kind: str) -> None:
+        """Show only units of this :attr:`Unit.kind`, or "all"."""
+        if kind != self._kind:
+            self._kind = kind
+            self._filter.changed(Gtk.FilterChange.DIFFERENT)
+
     def set_query(self, query: str) -> None:
         query = query.strip().lower()
         if query == self._query:
@@ -148,18 +162,23 @@ class UnitList(Gtk.ScrolledWindow):
     # -- internals --------------------------------------------------------
 
     def _matches(self, item: UnitItem) -> bool:
+        if self._kind != "all" and item.unit.kind != self._kind:
+            return False
         if not self._query:
             return True
         return self._query in item.unit.name.lower() or self._query in item.unit.description.lower()
 
-    def _add_column(self, title, prop, setup, render, expand=False):
+    def _add_column(self, title, prop, setup, render, expand=False, numeric=False):
         factory = Gtk.SignalListItemFactory()
         factory.connect("setup", setup)
         factory.connect("bind", self._bind, render)
         factory.connect("unbind", self._unbind)
         column = Gtk.ColumnViewColumn(title=title, factory=factory, expand=expand, resizable=True)
         expression = Gtk.PropertyExpression.new(UnitItem.__gtype__, None, prop)
-        column.set_sorter(Gtk.StringSorter(expression=expression, ignore_case=True))
+        if numeric:
+            column.set_sorter(Gtk.NumericSorter(expression=expression, sort_order=Gtk.SortType.DESCENDING))
+        else:
+            column.set_sorter(Gtk.StringSorter(expression=expression, ignore_case=True))
         self.view.append_column(column)
         return column
 
@@ -208,40 +227,45 @@ class UnitList(Gtk.ScrolledWindow):
         self._menu.popup()
         return True
 
-    def _setup_name(self, _factory, list_item):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=6, margin_bottom=6)
-        title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["heading"])
-        subtitle = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["dim-label", "caption"])
-        box.append(title)
-        box.append(subtitle)
-        list_item.set_child(box)
-        self._add_context_gestures(box, list_item)
-
-    def _render_name(self, list_item):
-        item = list_item.get_item()
-        box = list_item.get_child()
-        title, subtitle = box.get_first_child(), box.get_last_child()
-        title.set_label(item.name)
-        title.set_tooltip_text(item.unit.name)
-        subtitle.set_label(item.description)
-        subtitle.set_visible(bool(item.description))
-
-    def _setup_label(self, _factory, list_item):
-        label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
+    def _setup_label(self, _factory, list_item, xalign=0):
+        label = Gtk.Label(xalign=xalign, ellipsize=Pango.EllipsizeMode.END, margin_top=6, margin_bottom=6)
         list_item.set_child(label)
         self._add_context_gestures(label, list_item)
 
+    def _setup_number(self, factory, list_item):
+        self._setup_label(factory, list_item, xalign=1)
+
+    @staticmethod
+    def _set(list_item, text, *css):
+        label = list_item.get_child()
+        label.set_label(text)
+        label.set_css_classes(list(css))
+        return label
+
+    def _render_name(self, list_item):
+        item = list_item.get_item()
+        self._set(list_item, item.unit.name, "monospace").set_tooltip_text(item.unit.name)
+
+    def _render_description(self, list_item):
+        item = list_item.get_item()
+        self._set(list_item, item.description, "dim-label").set_tooltip_text(item.description or None)
+
     def _render_state(self, list_item):
         item = list_item.get_item()
-        label = list_item.get_child()
-        label.set_label(item.state)
-        label.set_css_classes([state_css_class(item.unit)])
+        self._set(list_item, item.state, "monospace", state_css_class(item.unit))
 
     def _render_startup(self, list_item):
         item = list_item.get_item()
-        label = list_item.get_child()
-        label.set_label(item.startup or "—")
-        label.set_css_classes(["dim-label"] if item.startup not in ("enabled", "enabled-runtime") else [])
+        dim = item.startup not in ("enabled", "enabled-runtime")
+        self._set(list_item, item.startup or "—", "monospace", *(["dim-label"] if dim else []))
+
+    def _render_memory(self, list_item):
+        memory = list_item.get_item().unit.memory
+        self._set(list_item, f"{memory / 1048576:.1f}M" if memory else "—", "monospace", "dim-label")
+
+    def _render_pid(self, list_item):
+        pid = list_item.get_item().pid
+        self._set(list_item, str(pid) if pid else "—", "monospace", "dim-label")
 
     def _on_activate(self, _view, position):
         item = self._sorted.get_item(position)

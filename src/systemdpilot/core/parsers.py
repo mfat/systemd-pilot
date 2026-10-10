@@ -114,6 +114,44 @@ def parse_properties(text: str) -> dict[str, str]:
     return props
 
 
+def parse_show_units(text: str) -> dict[str, dict[str, str]]:
+    """Parse ``systemctl show`` for several units, keyed by their ``Id``.
+
+    systemd separates the units' blocks with an empty line.
+    """
+    units = {}
+    for block in re.split(r"\n\s*\n", strip_ansi(text)):
+        props = parse_properties(block)
+        if props.get("Id"):
+            units[props["Id"]] = props
+    return units
+
+
+def parse_unix_timestamp(value: str) -> datetime | None:
+    """Parse a ``systemctl show --timestamp=unix`` value such as ``@1728450657``."""
+    if not value.startswith("@"):
+        return None
+    try:
+        seconds = int(value[1:])
+    except ValueError:
+        return None
+    if seconds <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(seconds)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def parse_int(value: str) -> int | None:
+    """An unsigned systemd number, or None when unset ("[not set]", or UINT64_MAX)."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return None if number < 0 or number >= 2**64 - 1 else number
+
+
 def _journal_field(entry: dict, key: str) -> str:
     value = entry.get(key)
     if value is None:
@@ -153,6 +191,13 @@ def parse_journal(text: str) -> list[LogEntry]:
                 identifier=_journal_field(entry, "SYSLOG_IDENTIFIER") or _journal_field(entry, "_COMM"),
                 pid=_journal_field(entry, "_PID") or _journal_field(entry, "SYSLOG_PID"),
                 message=strip_ansi(_journal_field(entry, "MESSAGE")),
+                # systemd's own messages name the unit they are about in UNIT/USER_UNIT.
+                unit=_journal_field(entry, "UNIT")
+                or _journal_field(entry, "USER_UNIT")
+                or _journal_field(entry, "_SYSTEMD_USER_UNIT")
+                or _journal_field(entry, "_SYSTEMD_UNIT"),
+                boot_id=_journal_field(entry, "_BOOT_ID"),
+                kernel=_journal_field(entry, "_TRANSPORT") == "kernel",
             )
         )
     return entries

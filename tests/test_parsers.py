@@ -85,3 +85,43 @@ def test_parse_journal():
     assert entries[0].priority == 3 and entries[0].identifier == "sshd" and entries[0].pid == "42"
     assert entries[0].timestamp is not None
     assert entries[1].message == "hi" and entries[1].timestamp is None and entries[1].priority == 6
+
+
+def test_parse_show_units_splits_blocks():
+    from systemdpilot.core.parsers import parse_show_units
+
+    text = "Id=a.service\nMainPID=12\n\nId=b.service\nMainPID=0\n"
+    assert parse_show_units(text) == {
+        "a.service": {"Id": "a.service", "MainPID": "12"},
+        "b.service": {"Id": "b.service", "MainPID": "0"},
+    }
+
+
+def test_parse_unix_timestamp_and_int():
+    from systemdpilot.core.parsers import parse_int, parse_unix_timestamp
+
+    assert parse_unix_timestamp("@1728450657").year == 2024
+    assert parse_unix_timestamp("") is None
+    assert parse_unix_timestamp("@0") is None
+    assert parse_unix_timestamp("Fri 2024-10-09 11:10:57 UTC") is None
+    assert parse_int("4096") == 4096
+    assert parse_int("[not set]") is None
+    assert parse_int(str(2**64 - 1)) is None
+
+
+def test_parse_journal_unit_boot_and_transport():
+    line = json.dumps(
+        {
+            "__REALTIME_TIMESTAMP": "1700000000000000",
+            "MESSAGE": "a.service: Failed with result 'exit-code'.",
+            "SYSLOG_IDENTIFIER": "systemd",
+            "UNIT": "a.service",
+            "_SYSTEMD_UNIT": "init.scope",
+            "_BOOT_ID": "abc",
+            "_TRANSPORT": "journal",
+        }
+    )
+    kernel = json.dumps({"MESSAGE": "oops", "_TRANSPORT": "kernel", "SYSLOG_IDENTIFIER": "kernel"})
+    entry, kernel_entry = parse_journal(line + "\n" + kernel)
+    assert (entry.unit, entry.boot_id, entry.kernel) == ("a.service", "abc", False)
+    assert kernel_entry.kernel and kernel_entry.unit == ""
