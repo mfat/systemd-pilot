@@ -465,7 +465,8 @@ class ServicesView(Gtk.Box):
         """Add service rows in small batches while a spinner shows."""
         state = {"section_idx": 0, "unit_idx": 0, "section": None, "focus_row": None}
         self._building_spinner.start()
-        self.stack.set_visible_child_name("building")
+        # At once: during a crossfade the list page still shows while rows go into it.
+        self.stack.set_visible_child_full("building", Gtk.StackTransitionType.NONE)
 
         def append_unit(section: widgets.Section, unit: Unit) -> UnitRow:
             row = existing.pop(unit.key, None)
