@@ -32,22 +32,11 @@
                 <child type="top">
                   <object class="AdwHeaderBar">
                     <property name="title-widget">
-                      <object class="GtkBox">
-                        <property name="spacing">8</property>
-                        <child>
-                          <object class="GtkImage">
-                            <property name="icon-name">io.github.mfat.systemdpilot</property>
-                            <property name="pixel-size">22</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">systemd Pilot</property>
-                            <style>
-                              <class name="heading"/>
-                            </style>
-                          </object>
-                        </child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">systemd Pilot</property>
+                        <style>
+                          <class name="heading"/>
+                        </style>
                       </object>
                     </property>
                     <child type="start">

@@ -71,7 +71,7 @@ button.preset-active {
   background-color: @accent_bg_color;
   color: @accent_fg_color;
 }
-.linked > menubutton.chip > button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.linked > menubutton.chip:not(:last-child) > button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 button.preset-clear { min-width: 30px; padding: 0 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
 .mode-switch > button { min-height: 30px; padding: 0 14px; font-size: 13px; font-weight: bold; }
