@@ -31,7 +31,7 @@ from .services_view import ServicesView
 from .settings import Settings
 from .tasks import run_in_thread
 from .unit_dialog import UnitDialog, UnitPanel
-from .widgets import count_badge, dot, set_count_badge
+from .widgets import count_badge, dot, set_bin_child, set_count_badge
 
 # The services list beside the details: its header bar needs about this much.
 DETAILS_LIST_MIN_WIDTH = 360
@@ -120,11 +120,11 @@ class Window(Adw.ApplicationWindow):
         self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_badges())
-        self.services_bin.set_child(self.services)
-        self.filters_bin.set_child(self.services.sidebar)
+        set_bin_child(self.services_bin, self.services)
+        set_bin_child(self.filters_bin, self.services.sidebar)
         self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
         self._details_placeholder = self._build_details_placeholder()
-        self.details_bin.set_child(self._details_placeholder)
+        set_bin_child(self.details_bin, self._details_placeholder)
         self.details_split.connect("notify::collapsed", self._on_details_collapsed)
         # With the machine list hidden, details take a bigger share of the window.
         for prop in ("notify::show-sidebar", "notify::collapsed"):
@@ -137,7 +137,7 @@ class Window(Adw.ApplicationWindow):
         self.journal.connect("selected", lambda _v, item: self.journal_details.show(item))
         self.journal.connect("activated", lambda _v, item: self._on_journal_activated(item))
         self.journal.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
-        self.journal_bin.set_child(self.journal)
+        set_bin_child(self.journal_bin, self.journal)
         journal_operations.parent = self.journal
         self.journal_details = JournalDetails(self.journal)
         button, self._journal_details_badge = self._journal_button()
@@ -250,12 +250,12 @@ class Window(Adw.ApplicationWindow):
         action.set_state(value)
         journal = mode == "journal"
         self.mode_dropdown.set_selected(MODES.index(mode))
-        self.filters_bin.set_child(self.journal.sidebar if journal else self.services.sidebar)
+        set_bin_child(self.filters_bin, self.journal.sidebar if journal else self.services.sidebar)
         self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search services"))
         if journal:
-            self.details_bin.set_child(self.journal_details)
+            set_bin_child(self.details_bin, self.journal_details)
         else:
-            self.details_bin.set_child(self._details or self._details_placeholder)
+            set_bin_child(self.details_bin, self._details or self._details_placeholder)
         if self.content_stack.get_visible_child_name() in MODES_PAGES:
             self._show_list()
         if journal:
@@ -783,7 +783,7 @@ class Window(Adw.ApplicationWindow):
             panel.add_header_end(button)
             self._update_badges()
             self._details = panel
-            self.details_bin.set_child(panel)
+            set_bin_child(self.details_bin, panel)
             panel.start_loading()
             return
         dialog = UnitDialog(manager, unit, unit.scope, self.operations, **options)
@@ -818,7 +818,7 @@ class Window(Adw.ApplicationWindow):
             self._details = None
         self.services.select_unit(None)
         if not self.journal_shown:
-            self.details_bin.set_child(self._details_placeholder)
+            set_bin_child(self.details_bin, self._details_placeholder)
 
     def _on_details_collapsed(self, split, _pspec):
         # Too narrow for two columns: the open service moves to a dialog, unless the journal is shown.

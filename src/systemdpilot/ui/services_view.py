@@ -107,12 +107,12 @@ class ListRow(Adw.Bin):
         if is_service:
             if self.service is None:
                 self.service = ServiceRow(self._view, self._list_item)
-            self.set_child(self.service)
+            widgets.set_bin_child(self, self.service)
             self.service.bind(item)
         else:
             if self._header is None:
                 self._header = SectionHeader()
-            self.set_child(self._header)
+            widgets.set_bin_child(self, self._header)
             self._list_item.set_accessible_label("")
         self.sync()
 

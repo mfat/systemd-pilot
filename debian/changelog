@@ -1,3 +1,10 @@
+systemd-pilot (4.1.1) unstable; urgency=medium
+
+  * Avoid setting a panel's child again, which aborted the AppImage on
+    libadwaita 1.5.
+
+ -- mFat <newmfat@gmail.com>  Sun, 11 Oct 2026 03:20:16 +0330
+
 systemd-pilot (4.1.0) unstable; urgency=medium
 
   * Add a journal view with filters, time ranges and search.

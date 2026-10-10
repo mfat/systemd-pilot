@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from gi.repository import GLib, GObject, Gtk, Pango
+from gi.repository import Adw, GLib, GObject, Gtk, Pango
 
 from ..core.models import LogEntry
 from ..i18n import _
@@ -37,6 +37,17 @@ def count_badge(css: str = "error") -> Gtk.Label:
 def set_count_badge(badge: Gtk.Label, count: int) -> None:
     badge.set_label(str(count))
     badge.set_visible(count > 0)
+
+
+def set_bin_child(bin_widget: Adw.Bin, child: Gtk.Widget | None) -> None:
+    """Put ``child`` in an ``Adw.Bin``, leaving it when it is already there.
+
+    libadwaita 1.5 checks that a child has no parent before it notices the child
+    is already this bin's, so setting it again is a critical. The AppImage
+    treats criticals as fatal.
+    """
+    if bin_widget.get_child() is not child:
+        bin_widget.set_child(child)
 
 
 @dataclass(frozen=True)
