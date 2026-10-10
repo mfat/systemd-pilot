@@ -68,8 +68,8 @@ def backend_report(manager: SystemdManager, scope: Scope) -> None:
         print(f"{time.perf_counter() - t0:.3f}s)")
 
     time_call("list_units (active)", lambda: manager.list_units(scope, False))
-    time_call("attach_file_states (inactive)", lambda: manager.attach_file_states(units, scope, True))
-    time_call("add_runtime", lambda: manager.add_runtime(units, scope))
+    time_call("attach_file_states (inactive)", lambda: manager.attach_file_states(units, True))
+    time_call("add_runtime", lambda: manager.add_runtime(units))
     t0 = time.perf_counter()
     manager.journal(since="24 hours ago", lines=1500)
     print(f"  {'journal 1500/24h':32s}  {time.perf_counter() - t0:.3f}s")

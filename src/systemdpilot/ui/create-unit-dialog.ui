@@ -59,6 +59,20 @@
                       </object>
                     </child>
                     <child>
+                      <object class="AdwComboRow" id="scope_row">
+                        <property name="title" translatable="yes">Runs For</property>
+                        <property name="model">
+                          <object class="GtkStringList">
+                            <items>
+                              <item translatable="yes">Everyone (system service)</item>
+                              <item translatable="yes">Only me (user service)</item>
+                            </items>
+                          </object>
+                        </property>
+                        <signal name="notify::selected" handler="on_scope_changed"/>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwComboRow" id="template_row">
                         <property name="title" translatable="yes">Template</property>
                         <signal name="notify::selected" handler="on_template_changed"/>

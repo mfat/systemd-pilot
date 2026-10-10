@@ -6,7 +6,7 @@ from gettext import gettext as _
 
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
-from ..core.models import Scope, Unit, UnitAction
+from ..core.models import Unit, UnitAction
 from . import widgets, words
 from .unit_list import UnitList
 
@@ -21,6 +21,17 @@ def mode_switch() -> Gtk.Widget:
     for value, text in (("simple", _("Simple")), ("advanced", _("Advanced"))):
         box.append(Gtk.ToggleButton(label=text, action_name="win.mode", action_target=GLib.Variant("s", value)))
     return box
+
+
+def user_tag() -> Gtk.Widget:
+    """Marks a user service: run by the user's own systemd, not the machine's."""
+    return widgets.label(
+        _("User"),
+        "badge",
+        "compact",
+        valign=Gtk.Align.CENTER,
+        tooltip_text=_("User-level systemd unit"),
+    )
 
 
 class FilterRow(Gtk.ListBoxRow):
@@ -68,7 +79,12 @@ class UnitRow(Gtk.ListBoxRow):
             words.unit_subtitle(unit, order), "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END
         )
         text.append(self._title)
-        text.append(self._subtitle)
+        # The tag goes on the second line, so a narrow list doesn't squeeze the name.
+        subtitle_line = Gtk.Box(spacing=6)
+        if unit.is_user:
+            subtitle_line.append(user_tag())
+        subtitle_line.append(self._subtitle)
+        text.append(subtitle_line)
         box.append(text)
 
         self._action_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
@@ -172,10 +188,6 @@ class ServicesView(Gtk.Box):
         ("exited", _("Done"), "exited"),
         ("dead", _("Stopped"), "dead"),
     )
-    SCOPES = (
-        ("system", _("System"), "computer-symbolic", _("Shared by everyone, most start at boot (--system)")),
-        ("user", _("User"), "avatar-default-symbolic", _("Only yours, start when you log in (--user)")),
-    )
     GROUPS = (
         ("failed", _("Needs attention"), _("These services stopped with an error"), "error"),
         ("running", _("Running"), _("Working in the background right now"), None),
@@ -189,7 +201,7 @@ class ServicesView(Gtk.Box):
         self._query = ""
         self._mode = "simple"
         self._label_order = "name-description"
-        self._structure: tuple | None = None  # (kind, unit names…) of the built simple list
+        self._structure: tuple | None = None  # (kind, unit keys…) of the built simple list
         self._build_gen = 0
         self._empty_hint = ""
 
@@ -206,17 +218,7 @@ class ServicesView(Gtk.Box):
         bar.append(switch)
         self.append(widgets.scroller(bar))
 
-        # The filters live in the window sidebar: which services (system or user), then state.
-        self.scope_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
-        self._scope_rows: dict[str, FilterRow] = {}
-        for value, text, icon, help_text in self.SCOPES:
-            row = FilterRow(
-                value, text, icon_name=icon, action_name="win.scope", action_target=GLib.Variant("s", value)
-            )
-            row.set_tooltip_text(help_text)
-            row.count.set_visible(False)
-            self._scope_rows[value] = row
-            self.scope_list.append(row)
+        # The state filters live in the window sidebar.
         self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
         self._filter_rows: dict[str, FilterRow] = {}
         for value, text, dot_kind in self.FILTERS:
@@ -225,12 +227,7 @@ class ServicesView(Gtk.Box):
             self.filter_list.append(row)
         self.filter_list.select_row(self._filter_rows["all"])
         self.filter_list.connect("row-selected", self._on_filter_row_selected)
-        self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        for heading, listbox in ((_("Services"), self.scope_list), (_("State"), self.filter_list)):
-            self.sidebar.append(
-                widgets.label(heading, "caption-heading", "dim-label", margin_start=18, margin_top=12, margin_bottom=2)
-            )
-            self.sidebar.append(listbox)
+        self.sidebar = self.filter_list
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
         self._groups = Gtk.Box(
@@ -313,9 +310,6 @@ class ServicesView(Gtk.Box):
         self._label_order = order
         self._refresh_row_labels()
 
-    def set_scope(self, scope: Scope) -> None:
-        self.scope_list.select_row(self._scope_rows[scope.value])
-
     def set_empty_hint(self, hint: str) -> None:
         self._empty_hint = hint
 
@@ -369,13 +363,13 @@ class ServicesView(Gtk.Box):
         self.stack.set_visible_child_name("empty")
 
     def _rebuild_groups(self, visible: list[Unit]) -> None:
-        ordered = sorted(visible, key=lambda u: u.name.lower())
+        ordered = sorted(visible, key=lambda u: (u.name.lower(), u.is_user))
         plan: list[tuple[str, str, str, str | None, list[Unit]]] = []
         for kind, title, hint, css in self.GROUPS:
             units = [u for u in ordered if u.kind == kind]
             if units:
                 plan.append((kind, title, hint, css, units))
-        structure = tuple((kind, tuple(u.name for u in units)) for kind, _t, _h, _c, units in plan)
+        structure = tuple((kind, tuple(u.key for u in units)) for kind, _t, _h, _c, units in plan)
         # Same services in the same groups: update labels in place (common after
         # start/stop or a background refresh).
         if structure == self._structure and self._update_rows(plan):
@@ -383,7 +377,7 @@ class ServicesView(Gtk.Box):
 
         adjustment = self._simple_scroll.get_vadjustment()
         position = adjustment.get_value()
-        focused = self._focused_unit_name()
+        focused = self._focused_unit_key()
         # Reuse row widgets when units move between groups (start/stop/filter).
         existing = self._take_rows()
         self._build_gen += 1
@@ -401,21 +395,21 @@ class ServicesView(Gtk.Box):
     def _fill_groups(
         self,
         plan: list[tuple[str, str, str, str | None, list[Unit]]],
-        existing: dict[str, UnitRow],
-        focused: str | None,
+        existing: dict[tuple, UnitRow],
+        focused: tuple | None,
     ) -> UnitRow | None:
         focus_row = None
         for _kind, title, hint, css, units in plan:
             section = widgets.Section(title, hint, title_css=css)
             section.list.connect("row-activated", lambda _l, row: self.emit("unit-activated", row.unit))
             for unit in units:
-                row = existing.pop(unit.name, None)
+                row = existing.pop(unit.key, None)
                 if row is None:
                     row = UnitRow(unit, self)
                 elif unit != row.unit:
                     row.update(unit)
                 section.list.append(row)
-                if unit.name == focused:
+                if unit.key == focused:
                     focus_row = row
             self._groups.append(section.box)
         return focus_row
@@ -425,7 +419,7 @@ class ServicesView(Gtk.Box):
         plan: list[tuple[str, str, str, str | None, list[Unit]]],
         adjustment,
         position: float,
-        focused: str | None,
+        focused: tuple | None,
         *,
         gen: int,
     ) -> None:
@@ -452,7 +446,7 @@ class ServicesView(Gtk.Box):
                 while state["unit_idx"] < len(units) and added < SIMPLE_CHUNK:
                     unit = units[state["unit_idx"]]
                     row = append_unit(section, unit)
-                    if unit.name == focused:
+                    if unit.key == focused:
                         state["focus_row"] = row
                     state["unit_idx"] += 1
                     added += 1
@@ -469,9 +463,9 @@ class ServicesView(Gtk.Box):
 
         GLib.idle_add(add_chunk)
 
-    def _take_rows(self) -> dict[str, UnitRow]:
+    def _take_rows(self) -> dict[tuple, UnitRow]:
         """Detach existing service rows so they can be re-parented into a new layout."""
-        rows: dict[str, UnitRow] = {}
+        rows: dict[tuple, UnitRow] = {}
         section_box = self._groups.get_first_child()
         while section_box is not None:
             listbox = self._section_list(section_box)
@@ -481,7 +475,7 @@ class ServicesView(Gtk.Box):
                     nxt = row.get_next_sibling()
                     if isinstance(row, UnitRow):
                         listbox.remove(row)
-                        rows[row.unit.name] = row
+                        rows[row.unit.key] = row
                     row = nxt
             section_box = section_box.get_next_sibling()
         return rows
@@ -497,7 +491,7 @@ class ServicesView(Gtk.Box):
                 return False
             row = listbox.get_first_child()
             for unit in units:
-                if not isinstance(row, UnitRow) or row.unit.name != unit.name:
+                if not isinstance(row, UnitRow) or row.unit.key != unit.key:
                     return False
                 if unit != row.unit:
                     row.update(unit)
@@ -516,12 +510,12 @@ class ServicesView(Gtk.Box):
             child = child.get_next_sibling()
         return None
 
-    def _focused_unit_name(self) -> str | None:
+    def _focused_unit_key(self) -> tuple | None:
         root = self.get_root()
         focus = root.get_focus() if root else None
         while focus is not None and not isinstance(focus, UnitRow):
             focus = focus.get_parent()
-        return focus.unit.name if focus else None
+        return focus.unit.key if focus else None
 
     def _refresh_row_labels(self) -> None:
         section_box = self._groups.get_first_child()

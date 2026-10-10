@@ -63,6 +63,7 @@ class CreateUnitDialog(Adw.Dialog):
     header_title: Adw.WindowTitle = Gtk.Template.Child()
     create_button: Gtk.Button = Gtk.Template.Child()
     name_row: Adw.EntryRow = Gtk.Template.Child()
+    scope_row: Adw.ComboRow = Gtk.Template.Child()
     template_row: Adw.ComboRow = Gtk.Template.Child()
     enable_row: Adw.SwitchRow = Gtk.Template.Child()
     start_row: Adw.SwitchRow = Gtk.Template.Child()
@@ -71,7 +72,7 @@ class CreateUnitDialog(Adw.Dialog):
     def __init__(
         self,
         manager: SystemdManager,
-        scope: Scope,
+        scope: Scope | None,
         machine_label: str,
         operations: Operations,
         *,
@@ -81,13 +82,14 @@ class CreateUnitDialog(Adw.Dialog):
     ):
         super().__init__()
         self.manager = manager
-        self.scope = scope
+        # A new service asks which systemd runs it; an edited one keeps its own.
+        self.scope = scope or Scope.SYSTEM
+        self._machine_label = machine_label
         self.operations = operations
         self._on_created = on_created
         self._editing = bool(edit_name)
         self._edited = False
 
-        scope_label = _("user service") if scope is Scope.USER else _("system service")
         if self._editing:
             short = edit_name.removesuffix(".service") if edit_name.endswith(".service") else edit_name
             self.set_title(_("Edit Service"))
@@ -96,12 +98,13 @@ class CreateUnitDialog(Adw.Dialog):
             self.create_button.set_sensitive(True)
             self.name_row.set_text(edit_name)
             self.name_row.set_sensitive(False)
+            self.scope_row.set_visible(False)
             self.template_row.set_visible(False)
             self.enable_row.set_visible(False)
             self.start_row.set_visible(False)
         else:
             self.header_title.set_title(_("New Service"))
-        self.header_title.set_subtitle(f"{machine_label} · {scope_label}")
+        self._show_scope()
 
         self.view, self.buffer = _make_editor()
         self.editor_scroll.set_child(self.view)
@@ -113,6 +116,21 @@ class CreateUnitDialog(Adw.Dialog):
         else:
             self._load_template()
         self.buffer.connect("changed", self._on_buffer_changed)
+
+    def _show_scope(self):
+        user = self.scope is Scope.USER
+        scope_label = _("user service") if user else _("system service")
+        self.header_title.set_subtitle(f"{self._machine_label} · {scope_label}")
+        self.enable_row.set_title(_("Start at Login") if user else _("Start at Boot"))
+
+    @Gtk.Template.Callback()
+    def on_scope_changed(self, row, _pspec):
+        if not hasattr(self, "_machine_label") or self._editing:
+            return  # still being built, or editing an existing service
+        self.scope = Scope.USER if row.get_selected() == 1 else Scope.SYSTEM
+        self._show_scope()
+        if not self._edited:
+            self._load_template()  # user services start with the login session, not at boot
 
     def _load_template(self):
         template = TEMPLATES[self.template_row.get_selected()]

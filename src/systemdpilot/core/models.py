@@ -43,6 +43,17 @@ class Unit:
     main_pid: int = 0
     memory: int | None = None  # bytes
     since: datetime | None = None  # when it entered its current state
+    # Which systemd runs it: the machine's, or the user's own (systemctl --user).
+    scope: Scope = Scope.SYSTEM
+
+    @property
+    def key(self) -> tuple[Scope, str]:
+        """Identifies the unit: the same name can exist as a system and a user unit."""
+        return self.scope, self.name
+
+    @property
+    def is_user(self) -> bool:
+        return self.scope is Scope.USER
 
     @property
     def short_name(self) -> str:

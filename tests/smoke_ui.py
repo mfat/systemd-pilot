@@ -26,7 +26,7 @@ if os.environ.get("SYSTEMD_PILOT_RESOURCE"):
 else:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
-from systemdpilot.core.models import AuthMethod, Host, Unit  # noqa: E402
+from systemdpilot.core.models import AuthMethod, Host, Scope, Unit  # noqa: E402
 from systemdpilot.main import Application  # noqa: E402
 from systemdpilot.ui.unit_dialog import UnitDialog  # noqa: E402
 
@@ -51,14 +51,16 @@ def run_steps(window):
         lambda: window.get_visible_dialog().close(),
         window.add_host,
         lambda: window.get_visible_dialog().close(),
-        # The services view always has a details column; a service opens there, the scope change clears it.
+        # The services view always has a details column; a service opens there, × clears it.
         lambda: check(window.details_split.get_show_sidebar(), "no details column"),
         lambda: check(window.details_bin.get_child() is window._details_placeholder, "no placeholder"),
         lambda: window.show_unit(unit),
         lambda: check(not isinstance(window.get_visible_dialog(), UnitDialog), "details opened as a dialog"),
         lambda: check(window.details_bin.get_child() is window._details, "details panel not shown"),
-        lambda: window.activate_action("win.scope", GLib.Variant("s", "user")),
+        lambda: window._details.close_button.emit("clicked"),
         lambda: check(window.details_bin.get_child() is window._details_placeholder, "details panel still shown"),
+        # System and user services share one list; the same name can be both.
+        lambda: same_name_in_both_scopes(window),
         lambda: window.activate_action("win.show-inactive", None),
         lambda: window.activate_action("win.search", None),
         # The redesign: filters, both detail levels, the journal and its problems.
@@ -112,6 +114,14 @@ def run_steps(window):
         window.unit_list.set_units([unit])  # a known row, whatever services the machine has
         window.unit_list.select_name(unit.name)
         check(window.unit_list._popup_for_focus(), "keyboard context menu did not open")
+
+    def same_name_in_both_scopes(window):
+        from systemdpilot.ui.services_view import UnitRow
+
+        running = dict(load_state="loaded", active_state="active", sub_state="running")
+        window.services.set_units([Unit("dbus.service", **running), Unit("dbus.service", **running, scope=Scope.USER)])
+        rows = [w for w in _descendants(window.services._groups) if isinstance(w, UnitRow)]
+        check(sorted(r.unit.scope.value for r in rows) == ["system", "user"], "a same-named service is missing")
 
     def check_no_enable_switch(window):
         from gi.repository import Gtk

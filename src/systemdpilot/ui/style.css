@@ -6,6 +6,9 @@
   background-color: alpha(currentColor, 0.1);
 }
 
+/* Inline with a caption line, e.g. "User" on a service row. */
+.badge.compact { padding: 0 7px; font-size: 10px; }
+
 .badge.success { color: @success_color; background-color: alpha(@success_color, 0.15); }
 .badge.error { color: @error_color; background-color: alpha(@error_color, 0.15); }
 .badge.warning { color: @warning_color; background-color: alpha(@warning_color, 0.15); }

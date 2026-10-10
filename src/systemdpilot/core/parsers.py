@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 
 from .errors import ParseError
-from .models import LogEntry, Unit
+from .models import LogEntry, Scope, Unit
 
 _ANSI_RE = re.compile(r"(?:\x1B[@-Z\\-_]|[\x80-\x9A\x9C-\x9F]|(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~])")
 
@@ -94,8 +94,10 @@ def parse_list_unit_files(text: str) -> dict[str, str]:
     return states
 
 
-def merge_units(loaded: list[Unit], files: dict[str, str], include_unloaded: bool) -> list[Unit]:
-    """Combine loaded units with unit-file states, one entry per unit.
+def merge_units(
+    loaded: list[Unit], files: dict[str, str], include_unloaded: bool, scope: Scope = Scope.SYSTEM
+) -> list[Unit]:
+    """Combine loaded units of one ``scope`` with its unit-file states, one entry per unit.
 
     Units that have a unit file but are not loaded are added only when
     ``include_unloaded`` is true.
@@ -109,6 +111,7 @@ def merge_units(loaded: list[Unit], files: dict[str, str], include_unloaded: boo
             active_state=unit.active_state,
             sub_state=unit.sub_state,
             file_state=files.get(unit.name, unit.file_state or ""),
+            scope=scope,
         )
     if include_unloaded:
         for name, state in files.items():
@@ -120,6 +123,7 @@ def merge_units(loaded: list[Unit], files: dict[str, str], include_unloaded: boo
                     active_state="inactive",
                     sub_state="dead",
                     file_state=state,
+                    scope=scope,
                 )
     return sorted(merged.values(), key=lambda u: u.name.lower())
 

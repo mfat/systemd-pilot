@@ -18,7 +18,7 @@ from .parsers import (
     parse_unix_timestamp,
     strip_ansi,
 )
-from .runner import CommandRunner
+from .runner import CommandResult, CommandRunner
 from .validation import validate_unit_name
 
 SYSTEM_UNIT_DIR = "/etc/systemd/system"
@@ -46,6 +46,19 @@ trap - EXIT
 rm -f -- "$tmp"
 systemctl "$@" daemon-reload
 """
+
+# Runs one systemctl command against the system and then the user instance, in
+# a single round trip over SSH. After each part a marker line with its exit
+# status goes to stdout and stderr, so the two outputs can be told apart.
+_EACH_SCOPE_SCRIPT = r"""
+for flag in --system --user; do
+    systemctl --no-pager "$flag" "$@"
+    status=$?
+    printf '\n@@pilot-scope %s %s@@\n' "$flag" "$status"
+    printf '\n@@pilot-scope %s %s@@\n' "$flag" "$status" >&2
+done
+"""
+_SCOPE_MARK_RE = re.compile(r"\n?@@pilot-scope --(system|user) (\d+)@@\n?")
 
 _JOURNAL_PERMISSION_HINTS = ("insufficient permissions", "no journal files were opened", "not seeing messages")
 
@@ -80,11 +93,11 @@ class SystemdManager:
 
     def __init__(self, runner: CommandRunner):
         self.runner = runner
-        self._unit_files: dict[str, str] | None = None
+        self._unit_files: dict[Scope, dict[str, str]] = {}
 
     def invalidate_unit_files(self) -> None:
         """Drop cached ``list-unit-files`` output (after enable/disable, etc.)."""
-        self._unit_files = None
+        self._unit_files = {}
 
     @staticmethod
     def _systemctl(scope: Scope, *args: str) -> list[str]:
@@ -100,18 +113,30 @@ class SystemdManager:
     # -- queries ----------------------------------------------------------
 
     def list_units(self, scope: Scope = Scope.SYSTEM, include_inactive: bool = False) -> list[Unit]:
-        """Loaded services. Fast, but ``file_state`` is not filled in (None).
+        """Loaded services of one scope. Fast, but ``file_state`` is not filled in (None)."""
+        result = self._list(scope, self._list_units_args(include_inactive)).check()
+        return _with_scope(parse_list_units(result.stdout), scope)
 
-        Pass the result to :meth:`complete_units` for startup states.
+    def list_services(self, include_inactive: bool = False) -> list[Unit]:
+        """Loaded system and user services, in one round trip.
+
+        The user part is left out when there is no user instance to ask, as is
+        usual over SSH unless the user is logged in or has lingering enabled.
         """
+        results = self._list_each_scope(self._list_units_args(include_inactive))
+        units = _with_scope(parse_list_units(results[Scope.SYSTEM].check().stdout), Scope.SYSTEM)
+        if results[Scope.USER].ok:
+            units += _with_scope(parse_list_units(results[Scope.USER].stdout), Scope.USER)
+        return units
+
+    @staticmethod
+    def _list_units_args(include_inactive: bool) -> list[str]:
         args = ["list-units", "--type=service"]
         if include_inactive:
             args.append("--all")
-        return parse_list_units(self._list(scope, args).check().stdout)
+        return args
 
-    def complete_units(
-        self, loaded: list[Unit], scope: Scope = Scope.SYSTEM, include_unloaded: bool = False
-    ) -> list[Unit]:
+    def complete_units(self, loaded: list[Unit], include_unloaded: bool = False) -> list[Unit]:
         """Add startup states and runtime details (PID, memory, since when) to ``loaded``.
 
         Optionally adds services that have a unit file but are not loaded.
@@ -119,40 +144,48 @@ class SystemdManager:
         Prefer :meth:`attach_file_states` then :meth:`add_runtime` in the UI so
         enable switches appear before the slower uptime/memory pass.
         """
-        return self.add_runtime(self.attach_file_states(loaded, scope, include_unloaded), scope)
+        return self.add_runtime(self.attach_file_states(loaded, include_unloaded))
 
-    def attach_file_states(
-        self, loaded: list[Unit], scope: Scope = Scope.SYSTEM, include_unloaded: bool = False
-    ) -> list[Unit]:
-        """Add unit-file states (enabled/disabled/…) without fetching uptimes."""
-        if self._unit_files is None:
-            result = self._list(scope, ["list-unit-files", "--type=service"])
+    def attach_file_states(self, loaded: list[Unit], include_unloaded: bool = False) -> list[Unit]:
+        """Add unit-file states (enabled/disabled/…) without fetching uptimes.
+
+        Unloaded services are only added for the scopes that ``loaded`` has units of.
+        """
+        scopes = [scope for scope in Scope if any(u.scope is scope for u in loaded)]
+        missing = [scope for scope in scopes if scope not in self._unit_files]
+        args = ["list-unit-files", "--type=service"]
+        if len(missing) == 2:
+            results = self._list_each_scope(args)
+        else:
+            results = {scope: self._list(scope, args) for scope in missing}
+        for scope, result in results.items():
             # Startup states are a nice-to-have; don't fail the listing over them.
-            self._unit_files = parse_list_unit_files(result.stdout) if result.ok else {}
-        return merge_units(loaded, self._unit_files, include_unloaded=include_unloaded)
+            self._unit_files[scope] = parse_list_unit_files(result.stdout) if result.ok else {}
+        merged = []
+        for scope in scopes:
+            part = [u for u in loaded if u.scope is scope]
+            merged += merge_units(part, self._unit_files[scope], include_unloaded=include_unloaded, scope=scope)
+        return sorted(merged, key=lambda u: (u.name.lower(), u.scope is Scope.USER))
 
-    def add_runtime(self, units: list[Unit], scope: Scope = Scope.SYSTEM) -> list[Unit]:
+    def add_runtime(self, units: list[Unit]) -> list[Unit]:
         """Fill in main PID, memory and since when, for units that are or were running."""
-        names = []
-        for unit in units:
-            if unit.is_active or unit.is_failed or unit.active_state == "deactivating":
-                try:
-                    names.append(validate_unit_name(unit.name))
-                except InvalidUnitName:
-                    pass
-        if not names:
+        shown: dict[tuple[Scope, str], dict[str, str]] = {}
+        for scope in Scope:
+            names = []
+            for unit in units:
+                if unit.scope is scope and (unit.is_active or unit.is_failed or unit.active_state == "deactivating"):
+                    try:
+                        names.append(validate_unit_name(unit.name))
+                    except InvalidUnitName:
+                        pass
+            if names:
+                for name, props in self._show_runtime(scope, names).items():
+                    shown[scope, name] = props
+        if not shown:
             return units
-        show = ["show", f"--property={_RUNTIME_PROPERTIES}"]
-        result = self.runner.run(self._systemctl(scope, *show, "--timestamp=unix", "--", *names))
-        if not result.ok and "timestamp" in result.stderr.lower():
-            # systemd < 248 has no --timestamp; times are then left out.
-            result = self.runner.run(self._systemctl(scope, *show, "--", *names))
-        if not result.ok:
-            return units
-        shown = parse_show_units(result.stdout)
         completed = []
         for unit in units:
-            props = shown.get(unit.name)
+            props = shown.get(unit.key)
             if props is None:
                 completed.append(unit)
                 continue
@@ -166,6 +199,36 @@ class SystemdManager:
                 )
             )
         return completed
+
+    def _show_runtime(self, scope: Scope, names: list[str]) -> dict[str, dict[str, str]]:
+        show = ["show", f"--property={_RUNTIME_PROPERTIES}"]
+        result = self.runner.run(self._systemctl(scope, *show, "--timestamp=unix", "--", *names))
+        if not result.ok and "timestamp" in result.stderr.lower():
+            # systemd < 248 has no --timestamp; times are then left out.
+            result = self.runner.run(self._systemctl(scope, *show, "--", *names))
+        return parse_show_units(result.stdout) if result.ok else {}
+
+    def _list_each_scope(self, args: list[str]) -> dict[Scope, CommandResult]:
+        """:meth:`_list` for both scopes in one command."""
+        results = self._run_each_scope([*args, "--output=json"])
+        system = results[Scope.SYSTEM]
+        if not system.ok and "json" in system.stderr.lower():
+            results = self._run_each_scope([*args, "--plain", "--no-legend"])
+        return results
+
+    def _run_each_scope(self, args: list[str]) -> dict[Scope, CommandResult]:
+        result = self.runner.run(["sh", "-c", _EACH_SCOPE_SCRIPT, "sh", *args])
+        out, err = _split_scopes(result.stdout), _split_scopes(result.stderr)
+        results = {}
+        for scope in Scope:
+            argv = tuple(self._systemctl(scope, *args))
+            if scope.value not in out:
+                # The script never got this far (no shell, lost connection…).
+                results[scope] = CommandResult(argv, result.returncode or 1, "", result.stderr)
+                continue
+            stdout, code = out[scope.value]
+            results[scope] = CommandResult(argv, code, stdout, err.get(scope.value, ("", code))[0])
+        return results
 
     def _list(self, scope: Scope, args: list[str]):
         """Run a list command as JSON, falling back to plain text on systemd < 246."""
@@ -299,6 +362,11 @@ class SystemdManager:
     def daemon_reload(self, scope: Scope = Scope.SYSTEM) -> None:
         self.runner.run(self._systemctl(scope, "daemon-reload"), privileged=self._privileged(scope)).check()
 
+    def daemon_reload_all(self) -> None:
+        """Reload the system instance, then the user one if there is one to reach."""
+        self.daemon_reload(Scope.SYSTEM)
+        self.runner.run(self._systemctl(Scope.USER, "daemon-reload"))
+
     def unit_path(self, name: str, scope: Scope) -> str:
         return f"{SYSTEM_UNIT_DIR if scope is Scope.SYSTEM else USER_UNIT_DIR}/{validate_unit_name(name)}"
 
@@ -322,3 +390,17 @@ class SystemdManager:
             raise UnitExists(self.unit_path(name, scope))
         result.check()
         return self.unit_path(name, scope)
+
+
+def _with_scope(units: list[Unit], scope: Scope) -> list[Unit]:
+    return [dataclasses.replace(u, scope=scope) for u in units]
+
+
+def _split_scopes(text: str) -> dict[str, tuple[str, int]]:
+    """Output of :data:`_EACH_SCOPE_SCRIPT` as ``{"system"|"user": (output, exit status)}``."""
+    parts = {}
+    start = 0
+    for match in _SCOPE_MARK_RE.finditer(text):
+        parts[match.group(1)] = (text[start : match.start()], int(match.group(2)))
+        start = match.end()
+    return parts

@@ -6,6 +6,7 @@ import pytest
 from systemdpilot.core.errors import CommandError, InvalidUnitName, PilotError, UnitExists
 from systemdpilot.core.manager import SystemdManager
 from systemdpilot.core.models import Scope, Unit, UnitAction
+from systemdpilot.core.runner import CommandResult, CommandRunner
 from systemdpilot.core.validation import normalize_service_name, validate_unit_name
 
 
@@ -45,11 +46,78 @@ def test_list_units_merges_and_uses_scope(runner):
     manager = SystemdManager(runner)
     loaded = manager.list_units(Scope.USER, include_inactive=True)
     assert [(u.name, u.file_state) for u in loaded] == [("a.service", None)]
-    units = manager.complete_units(loaded, Scope.USER, include_unloaded=True)
+    units = manager.complete_units(loaded, include_unloaded=True)
+    assert all(u.scope is Scope.USER for u in units)
     assert [(u.name, u.file_state) for u in units] == [("a.service", "enabled")]
     assert all("--user" in c["argv"] for c in runner.calls)
     assert "--all" in runner.calls[0]["argv"]
     assert not any(c["privileged"] for c in runner.calls)
+
+
+def _fake_systemctl(tmp_path, monkeypatch, user_ok=True):
+    """A systemctl on PATH that answers list-units for each scope."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    script = """#!/bin/sh
+case "$*" in
+  *--system*) echo '[{"unit":"a.service","active":"active"},{"unit":"dbus.service","active":"active"}]' ;;
+  *--user*) %s ;;
+esac
+""" % (
+        """echo '[{"unit":"dbus.service","active":"active"}]'"""
+        if user_ok
+        else 'echo "Failed to connect to bus: No medium found" >&2; exit 1'
+    )
+    (bindir / "systemctl").write_text(script)
+    (bindir / "systemctl").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:/usr/bin:/bin")
+
+
+class _ShellRunner(CommandRunner):
+    """Runs commands for real, so the combined script is exercised."""
+
+    def __init__(self):
+        self.calls = []
+
+    def run(self, argv, *, input=None, privileged=False, timeout=60):
+        self.calls.append(list(argv))
+        done = subprocess.run(list(argv), input=input, capture_output=True, text=True)
+        return CommandResult(tuple(argv), done.returncode, done.stdout, done.stderr)
+
+
+def test_list_services_lists_both_scopes_in_one_command(tmp_path, monkeypatch):
+    _fake_systemctl(tmp_path, monkeypatch)
+    runner = _ShellRunner()
+    units = SystemdManager(runner).list_services()
+    assert [u.key for u in units] == [
+        (Scope.SYSTEM, "a.service"),
+        (Scope.SYSTEM, "dbus.service"),
+        (Scope.USER, "dbus.service"),
+    ]
+    assert len(runner.calls) == 1
+
+
+def test_list_services_without_a_user_instance(tmp_path, monkeypatch):
+    _fake_systemctl(tmp_path, monkeypatch, user_ok=False)
+    units = SystemdManager(_ShellRunner()).list_services()
+    assert [u.key for u in units] == [(Scope.SYSTEM, "a.service"), (Scope.SYSTEM, "dbus.service")]
+
+
+def test_list_services_system_failure_raises(runner):
+    runner.reply("sh", stdout="", stderr="sh: not found", returncode=127)
+    with pytest.raises(CommandError):
+        SystemdManager(runner).list_services()
+
+
+def test_runtime_is_asked_per_scope(runner):
+    runner.reply("systemctl", "--no-pager", "--user", "show", stdout="Id=dbus.service\nMainPID=9\n")
+    runner.reply("systemctl", "--no-pager", "show", stdout="Id=dbus.service\nMainPID=1\n")
+    units = [
+        Unit("dbus.service", active_state="active", sub_state="running"),
+        Unit("dbus.service", active_state="active", sub_state="running", scope=Scope.USER),
+    ]
+    system, user = SystemdManager(runner).add_runtime(units)
+    assert (system.main_pid, user.main_pid) == (1, 9)
 
 
 def test_list_units_falls_back_to_plain(runner):

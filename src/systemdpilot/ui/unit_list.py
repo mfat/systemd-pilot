@@ -113,10 +113,10 @@ class UnitList(Gtk.ScrolledWindow):
 
     def set_units(self, units: list[Unit]) -> None:
         """Update the list in place, so scrolling and selection are kept."""
-        incoming = {u.name: u for u in units}
+        incoming = {u.key: u for u in units}
         for i in reversed(range(self.store.get_n_items())):
             item = self.store.get_item(i)
-            unit = incoming.pop(item.unit.name, None)
+            unit = incoming.pop(item.unit.key, None)
             if unit is None:
                 self.store.remove(i)
             elif unit != item.unit:
@@ -246,6 +246,11 @@ class UnitList(Gtk.ScrolledWindow):
         box.append(widgets.dot("dead"))
         # A narrow table scrolls sideways rather than hiding the names.
         box.append(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True, width_chars=16))
+        box.append(
+            widgets.label(
+                _("User"), "badge", valign=Gtk.Align.CENTER, visible=False, tooltip_text=_("User-level systemd unit")
+            )
+        )
         list_item.set_child(box)
         self._add_context_gestures(box, list_item)
 
@@ -277,11 +282,13 @@ class UnitList(Gtk.ScrolledWindow):
     def _render_name(self, list_item):
         item = list_item.get_item()
         box = list_item.get_child()
-        status_dot, label = box.get_first_child(), box.get_last_child()
+        status_dot, tag = box.get_first_child(), box.get_last_child()
+        label = status_dot.get_next_sibling()
         widgets.set_dot(status_dot, item.unit.kind)
         label.set_label(item.unit.name)
         label.set_css_classes(["monospace"])
         label.set_tooltip_text(item.unit.name)
+        tag.set_visible(item.unit.is_user)
 
     def _render_description(self, list_item):
         item = list_item.get_item()

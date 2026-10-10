@@ -17,7 +17,7 @@ from ..core.errors import (
     PilotError,
 )
 from ..core.manager import SystemdManager
-from ..core.models import AuthMethod, Host, Scope, Unit, UnitAction
+from ..core.models import AuthMethod, Host, Unit, UnitAction
 from ..core.session import LOCAL_ID, Sessions
 from ..core.ssh import SSHRunner
 from . import prompts
@@ -98,7 +98,6 @@ class Window(Adw.ApplicationWindow):
         self.sessions = sessions
         self.settings = settings
         self.machine_id = LOCAL_ID
-        self.scope = Scope.SYSTEM
         self._generation = 0
         self._runtime_loaded = False
         self._journal_badge_source = 0
@@ -116,8 +115,7 @@ class Window(Adw.ApplicationWindow):
         self.services.connect("filter-changed", lambda *_: self._update_badges())
         self.services_bin.set_child(self.services)
         self.filters_bin.set_child(self.services.sidebar)
-        for listbox in (self.services.scope_list, self.services.filter_list):
-            listbox.connect("row-activated", lambda *_: self._on_filter_activated())
+        self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
         self._details_placeholder = self._build_details_placeholder()
         self.details_bin.set_child(self._details_placeholder)
         self.details_split.connect("notify::show-sidebar", lambda *_: self._fit_table())
@@ -141,7 +139,6 @@ class Window(Adw.ApplicationWindow):
 
         self._setup_actions()
         self._sync_details_shown()
-        self.services.set_scope(self.scope)
         self.services.set_empty_hint(self._empty_hint())
         self._apply_mode()
         self._rebuild_machine_list()
@@ -167,9 +164,6 @@ class Window(Adw.ApplicationWindow):
         add("daemon-reload", self.daemon_reload)
         add("create-unit", self.create_unit)
 
-        scope = Gio.SimpleAction.new_stateful("scope", GLib.VariantType.new("s"), GLib.Variant("s", self.scope.value))
-        scope.connect("change-state", self._on_scope_changed)
-        self.add_action(scope)
 
         inactive = Gio.SimpleAction.new_stateful(
             "show-inactive", None, GLib.Variant("b", self.settings.get_boolean("show-inactive"))
@@ -214,25 +208,13 @@ class Window(Adw.ApplicationWindow):
         self._enable("disconnect", remote and connected)
         self._enable("edit-host", remote)
         self._enable("remove-host", remote)
-        for name in ("refresh", "daemon-reload", "create-unit", "scope", "show-inactive", "journal"):
+        for name in ("refresh", "daemon-reload", "create-unit", "show-inactive", "journal"):
             self._enable(name, connected)
         self._enable("refresh", connected or (remote and not connecting))
         has_unit = connected and self.unit_list.selected_unit is not None
         for name in self.unit_actions.list_actions():
             self._enable(name, has_unit, self.unit_actions)
         self.host_menu_button.set_visible(remote)
-
-    def _on_scope_changed(self, action, value):
-        if value.equal(action.get_state()):
-            return  # the sidebar row of the current scope was clicked again
-        action.set_state(value)
-        self.scope = Scope(value.get_string())
-        self.services.set_scope(self.scope)
-        self._close_details()
-        manager = self.sessions.get(self.machine_id)
-        if manager:
-            manager.invalidate_unit_files()
-        self.reload(show_spinner=True)
 
     def _on_show_inactive_changed(self, action, value):
         action.set_state(value)
@@ -557,7 +539,7 @@ class Window(Adw.ApplicationWindow):
         self._generation += 1
         generation = self._generation
         self._runtime_loaded = False
-        machine_id, scope, include_inactive = self.machine_id, self.scope, self.show_inactive
+        machine_id, include_inactive = self.machine_id, self.show_inactive
         if show_spinner or not self.services.units:
             self._show_loading(_("Loading services…"))
         self.journal.set_manager(manager)
@@ -579,7 +561,6 @@ class Window(Adw.ApplicationWindow):
                 run_in_thread(
                     manager.attach_file_states,
                     units,
-                    scope,
                     True,
                     on_done=inactive_done,
                     on_error=incomplete,
@@ -610,7 +591,7 @@ class Window(Adw.ApplicationWindow):
             else:
                 self._show_error(_("Could Not Load Services"), describe(error))
 
-        run_in_thread(manager.list_units, scope, include_inactive, on_done=done, on_error=failed)
+        run_in_thread(manager.list_services, include_inactive, on_done=done, on_error=failed)
 
     def _on_units_loaded(self, units: list[Unit]):
         self.services.set_units(self._carry_over(units))
@@ -647,7 +628,6 @@ class Window(Adw.ApplicationWindow):
             return
         if generation is None:
             generation = self._generation
-        scope = self.scope
         payload = units if units is not None else self.services.units
 
         def runtime_done(completed: list[Unit]):
@@ -659,14 +639,14 @@ class Window(Adw.ApplicationWindow):
             if generation == self._generation:
                 self.toast(_("Could not load service details: {error}").format(error=describe(error)))
 
-        run_in_thread(manager.add_runtime, payload, scope, on_done=runtime_done, on_error=runtime_failed)
+        run_in_thread(manager.add_runtime, payload, on_done=runtime_done, on_error=runtime_failed)
 
     def _carry_over(self, units: list[Unit]) -> list[Unit]:
         """While startup states and runtime details load, keep the previous ones."""
-        previous = {u.name: u for u in self.services.units}
+        previous = {u.key: u for u in self.services.units}
         carried = []
         for unit in units:
-            old = previous.get(unit.name)
+            old = previous.get(unit.key)
             if unit.file_state is None and old is not None:
                 unit = dataclasses.replace(unit, file_state=old.file_state)
                 if old.active_state == unit.active_state:
@@ -689,7 +669,6 @@ class Window(Adw.ApplicationWindow):
         manager = self.sessions.get(self.machine_id)
         if not unit or not manager:
             return
-        scope = self.scope
         def finish():
             if action in (UnitAction.ENABLE, UnitAction.DISABLE):
                 manager.invalidate_unit_files()
@@ -697,7 +676,7 @@ class Window(Adw.ApplicationWindow):
 
         self.operations.run(
             manager,
-            lambda: manager.control(unit.name, action, scope),
+            lambda: manager.control(unit.name, action, unit.scope),
             on_success=lambda _r: self.toast(self._action_message(unit, action)),
             # Also after a failure or cancel, so a pending enable switch goes back.
             # Also after a failure or cancel (e.g. pending UI), so the list matches reality.
@@ -744,7 +723,7 @@ class Window(Adw.ApplicationWindow):
         if not self.details_split.get_collapsed():
             if self._details:
                 self._details.discard()
-            panel = UnitPanel(manager, unit, self.scope, self.operations, in_pane=True, **options)
+            panel = UnitPanel(manager, unit, unit.scope, self.operations, in_pane=True, **options)
             panel.connect("close-requested", lambda *_: self._close_details())
             button, panel.journal_badge = self._journal_button()
             panel.add_header_end(button)
@@ -753,7 +732,7 @@ class Window(Adw.ApplicationWindow):
             self.details_bin.set_child(panel)
             panel.start_loading()
             return
-        dialog = UnitDialog(manager, unit, self.scope, self.operations, **options)
+        dialog = UnitDialog(manager, unit, unit.scope, self.operations, **options)
         dialog.present(self)
         GLib.idle_add(lambda: (dialog.start_loading(), False)[-1])
 
@@ -836,10 +815,9 @@ class Window(Adw.ApplicationWindow):
         manager = self.sessions.get(self.machine_id)
         if not manager:
             return
-        scope = self.scope
         self.operations.run(
             manager,
-            lambda: manager.daemon_reload(scope),
+            manager.daemon_reload_all,
             on_success=lambda _r: self._after_daemon_reload(manager),
             error_heading=_("Could Not Reload Configuration"),
         )
@@ -851,7 +829,7 @@ class Window(Adw.ApplicationWindow):
         host = self._current_host()
         dialog = CreateUnitDialog(
             manager,
-            self.scope,
+            None,
             host.name if host else _("This Computer"),
             self.operations,
             on_created=lambda name: self._after_unit_created(manager, name),

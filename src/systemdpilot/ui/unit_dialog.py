@@ -228,8 +228,9 @@ class UnitPanel(Adw.BreakpointBin):
                 active_state=props.get("ActiveState", ""),
                 sub_state=props.get("SubState", ""),
                 file_state=props.get("UnitFileState", ""),
+                scope=scope,
             )
-            return props, manager.add_runtime([fresh], scope)[0]
+            return props, manager.add_runtime([fresh])[0]
 
         def core_done(result: tuple[dict[str, str], Unit]):
             if self._closed or load != self._loads:
@@ -293,8 +294,9 @@ class UnitPanel(Adw.BreakpointBin):
                 active_state=props.get("ActiveState", ""),
                 sub_state=props.get("SubState", ""),
                 file_state=props.get("UnitFileState", ""),
+                scope=scope,
             )
-            unit = manager.add_runtime([unit], scope)[0]
+            unit = manager.add_runtime([unit])[0]
             return _Details(
                 unit=unit,
                 status=manager.status_text(name, scope),
@@ -413,9 +415,10 @@ class UnitPanel(Adw.BreakpointBin):
             )
         if words.can_toggle_startup(unit):
             enabled = words.starts_at_boot(unit)
+            starts = _("Starts every time you log in") if unit.is_user else _("Starts every time the computer boots")
             row = Adw.SwitchRow(
                 title=_("Enabled"),
-                subtitle=_("Starts every time the computer boots") if enabled else _("Only runs when you start it"),
+                subtitle=starts if enabled else _("Only runs when you start it"),
                 active=enabled,
             )
             row.connect("notify::active", self._on_startup_toggled)
@@ -461,6 +464,10 @@ class UnitPanel(Adw.BreakpointBin):
             box.append(resources)
 
         where = Adw.PreferencesGroup(title=_("Where it lives"))
+        if unit.is_user:
+            where.add(self._row(_("Runs for"), _("You only"), _("A user service, from login to logout")))
+        else:
+            where.add(self._row(_("Runs for"), _("Everyone"), _("A system service, shared by all users")))
         path = props.get("FragmentPath") or ""
         file_row = self._row(_("Configuration file"), path or _("None"), mono=True)
         if path and unit_file_body(details.unit_file):
