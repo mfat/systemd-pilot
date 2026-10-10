@@ -11,7 +11,6 @@ from . import widgets, words
 from .unit_list import UnitList
 from .widgets import Chip, Option, OptionButton
 
-SCOPE_ICONS = {Scope.SYSTEM: "network-server-symbolic", Scope.USER: "computer-symbolic"}
 SIMPLE_CHUNK = 25  # service rows built per idle tick on first paint
 
 
@@ -293,7 +292,7 @@ class ServicesView(Gtk.Box):
         self._refresh_row_labels()
 
     def set_scope(self, scope: Scope) -> None:
-        self.scope_button.set_text(_("User") if scope is Scope.USER else _("System"), SCOPE_ICONS[scope])
+        self.scope_button.set_text(_("User") if scope is Scope.USER else _("System"))
 
     def set_empty_hint(self, hint: str) -> None:
         self._empty_hint = hint
