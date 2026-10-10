@@ -147,7 +147,7 @@
                 <child>
                   <object class="AdwViewStackPage" id="activity_page">
                     <property name="name">activity</property>
-                    <property name="title" translatable="yes">Activity</property>
+                    <property name="title" translatable="yes">Log</property>
                     <property name="icon-name">text-x-generic-symbolic</property>
                     <property name="child">
                       <object class="GtkBox">

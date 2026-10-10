@@ -68,7 +68,7 @@ def run_steps(window):
         lambda: window.services.activate_action("services.filter", GLib.Variant("s", "all")),
         lambda: window.show_unit(unit),
         lambda: check(window._details.stack.get_visible_child_name() == "overview", "no overview page"),
-        # Activity shows the log as rows, or raw as journalctl prints it.
+        # Log shows its entries as rows, or raw as journalctl prints it.
         lambda: window._details.stack.set_visible_child_name("activity"),
         lambda: window._details.raw_switch.set_active(True),
         lambda: check(window._details.activity_stack.get_visible_child_name() == "raw", "no raw log"),

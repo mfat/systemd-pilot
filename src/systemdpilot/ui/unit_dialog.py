@@ -405,8 +405,8 @@ class UnitPanel(Adw.BreakpointBin):
         box.append(where)
 
         recent = [e for e in reversed(details.logs.entries[-3:])]
-        activity = Adw.PreferencesGroup(title=_("Recent activity"))
-        more = Gtk.Button(label=_("All Activity"), css_classes=["flat"], valign=Gtk.Align.CENTER)
+        activity = Adw.PreferencesGroup(title=_("Recent log"))
+        more = Gtk.Button(label=_("Full Log"), css_classes=["flat"], valign=Gtk.Align.CENTER)
         more.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
         activity.set_header_suffix(more)
         listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
@@ -444,7 +444,7 @@ class UnitPanel(Adw.BreakpointBin):
                 notice.append(button)
             box.append(notice)
         entries = list(reversed(details.logs.entries))[:_ACTIVITY_LIMIT]
-        section = widgets.Section(_("Activity"), _("Newest first"))
+        section = widgets.Section(_("Log"), _("Newest first"))
         if not entries:
             section.list.append(widgets.placeholder_row(_("No log entries.")))
         box.append(section.box)
