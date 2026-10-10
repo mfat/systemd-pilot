@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from gettext import gettext as _
 
-from gi.repository import Adw, GLib, GObject, Gtk, Pango
+from gi.repository import Adw, GLib, Gtk, Pango
 
 from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
@@ -42,12 +42,10 @@ class UnitPanel(Adw.BreakpointBin):
     """Shown beside the services list, or inside :class:`UnitDialog`."""
 
     __gtype_name__ = "SystemdPilotUnitPanel"
-    __gsignals__ = {"close-requested": (GObject.SignalFlags.RUN_FIRST, None, ())}
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     header_bar: Adw.HeaderBar = Gtk.Template.Child()
     refresh_button: Gtk.Button = Gtk.Template.Child()
-    close_button: Gtk.Button = Gtk.Template.Child()
     mode_box: Gtk.Box = Gtk.Template.Child()
     mode_switch: Gtk.Switch = Gtk.Template.Child()
     state_dot: Gtk.Box = Gtk.Template.Child()
@@ -110,7 +108,6 @@ class UnitPanel(Adw.BreakpointBin):
 
         # Beside the list the window's Simple/Advanced switch applies.
         self.mode_box.set_visible(not in_pane)
-        self.close_button.set_visible(in_pane)
         if in_pane:
             # Too narrow to share a line with the name: actions go below the state line.
             row = self.action_box.get_parent()
@@ -578,10 +575,6 @@ class UnitPanel(Adw.BreakpointBin):
     @Gtk.Template.Callback()
     def on_refresh_clicked(self, _button):
         self.load()
-
-    @Gtk.Template.Callback()
-    def on_close_clicked(self, _button):
-        self.emit("close-requested")
 
     @Gtk.Template.Callback()
     def on_edit_file_clicked(self, _button):

@@ -51,14 +51,13 @@ def run_steps(window):
         lambda: window.get_visible_dialog().close(),
         window.add_host,
         lambda: window.get_visible_dialog().close(),
-        # The services view always has a details column; a service opens there, × clears it.
+        # The services view always has a details column; a service opens there and has no close button.
         lambda: check(window.details_split.get_show_sidebar(), "no details column"),
         lambda: check(window.details_bin.get_child() is window._details_placeholder, "no placeholder"),
         lambda: window.show_unit(unit),
         lambda: check(not isinstance(window.get_visible_dialog(), UnitDialog), "details opened as a dialog"),
         lambda: check(window.details_bin.get_child() is window._details, "details panel not shown"),
-        lambda: window._details.close_button.emit("clicked"),
-        lambda: check(window.details_bin.get_child() is window._details_placeholder, "details panel still shown"),
+        lambda: check(not hasattr(window._details, "close_button"), "details panel has a close button"),
         # System and user services share one list; the same name can be both.
         lambda: same_name_in_both_scopes(window),
         lambda: window.activate_action("win.show-inactive", None),
@@ -71,7 +70,7 @@ def run_steps(window):
         lambda: window.show_unit(unit),
         lambda: window.activate_action("win.mode", GLib.Variant("s", "simple")),
         lambda: check(window._details.stack.get_visible_child_name() == "overview", "no overview page"),
-        lambda: window._details.close_button.emit("clicked"),
+        lambda: window._close_details(),
         lambda: check(window._details is None, "details panel not closed"),
         # The journal opens in a window of its own.
         lambda: window.activate_action("win.journal", None),

@@ -788,7 +788,6 @@ class Window(Adw.ApplicationWindow):
             if self._details:
                 self._details.discard()
             panel = UnitPanel(manager, unit, unit.scope, self.operations, in_pane=True, **options)
-            panel.connect("close-requested", lambda *_: self._close_details())
             button, panel.journal_badge = self._journal_button()
             panel.add_header_end(button)
             self._update_badges()

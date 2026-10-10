@@ -38,14 +38,6 @@
                   </object>
                 </child>
                 <child type="end">
-                  <object class="GtkButton" id="close_button">
-                    <property name="visible">False</property>
-                    <property name="icon-name">window-close-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Close Details</property>
-                    <signal name="clicked" handler="on_close_clicked"/>
-                  </object>
-                </child>
-                <child type="end">
                   <object class="GtkBox" id="mode_box">
                     <property name="spacing">8</property>
                     <property name="margin-end">6</property>
