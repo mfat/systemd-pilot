@@ -20,12 +20,19 @@ def starts_at_boot(unit: Unit) -> bool:
     return (unit.file_state or "").startswith("enabled")
 
 
-def unit_title(unit: Unit) -> str:
-    """The description, unless systemd made one up from the name."""
+def unit_description(unit: Unit) -> str:
+    """A real description, or empty if systemd just echoed the unit name."""
     description = unit.description.strip()
     if not description or description in (unit.name, unit.short_name):
-        return unit.short_name
+        return ""
     return description
+
+
+def unit_title(unit: Unit, order: str = "description-name") -> str:
+    """Primary label in the services list."""
+    if order == "name-description":
+        return unit.short_name
+    return unit_description(unit) or unit.short_name
 
 
 def state_word(unit: Unit) -> str:
@@ -93,7 +100,7 @@ def ago(when: datetime | None, now: datetime | None = None) -> str:
     return _("{time} ago").format(time=duration(when, clock))
 
 
-def unit_subtitle(unit: Unit) -> str:
+def unit_subtitle(unit: Unit, order: str = "description-name") -> str:
     """Status line under the title in the services list (no uptime — that was costly)."""
     kind = unit.kind
     if unit.active_state == "activating":
@@ -106,7 +113,8 @@ def unit_subtitle(unit: Unit) -> str:
         text = _("Stopped with an error")
     else:
         text = _("Not running")
-    return f"{text} · {unit.short_name}"
+    detail = unit_description(unit) if order == "name-description" else unit.short_name
+    return f"{text} · {detail}" if detail else text
 
 
 def state_sentence(unit: Unit, now: datetime | None = None) -> str:

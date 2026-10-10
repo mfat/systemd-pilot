@@ -13,6 +13,7 @@ _DEFAULTS = {
     "show-inactive": GLib.Variant("b", False),
     "color-scheme": GLib.Variant("s", "default"),
     "view-mode": GLib.Variant("s", "simple"),
+    "unit-label-order": GLib.Variant("s", "description-name"),
 }
 
 

@@ -41,9 +41,10 @@ class UnitRow(Gtk.ListBoxRow):
         box.append(self._dot)
 
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True, valign=Gtk.Align.CENTER)
-        self._title = widgets.label(words.unit_title(unit), "unit-title", ellipsize=Pango.EllipsizeMode.END)
+        order = view.label_order
+        self._title = widgets.label(words.unit_title(unit, order), "unit-title", ellipsize=Pango.EllipsizeMode.END)
         self._subtitle = widgets.label(
-            words.unit_subtitle(unit), "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END
+            words.unit_subtitle(unit, order), "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END
         )
         text.append(self._title)
         text.append(self._subtitle)
@@ -95,10 +96,14 @@ class UnitRow(Gtk.ListBoxRow):
         if kind_changed:
             widgets.set_dot(self._dot, unit.kind)
             self._fill_actions()
-        self._title.set_label(words.unit_title(unit))
-        self._subtitle.set_label(words.unit_subtitle(unit))
+        self._refresh_labels()
         self._state.set_label(words.state_word(unit))
         self._state.set_css_classes(["state-word", words.state_css(unit)])
+
+    def _refresh_labels(self) -> None:
+        order = self._view.label_order
+        self._title.set_label(words.unit_title(self.unit, order))
+        self._subtitle.set_label(words.unit_subtitle(self.unit, order))
         self._sync_a11y()
 
     def _fill_actions(self) -> None:
@@ -117,7 +122,8 @@ class UnitRow(Gtk.ListBoxRow):
 
     def _sync_a11y(self) -> None:
         self.update_property(
-            [Gtk.AccessibleProperty.LABEL], [f"{words.unit_title(self.unit)}, {words.state_word(self.unit)}"]
+            [Gtk.AccessibleProperty.LABEL],
+            [f"{words.unit_title(self.unit, self._view.label_order)}, {words.state_word(self.unit)}"],
         )
 
     def _set_hover(self, hovered: bool | None = None, focused: bool | None = None):
@@ -157,6 +163,7 @@ class ServicesView(Gtk.Box):
         self._units: list[Unit] = []
         self._query = ""
         self._mode = "simple"
+        self._label_order = "description-name"
         self._structure: tuple | None = None  # (kind, unit names…) of the built simple list
         self._build_gen = 0
         self._empty_hint = ""
@@ -274,6 +281,16 @@ class ServicesView(Gtk.Box):
         if mode == "advanced":
             self.unit_list.set_units(self._units)
         self._refresh()
+
+    @property
+    def label_order(self) -> str:
+        return self._label_order
+
+    def set_label_order(self, order: str) -> None:
+        if order == self._label_order:
+            return
+        self._label_order = order
+        self._refresh_row_labels()
 
     def set_scope(self, scope: Scope) -> None:
         self.scope_button.set_text(_("User") if scope is Scope.USER else _("System"), SCOPE_ICONS[scope])
@@ -479,3 +496,15 @@ class ServicesView(Gtk.Box):
         while focus is not None and not isinstance(focus, UnitRow):
             focus = focus.get_parent()
         return focus.unit.name if focus else None
+
+    def _refresh_row_labels(self) -> None:
+        section_box = self._groups.get_first_child()
+        while section_box is not None:
+            listbox = self._section_list(section_box)
+            if listbox is not None:
+                row = listbox.get_first_child()
+                while row is not None:
+                    if isinstance(row, UnitRow):
+                        row._refresh_labels()
+                    row = row.get_next_sibling()
+            section_box = section_box.get_next_sibling()

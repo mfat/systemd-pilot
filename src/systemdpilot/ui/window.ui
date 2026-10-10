@@ -423,6 +423,19 @@
           <attribute name="target">dark</attribute>
         </item>
       </submenu>
+      <submenu>
+        <attribute name="label" translatable="yes">Service _Labels</attribute>
+        <item>
+          <attribute name="label" translatable="yes">_Description / Name</attribute>
+          <attribute name="action">win.unit-label-order</attribute>
+          <attribute name="target">description-name</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Name / Description</attribute>
+          <attribute name="action">win.unit-label-order</attribute>
+          <attribute name="target">name-description</attribute>
+        </item>
+      </submenu>
     </section>
     <section>
       <item>

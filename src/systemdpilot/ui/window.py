@@ -163,6 +163,16 @@ class Window(Adw.ApplicationWindow):
         mode.connect("change-state", self._on_mode_changed)
         self.add_action(mode)
 
+        order = self.settings.get_string("unit-label-order")
+        if order not in ("description-name", "name-description"):
+            order = "description-name"
+        label_order = Gio.SimpleAction.new_stateful(
+            "unit-label-order", GLib.VariantType.new("s"), GLib.Variant("s", order)
+        )
+        label_order.connect("change-state", self._on_unit_label_order_changed)
+        self.add_action(label_order)
+        self.services.set_label_order(order)
+
         self.unit_actions = Gio.SimpleActionGroup()
         for action in UnitAction:
             if action is not UnitAction.RELOAD:
@@ -227,6 +237,12 @@ class Window(Adw.ApplicationWindow):
         action.set_state(value)
         self.settings.set_string("view-mode", value.get_string())
         self._apply_mode()
+
+    def _on_unit_label_order_changed(self, action, value):
+        action.set_state(value)
+        order = value.get_string()
+        self.settings.set_string("unit-label-order", order)
+        self.services.set_label_order(order)
 
     @property
     def mode(self) -> str:
