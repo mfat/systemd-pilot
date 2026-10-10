@@ -80,6 +80,11 @@ class SystemdManager:
 
     def __init__(self, runner: CommandRunner):
         self.runner = runner
+        self._unit_files: dict[str, str] | None = None
+
+    def invalidate_unit_files(self) -> None:
+        """Drop cached ``list-unit-files`` output (after enable/disable, etc.)."""
+        self._unit_files = None
 
     @staticmethod
     def _systemctl(scope: Scope, *args: str) -> list[str]:
@@ -120,10 +125,11 @@ class SystemdManager:
         self, loaded: list[Unit], scope: Scope = Scope.SYSTEM, include_unloaded: bool = False
     ) -> list[Unit]:
         """Add unit-file states (enabled/disabled/…) without fetching uptimes."""
-        result = self._list(scope, ["list-unit-files", "--type=service"])
-        # Startup states are a nice-to-have; don't fail the listing over them.
-        files = parse_list_unit_files(result.stdout) if result.ok else {}
-        return merge_units(loaded, files, include_unloaded=include_unloaded)
+        if self._unit_files is None:
+            result = self._list(scope, ["list-unit-files", "--type=service"])
+            # Startup states are a nice-to-have; don't fail the listing over them.
+            self._unit_files = parse_list_unit_files(result.stdout) if result.ok else {}
+        return merge_units(loaded, self._unit_files, include_unloaded=include_unloaded)
 
     def add_runtime(self, units: list[Unit], scope: Scope = Scope.SYSTEM) -> list[Unit]:
         """Fill in main PID, memory and since when, for units that are or were running."""

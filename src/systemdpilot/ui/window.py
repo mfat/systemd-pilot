@@ -16,6 +16,7 @@ from ..core.errors import (
     HostKeyUnknown,
     PilotError,
 )
+from ..core.manager import SystemdManager
 from ..core.models import AuthMethod, Host, Scope, Unit, UnitAction
 from ..core.session import LOCAL_ID, Sessions
 from ..core.ssh import SSHRunner
@@ -90,6 +91,8 @@ class Window(Adw.ApplicationWindow):
         self.machine_id = LOCAL_ID
         self.scope = Scope.SYSTEM
         self._generation = 0
+        self._runtime_loaded = False
+        self._journal_badge_source = 0
         self._connecting: dict[str, SSHRunner] = {}  # host id -> connection attempt
         self.operations = Operations(self, self.toast)
 
@@ -128,7 +131,7 @@ class Window(Adw.ApplicationWindow):
             group.add_action(action)
             return action
 
-        add("refresh", self.reload)
+        add("refresh", lambda: self.reload(refresh_files=True))
         add("search", lambda: self.search_bar.set_search_mode(True))
         add("add-host", self.add_host)
         add("edit-host", self.edit_host)
@@ -190,6 +193,9 @@ class Window(Adw.ApplicationWindow):
         action.set_state(value)
         self.scope = Scope(value.get_string())
         self.services.set_scope(self.scope)
+        manager = self.sessions.get(self.machine_id)
+        if manager:
+            manager.invalidate_unit_files()
         self.reload(show_spinner=True)
 
     def _on_show_inactive_changed(self, action, value):
@@ -229,6 +235,8 @@ class Window(Adw.ApplicationWindow):
     def _apply_mode(self):
         self.services.set_mode(self.mode)
         self.journal.set_mode(self.mode)
+        if self.mode == "advanced":
+            self._load_runtime()
 
     def _update_header(self):
         """Badges, and the title's subtitle for the current machine and view."""
@@ -473,14 +481,17 @@ class Window(Adw.ApplicationWindow):
 
     # -- units ------------------------------------------------------------
 
-    def reload(self, show_spinner: bool = False):
+    def reload(self, show_spinner: bool = False, *, refresh_files: bool = False):
         manager = self.sessions.get(self.machine_id)
         if manager is None:
             if self.machine_id != LOCAL_ID and self.machine_id not in self._connecting:
                 self.connect_current()
             return
+        if refresh_files:
+            manager.invalidate_unit_files()
         self._generation += 1
         generation = self._generation
+        self._runtime_loaded = False
         machine_id, scope, include_inactive = self.machine_id, self.scope, self.show_inactive
         if show_spinner or not self.services.units:
             self._show_loading(_("Loading services…"))
@@ -512,15 +523,8 @@ class Window(Adw.ApplicationWindow):
             if generation != self._generation:
                 return
             self._on_units_loaded(units)
-            run_in_thread(manager.add_runtime, units, scope, on_done=runtime_done, on_error=runtime_failed)
-
-        def runtime_done(units):
-            if generation == self._generation:
-                self._on_units_loaded(units)
-
-        def runtime_failed(error):
-            if generation == self._generation:
-                self.toast(_("Could not load service details: {error}").format(error=describe(error)))
+            if self.mode == "advanced":
+                self._load_runtime(units, generation)
 
         def incomplete(error):
             if generation == self._generation:
@@ -547,13 +551,42 @@ class Window(Adw.ApplicationWindow):
         self.spinner.stop()
         self._update_header()
         self._update_actions()
-        # After the services list has painted, load the journal once for the badge.
-        GLib.idle_add(self._load_journal_badge)
+        self._schedule_journal_badge()
+
+    def _schedule_journal_badge(self) -> None:
+        if self._journal_badge_source:
+            GLib.source_remove(self._journal_badge_source)
+        # Badge only: defer so startup stays focused on the service list.
+        self._journal_badge_source = GLib.timeout_add_seconds(45, self._load_journal_badge)
 
     def _load_journal_badge(self):
-        if self.sessions.is_connected(self.machine_id) and not self.journal.loaded:
+        self._journal_badge_source = 0
+        if self.sessions.is_connected(self.machine_id) and self.view != "journal" and not self.journal.loaded:
             self.journal.ensure_loaded()
         return GLib.SOURCE_REMOVE
+
+    def _load_runtime(self, units: list[Unit] | None = None, generation: int | None = None) -> None:
+        """PID/memory for the advanced table and unit dialog; skipped in simple mode."""
+        if self._runtime_loaded:
+            return
+        manager = self.sessions.get(self.machine_id)
+        if manager is None:
+            return
+        if generation is None:
+            generation = self._generation
+        scope = self.scope
+        payload = units if units is not None else self.services.units
+
+        def runtime_done(completed: list[Unit]):
+            if generation == self._generation:
+                self._runtime_loaded = True
+                self._on_units_loaded(completed)
+
+        def runtime_failed(error):
+            if generation == self._generation:
+                self.toast(_("Could not load service details: {error}").format(error=describe(error)))
+
+        run_in_thread(manager.add_runtime, payload, scope, on_done=runtime_done, on_error=runtime_failed)
 
     def _carry_over(self, units: list[Unit]) -> list[Unit]:
         """While startup states and runtime details load, keep the previous ones."""
@@ -587,12 +620,17 @@ class Window(Adw.ApplicationWindow):
         if not unit or not manager:
             return
         scope = self.scope
+        def finish():
+            if action in (UnitAction.ENABLE, UnitAction.DISABLE):
+                manager.invalidate_unit_files()
+            self.reload()
+
         self.operations.run(
             manager,
             lambda: manager.control(unit.name, action, scope),
             on_success=lambda _r: self.toast(self._action_message(unit, action)),
             # Also after a failure or cancel, so a pending enable switch goes back.
-            on_finish=self.reload,
+            on_finish=finish,
             error_heading=self._action_error_heading(unit, action),
         )
 
@@ -639,6 +677,16 @@ class Window(Adw.ApplicationWindow):
         unit = next((u for u in self.services.units if u.name == name), None)
         self.show_unit(unit or Unit(name))
 
+    def _after_unit_created(self, manager: SystemdManager, name: str):
+        manager.invalidate_unit_files()
+        self.toast(_("Created {unit}").format(unit=name))
+        self.reload()
+
+    def _after_daemon_reload(self, manager: SystemdManager):
+        manager.invalidate_unit_files()
+        self.toast(_("systemd configuration reloaded"))
+        self.reload()
+
     def daemon_reload(self):
         manager = self.sessions.get(self.machine_id)
         if not manager:
@@ -647,7 +695,7 @@ class Window(Adw.ApplicationWindow):
         self.operations.run(
             manager,
             lambda: manager.daemon_reload(scope),
-            on_success=lambda _r: (self.toast(_("systemd configuration reloaded")), self.reload()),
+            on_success=lambda _r: self._after_daemon_reload(manager),
             error_heading=_("Could Not Reload Configuration"),
         )
 
@@ -661,7 +709,7 @@ class Window(Adw.ApplicationWindow):
             self.scope,
             host.name if host else _("This Computer"),
             self.operations,
-            on_created=lambda name: (self.toast(_("Created {unit}").format(unit=name)), self.reload()),
+            on_created=lambda name: self._after_unit_created(manager, name),
         )
         dialog.present(self)
 

@@ -12,6 +12,7 @@ from .unit_list import UnitList
 from .widgets import Chip, Option, OptionButton
 
 SCOPE_ICONS = {Scope.SYSTEM: "network-server-symbolic", Scope.USER: "computer-symbolic"}
+SIMPLE_CHUNK = 25  # service rows built per idle tick on first paint
 
 
 def mode_switch() -> Gtk.Widget:
@@ -190,6 +191,7 @@ class ServicesView(Gtk.Box):
         self._query = ""
         self._mode = "simple"
         self._structure: tuple | None = None  # (kind, unit names…) of the built simple list
+        self._build_gen = 0
         self._empty_hint = ""
 
         actions = Gio.SimpleActionGroup()
@@ -260,10 +262,12 @@ class ServicesView(Gtk.Box):
 
     def set_units(self, units: list[Unit]) -> None:
         self._units = units
-        self.unit_list.set_units(units)
+        if self._mode == "advanced":
+            self.unit_list.set_units(units)
         self._refresh()
 
     def clear(self) -> None:
+        self._build_gen += 1
         self._units = []
         self._structure = None
         self.unit_list.clear()
@@ -287,7 +291,11 @@ class ServicesView(Gtk.Box):
         self._refresh()
 
     def set_mode(self, mode: str) -> None:
+        if mode == self._mode:
+            return
         self._mode = mode
+        if mode == "advanced":
+            self.unit_list.set_units(self._units)
         self._refresh()
 
     def set_scope(self, scope: Scope) -> None:
@@ -358,8 +366,24 @@ class ServicesView(Gtk.Box):
         focused = self._focused_unit_name()
         # Reuse row widgets when units move between groups (start/stop/filter).
         existing = self._take_rows()
+        self._build_gen += 1
         widgets.clear(self._groups)
         self._structure = structure
+        row_count = sum(len(units) for *_rest, units in plan)
+        if row_count > SIMPLE_CHUNK and not existing:
+            self._rebuild_groups_chunked(plan, adjustment, position, focused, gen=self._build_gen)
+            return
+        focus_row = self._fill_groups(plan, existing, focused)
+        GLib.idle_add(lambda: adjustment.set_value(position) and False)
+        if focus_row:
+            focus_row.grab_focus()
+
+    def _fill_groups(
+        self,
+        plan: list[tuple[str, str, str, str | None, list[Unit]]],
+        existing: dict[str, UnitRow],
+        focused: str | None,
+    ) -> UnitRow | None:
         focus_row = None
         for _kind, title, hint, css, units in plan:
             section = widgets.Section(title, hint, title_css=css)
@@ -374,10 +398,56 @@ class ServicesView(Gtk.Box):
                 if unit.name == focused:
                     focus_row = row
             self._groups.append(section.box)
-        # Keep the place in the list when it is refreshed after an action.
-        GLib.idle_add(lambda: adjustment.set_value(position) and False)
-        if focus_row:
-            focus_row.grab_focus()
+        return focus_row
+
+    def _rebuild_groups_chunked(
+        self,
+        plan: list[tuple[str, str, str, str | None, list[Unit]]],
+        adjustment,
+        position: float,
+        focused: str | None,
+        *,
+        gen: int,
+    ) -> None:
+        """First paint: add service rows in small batches so the window stays responsive."""
+        state = {"section_idx": 0, "unit_idx": 0, "section": None, "focus_row": None}
+
+        def append_unit(section: widgets.Section, unit: Unit) -> UnitRow:
+            row = UnitRow(unit, self)
+            section.list.append(row)
+            return row
+
+        def add_chunk():
+            if gen != self._build_gen:
+                return GLib.SOURCE_REMOVE
+            added = 0
+            while state["section_idx"] < len(plan) and added < SIMPLE_CHUNK:
+                _kind, title, hint, css, units = plan[state["section_idx"]]
+                if state["section"] is None:
+                    section = widgets.Section(title, hint, title_css=css)
+                    section.list.connect("row-activated", lambda _l, row: self.emit("unit-activated", row.unit))
+                    self._groups.append(section.box)
+                    state["section"] = section
+                section = state["section"]
+                while state["unit_idx"] < len(units) and added < SIMPLE_CHUNK:
+                    unit = units[state["unit_idx"]]
+                    row = append_unit(section, unit)
+                    if unit.name == focused:
+                        state["focus_row"] = row
+                    state["unit_idx"] += 1
+                    added += 1
+                if state["unit_idx"] >= len(units):
+                    state["section_idx"] += 1
+                    state["unit_idx"] = 0
+                    state["section"] = None
+            if state["section_idx"] < len(plan):
+                return GLib.SOURCE_CONTINUE
+            GLib.idle_add(lambda: adjustment.set_value(position) and False)
+            if state["focus_row"]:
+                state["focus_row"].grab_focus()
+            return GLib.SOURCE_REMOVE
+
+        GLib.idle_add(add_chunk)
 
     def _take_rows(self) -> dict[str, UnitRow]:
         """Detach existing service rows so they can be re-parented into a new layout."""

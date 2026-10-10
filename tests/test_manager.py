@@ -220,6 +220,30 @@ def test_attach_file_states_skips_runtime(runner):
     assert not any("show" in call["argv"] for call in runner.calls)
 
 
+def test_attach_file_states_caches_unit_files(runner):
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "list-unit-files",
+        stdout='[{"unit_file":"a.service","state":"enabled"}]',
+    )
+    manager = SystemdManager(runner)
+    loaded = [Unit("a.service", active_state="active", sub_state="running")]
+    manager.attach_file_states(loaded)
+    manager.attach_file_states(loaded)
+    assert sum(1 for call in runner.calls if "list-unit-files" in call["argv"]) == 1
+    manager.invalidate_unit_files()
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "list-unit-files",
+        stdout='[{"unit_file":"a.service","state":"disabled"}]',
+    )
+    (unit,) = manager.attach_file_states(loaded)
+    assert unit.file_state == "disabled"
+    assert sum(1 for call in runner.calls if "list-unit-files" in call["argv"]) == 2
+
+
 def test_runtime_without_unix_timestamps(runner):
     runner.reply(
         "systemctl",
