@@ -575,8 +575,13 @@ class Window(Adw.ApplicationWindow):
     def _schedule_journal_badge(self) -> None:
         if self._journal_badge_source:
             GLib.source_remove(self._journal_badge_source)
-        # Badge only: defer so startup stays focused on the service list.
-        self._journal_badge_source = GLib.timeout_add_seconds(45, self._load_journal_badge)
+            self._journal_badge_source = 0
+        if self.journal.loaded:
+            return
+        # Brief pause so list paint (and advanced/inactive follow-ups that call
+        # here again) finish first. Each reschedule resets the delay, so the
+        # badge fetch starts after unit work settles — still off the UI thread.
+        self._journal_badge_source = GLib.timeout_add(1500, self._load_journal_badge)
 
     def _load_journal_badge(self):
         self._journal_badge_source = 0
