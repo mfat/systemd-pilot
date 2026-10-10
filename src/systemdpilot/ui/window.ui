@@ -46,13 +46,6 @@
                         </style>
                       </object>
                     </property>
-                    <child type="start">
-                      <object class="GtkButton">
-                        <property name="icon-name">list-add-symbolic</property>
-                        <property name="tooltip-text" translatable="yes">Add Remote Host</property>
-                        <property name="action-name">win.add-host</property>
-                      </object>
-                    </child>
                     <child type="end">
                       <object class="GtkMenuButton">
                         <property name="icon-name">open-menu-symbolic</property>
@@ -139,7 +132,6 @@
                                 <property name="hscrollbar-policy">never</property>
                                 <property name="propagate-natural-height">True</property>
                                 <property name="max-content-height">420</property>
-                                <property name="min-content-width">240</property>
                                 <property name="child">
                                   <object class="GtkListBox" id="machine_list">
                                     <property name="selection-mode">browse</property>
@@ -154,6 +146,17 @@
                             </property>
                           </object>
                         </property>
+                      </object>
+                    </child>
+                    <child type="end">
+                      <object class="GtkButton">
+                        <property name="icon-name">list-add-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Add Remote Host</property>
+                        <property name="action-name">win.add-host</property>
+                        <property name="valign">center</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
                       </object>
                     </child>
                   </object>

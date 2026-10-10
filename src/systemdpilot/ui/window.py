@@ -144,6 +144,10 @@ class Window(Adw.ApplicationWindow):
         self._apply_mode()
         self._rebuild_machine_list()
         self.machine_list.select_row(self.machine_list.get_row_at_index(0))
+        # As wide as the selector it opens from; the ellipsized names don't ask for any width.
+        self.machine_popover.connect(
+            "show", lambda p: p.get_child().set_size_request(max(240, self.machine_button.get_width()), -1)
+        )
 
     # -- actions ----------------------------------------------------------
 
