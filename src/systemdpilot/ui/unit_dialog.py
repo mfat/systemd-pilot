@@ -519,13 +519,10 @@ class UnitPanel(Adw.BreakpointBin):
     @staticmethod
     def _state_row(unit: Unit) -> Adw.ActionRow:
         sentence = words.state_sentence(unit)
-        row = Adw.ActionRow(title=_("State"), subtitle=sentence[:1].upper() + sentence[1:])
-        state = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
+        row = Adw.ActionRow(title=words.state_word(unit), subtitle=sentence[:1].upper() + sentence[1:])
         dot = Gtk.Box(valign=Gtk.Align.CENTER)
         widgets.set_dot(dot, unit.kind)
-        state.append(dot)
-        state.append(widgets.label(words.state_word(unit), "heading", words.state_css(unit)))
-        row.add_suffix(state)
+        row.add_prefix(dot)
         return row
 
     @staticmethod
