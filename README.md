@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=mfat&project=systemd-pilot&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 # systemd Pilot
 
 <p align="center">
