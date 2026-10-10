@@ -30,6 +30,8 @@ from systemdpilot.core.models import AuthMethod, Host, Unit  # noqa: E402
 from systemdpilot.main import Application  # noqa: E402
 
 errors = []
+progress = {"step": 0}
+VERBOSE = bool(os.environ.get("SMOKE_VERBOSE"))
 
 
 def excepthook(*exc_info):
@@ -95,8 +97,13 @@ def run_steps(window):
         assert isinstance(dialog, Adw.AlertDialog), f"expected a confirmation, got {dialog}"
         return dialog
 
+    total = len(steps)
+
     def next_step():
         step = steps.pop(0)
+        progress["step"] = total - len(steps)
+        if VERBOSE:
+            print(f"step {progress['step']}/{total}", flush=True)
         try:
             step()
         except Exception:  # noqa: BLE001 - any failure fails the smoke test
@@ -108,8 +115,15 @@ def run_steps(window):
     GLib.timeout_add(300, next_step)
 
 
+def on_timeout():
+    # Name the step that never finished; a bare exit status says nothing.
+    print(f"UI smoke test timed out at step {progress['step'] or 'startup'}", file=sys.stderr)
+    errors.append("timeout")
+    app.quit()
+
+
 app.connect("activate", lambda a: GLib.idle_add(lambda: run_steps(a.props.active_window)) and None)
-GLib.timeout_add_seconds(60, lambda: (errors.append("timeout"), app.quit()))
+GLib.timeout_add_seconds(60, on_timeout)
 app.run([])
 if errors:
     sys.exit(1)

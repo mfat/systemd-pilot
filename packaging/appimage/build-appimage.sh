@@ -115,16 +115,37 @@ for pkg in gi cairo; do
 done
 
 log "Installing paramiko and its dependencies"
+# The same versions the Flatpak ships: build-aux/flatpak/python3-deps.json is
+# the one place they are pinned (update-python-deps.py bumps them). The wheel
+# files differ -- this interpreter is not the Flatpak runtime's -- but the
+# versions, and so the behaviour, match.
+"$PYTHON_BIN" - "$ROOT/build-aux/flatpak/python3-deps.json" > "$BUILD_DIR/requirements.txt" <<'PY'
+import json
+import sys
+from urllib.parse import unquote, urlparse
+
+module = json.load(open(sys.argv[1], encoding="utf-8"))
+pins = {}
+for source in module["sources"]:
+    wheel = unquote(urlparse(source["url"]).path.rsplit("/", 1)[-1])
+    name, version = wheel.split("-")[:2]
+    pins[name.lower().replace("_", "-")] = version
+if "paramiko" not in pins:
+    sys.exit("python3-deps.json pins no paramiko")
+for name, version in sorted(pins.items()):
+    print(f"{name}=={version}")
+PY
+cat "$BUILD_DIR/requirements.txt"
 "$PYTHON_BIN" -m pip install \
     --disable-pip-version-check \
     --no-compile \
     --no-warn-script-location \
     --only-binary=:all: \
     --target "$DEPSDIR" \
-    paramiko
+    -r "$BUILD_DIR/requirements.txt"
 # pip --target leaves the console scripts of the dependencies behind; the app
 # has no use for them and they carry absolute shebangs.
-rm -rf "$DEPSDIR/bin"
+rm -rf "${DEPSDIR:?}/bin"
 find "$DEPSDIR" -name __pycache__ -type d -prune -exec rm -rf {} +
 
 # --------------------------------------------------------------------------

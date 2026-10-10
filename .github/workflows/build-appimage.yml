@@ -37,7 +37,6 @@ jobs:
             python3-gi \
             python3-gi-cairo \
             python3-pip \
-            python3-paramiko \
             gir1.2-gtk-4.0 \
             gir1.2-adw-1 \
             gir1.2-gtksource-5 \
@@ -73,7 +72,6 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
           GDK_BACKEND: x11
-          GSK_RENDERER: cairo
           G_DEBUG: fatal-criticals
         run: |
           set -eu
@@ -87,3 +85,38 @@ jobs:
         with:
           name: appimage
           path: dist/*.AppImage
+
+  # The point of the AppImage: it has to run where the .deb cannot. Ubuntu
+  # 22.04 has no libadwaita 1.5 and an older glibc, so this exercises the
+  # bundled C library and AppRun's choices for older hosts, on a real 22.04
+  # userland rather than the build host pretending.
+  test-ubuntu-2204:
+    name: AppImage on Ubuntu 22.04
+    needs: appimage
+    runs-on: ubuntu-24.04
+    container: ubuntu:22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: appimage
+          path: dist
+
+      # Only what a 22.04 desktop already has (GL, X11, fonts, the MIME
+      # database); nothing from the GTK 4 stack, and no Python.
+      - name: Install the host libraries a desktop provides
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libgl1 libegl1 libgl1-mesa-dri libgbm1 libdrm2 \
+            libx11-6 libx11-xcb1 libxcb1 libwayland-client0 \
+            libfontconfig1 libfreetype6 libfribidi0 libharfbuzz0b fonts-dejavu-core \
+            libexpat1 zlib1g shared-mime-info \
+            xvfb xauth dbus dbus-x11
+
+      - name: Test the AppImage
+        run: |
+          # Artifacts do not keep the executable bit.
+          chmod +x dist/*.AppImage
+          dbus-run-session -- xvfb-run -a packaging/appimage/test-appimage.sh dist/*.AppImage

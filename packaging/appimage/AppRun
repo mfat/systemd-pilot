@@ -71,6 +71,26 @@ use_bundled_libc() {
 SYSTEMD_PILOT_PYTHON="$APPDIR/usr/bin/python3"
 if use_bundled_libc; then
     SYSTEMD_PILOT_PYTHON="$APPDIR/usr/bin/python3-bundled-libc"
+    # Older hosts also have older Mesa. On Ubuntu 22.04 (Mesa 23.2), GTK's GL
+    # renderer deadlocked in llvmpipe on every run, before the first frame;
+    # cairo started every time. Software GL is what most VMs have, and an
+    # admin tool is often run in one. The user can still choose with GSK_RENDERER.
+    export GSK_RENDERER="${GSK_RENDERER:-cairo}"
 fi
 
-exec "$SYSTEMD_PILOT_PYTHON" "$APPDIR/usr/bin/systemd-pilot" "$@"
+# GTK's GL renderer needs the host's libGLESv2 (Debian's libgtk-4-1 depends on
+# libgles2), but the AppImage takes GL from the host and cannot pull it in. GNOME
+# desktops always have it; Xfce, MATE or minimal installs with no other GTK 4
+# app may not, and libepoxy then aborts the app at startup. Without it, cairo.
+host_has_library() {
+    { /sbin/ldconfig -p 2>/dev/null || ldconfig -p 2>/dev/null; } |
+        grep -q "^[[:space:]]*$1 "
+}
+if [ -z "${GSK_RENDERER:-}" ] && ! host_has_library libGLESv2.so.2; then
+    export GSK_RENDERER=cairo
+fi
+
+# -s: ignore the user's ~/.local site-packages. A package installed there for
+# the host's Python (cryptography, for example) would otherwise shadow the
+# bundled one and may not even load in this interpreter.
+exec "$SYSTEMD_PILOT_PYTHON" -s "$APPDIR/usr/bin/systemd-pilot" "$@"

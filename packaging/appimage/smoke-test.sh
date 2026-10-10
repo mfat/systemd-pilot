@@ -33,13 +33,12 @@ run_under_apprun() {
     # $1 = host|bundled; remaining args are the python command.
     local libc=$1
     shift
-    # Fresh HOME so the host's ~/.local site-packages cannot shadow the bundle.
+    # Fresh HOME: nothing from the build user's home can leak in.
     local smoke_home
     smoke_home=$(mktemp -d "${TMPDIR:-/tmp}/systemd-pilot-appimage-smoke.XXXXXX")
     env -i \
         HOME="$smoke_home" \
         PATH=/usr/bin:/bin \
-        PYTHONNOUSERSITE=1 \
         APPDIR="$APPDIR" \
         SYSTEMD_PILOT_APPIMAGE_LIBC="$libc" \
         ${DISPLAY:+DISPLAY="$DISPLAY"} \
@@ -47,7 +46,7 @@ run_under_apprun() {
         ${XAUTHORITY:+XAUTHORITY="$XAUTHORITY"} \
         ${XDG_RUNTIME_DIR:+XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"} \
         ${DBUS_SESSION_BUS_ADDRESS:+DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"} \
-        bash -c '. "$1"; shift; exec "$SYSTEMD_PILOT_PYTHON" "$@"' \
+        bash -c '. "$1"; shift; exec "$SYSTEMD_PILOT_PYTHON" -s "$@"' \
         _ "$BUILD_TMP/apprun-env.sh" "$@"
 }
 

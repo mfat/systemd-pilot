@@ -28,7 +28,7 @@ Download the package for your distribution from the
 | `systemd-pilot_*_all.deb` | Debian 13+, Ubuntu 24.04+ |
 | `systemd-pilot-*.noarch.rpm` | Fedora |
 | `systemd-pilot-*.flatpak` | Any distribution with Flatpak |
-| `systemd-pilot-*-x86_64.AppImage` | Most distributions (no install) |
+| `systemd-pilot-*-x86_64.AppImage` | Ubuntu 22.04+ and most other x86_64 distributions (no install) |
 
 ```sh
 flatpak install --user systemd-pilot-x86_64.flatpak
@@ -40,6 +40,11 @@ chmod +x systemd-pilot-*-x86_64.AppImage
 ```
 
 On a system without FUSE, run the AppImage with `--appimage-extract-and-run`.
+
+The AppImage carries its own GTK 4, libadwaita and Python, so it runs on
+releases too old for the `.deb`, such as Ubuntu 22.04. On those, and on systems
+without `libGLESv2`, it draws with GTK's software (cairo) renderer instead of
+OpenGL; set `GSK_RENDERER` to override.
 
 ## How it works
 
@@ -114,6 +119,12 @@ dependencies above, plus `adwaita-icon-theme`, `librsvg2-common`,
 
 ```sh
 xvfb-run -a packaging/appimage/build-appimage.sh   # writes dist/*.AppImage
+```
+
+Test a built AppImage on the system you run this on (CI does it on Ubuntu 22.04):
+
+```sh
+dbus-run-session -- xvfb-run -a packaging/appimage/test-appimage.sh dist/*.AppImage
 ```
 
 ## Project layout
