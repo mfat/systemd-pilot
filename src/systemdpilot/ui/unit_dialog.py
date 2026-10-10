@@ -516,21 +516,30 @@ class UnitDialog(Adw.Dialog):
 
     @staticmethod
     def _row(title: str, value: str, help_text: str = "", mono: bool = False) -> Adw.ActionRow:
-        row = Adw.ActionRow(title=title, subtitle=help_text, title_selectable=False)
-        # Short values stay on one line; long paths wrap.
-        value_label = widgets.label(
-            value,
-            "dim-label",
-            wrap=True,
-            wrap_mode=Pango.WrapMode.WORD_CHAR,
-            selectable=True,
-            xalign=1,
-            width_chars=min(len(value), 24),
-            max_width_chars=48,
-        )
         if mono:
-            value_label.add_css_class("monospace")
-        row.add_suffix(value_label)
+            # Paths read better as the row caption than as a cramped suffix.
+            row = Adw.ActionRow(
+                title=title,
+                subtitle=value,
+                title_selectable=False,
+                subtitle_selectable=True,
+                tooltip_text=value,
+            )
+            if help_text:
+                row.set_tooltip_text(f"{value}\n{help_text}")
+            return row
+        row = Adw.ActionRow(title=title, subtitle=help_text, title_selectable=False)
+        row.add_suffix(
+            widgets.label(
+                value,
+                "dim-label",
+                wrap=True,
+                wrap_mode=Pango.WrapMode.WORD_CHAR,
+                selectable=True,
+                xalign=1,
+                max_width_chars=48,
+            )
+        )
         return row
 
     @staticmethod
