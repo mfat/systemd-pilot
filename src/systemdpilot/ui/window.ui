@@ -30,313 +30,324 @@
     <property name="content">
       <object class="AdwToastOverlay" id="toast_overlay">
         <property name="child">
-          <object class="AdwOverlaySplitView" id="split_view">
-            <property name="min-sidebar-width">220</property>
-            <property name="max-sidebar-width">256</property>
-            <property name="show-sidebar" bind-source="sidebar_button" bind-property="active" bind-flags="sync-create|bidirectional"/>
-            <property name="sidebar">
-              <object class="AdwToolbarView">
-                <child type="top">
-                  <object class="AdwHeaderBar">
-                    <property name="title-widget">
-                      <object class="GtkLabel">
-                        <property name="label" translatable="yes">systemd Pilot</property>
-                        <style>
-                          <class name="heading"/>
-                        </style>
-                      </object>
-                    </property>
-                    <child type="end">
-                      <object class="GtkMenuButton">
-                        <property name="icon-name">open-menu-symbolic</property>
-                        <property name="menu-model">primary_menu</property>
-                        <property name="primary">True</property>
-                        <property name="tooltip-text" translatable="yes">Main Menu</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <property name="content">
-                  <object class="GtkScrolledWindow">
-                    <property name="hscrollbar-policy">never</property>
-                    <property name="child">
-                      <!-- The service state filters, from the services view. -->
-                      <object class="AdwBin" id="filters_bin"/>
-                    </property>
-                  </object>
+          <!-- The services page; the journal is pushed over all of it. -->
+          <object class="AdwNavigationView" id="nav_view">
+            <child>
+              <object class="AdwNavigationPage">
+                <property name="tag">services</property>
+                <property name="title" translatable="yes">systemd Pilot</property>
+                <property name="child">
+                <object class="AdwOverlaySplitView" id="split_view">
+                  <property name="min-sidebar-width">220</property>
+                  <property name="max-sidebar-width">256</property>
+                  <property name="show-sidebar" bind-source="sidebar_button" bind-property="active" bind-flags="sync-create|bidirectional"/>
+                  <property name="sidebar">
+                    <object class="AdwToolbarView">
+                      <child type="top">
+                        <object class="AdwHeaderBar">
+                          <property name="title-widget">
+                            <object class="GtkLabel">
+                              <property name="label" translatable="yes">systemd Pilot</property>
+                              <style>
+                                <class name="heading"/>
+                              </style>
+                            </object>
+                          </property>
+                          <child type="end">
+                            <object class="GtkMenuButton">
+                              <property name="icon-name">open-menu-symbolic</property>
+                              <property name="menu-model">primary_menu</property>
+                              <property name="primary">True</property>
+                              <property name="tooltip-text" translatable="yes">Main Menu</property>
+                            </object>
+                          </child>
+                        </object>
+                      </child>
+                      <property name="content">
+                        <object class="GtkScrolledWindow">
+                          <property name="hscrollbar-policy">never</property>
+                          <property name="child">
+                            <!-- The service state filters, from the services view. -->
+                            <object class="AdwBin" id="filters_bin"/>
+                          </property>
+                        </object>
+                      </property>
+                      <child type="bottom">
+                        <object class="GtkActionBar">
+                          <child type="start">
+                            <object class="GtkMenuButton" id="machine_button">
+                              <property name="hexpand">True</property>
+                              <property name="direction">up</property>
+                              <property name="tooltip-text" translatable="yes">Choose a Machine</property>
+                              <style>
+                                <class name="flat"/>
+                                <class name="machine-button"/>
+                              </style>
+                              <property name="child">
+                                <object class="GtkBox">
+                                  <property name="spacing">10</property>
+                                  <child>
+                                    <object class="GtkImage" id="machine_icon">
+                                      <property name="icon-name">computer-symbolic</property>
+                                    </object>
+                                  </child>
+                                  <child>
+                                    <object class="GtkBox">
+                                      <property name="orientation">vertical</property>
+                                      <property name="hexpand">True</property>
+                                      <child>
+                                        <object class="GtkLabel" id="machine_name">
+                                          <property name="xalign">0</property>
+                                          <property name="ellipsize">end</property>
+                                        </object>
+                                      </child>
+                                      <child>
+                                        <object class="GtkLabel" id="machine_subtitle">
+                                          <property name="xalign">0</property>
+                                          <property name="ellipsize">end</property>
+                                          <style>
+                                            <class name="dim-label"/>
+                                            <class name="caption"/>
+                                          </style>
+                                        </object>
+                                      </child>
+                                    </object>
+                                  </child>
+                                  <child>
+                                    <object class="GtkBox" id="machine_dot">
+                                      <property name="visible">False</property>
+                                      <property name="valign">center</property>
+                                      <property name="tooltip-text" translatable="yes">Connected</property>
+                                      <style>
+                                        <class name="status-dot"/>
+                                        <class name="small"/>
+                                        <class name="running"/>
+                                      </style>
+                                    </object>
+                                  </child>
+                                  <child>
+                                    <object class="GtkImage">
+                                      <property name="icon-name">pan-up-symbolic</property>
+                                    </object>
+                                  </child>
+                                </object>
+                              </property>
+                              <property name="popover">
+                                <object class="GtkPopover" id="machine_popover">
+                                  <property name="child">
+                                    <object class="GtkScrolledWindow">
+                                      <property name="hscrollbar-policy">never</property>
+                                      <property name="propagate-natural-height">True</property>
+                                      <property name="max-content-height">420</property>
+                                      <property name="child">
+                                        <object class="GtkListBox" id="machine_list">
+                                          <property name="selection-mode">browse</property>
+                                          <style>
+                                            <class name="navigation-sidebar"/>
+                                          </style>
+                                          <signal name="row-selected" handler="on_machine_selected"/>
+                                          <signal name="row-activated" handler="on_machine_activated"/>
+                                        </object>
+                                      </property>
+                                    </object>
+                                  </property>
+                                </object>
+                              </property>
+                            </object>
+                          </child>
+                          <child type="end">
+                            <object class="GtkButton">
+                              <property name="icon-name">list-add-symbolic</property>
+                              <property name="tooltip-text" translatable="yes">Add Remote Host</property>
+                              <property name="action-name">win.add-host</property>
+                              <property name="valign">center</property>
+                              <style>
+                                <class name="flat"/>
+                              </style>
+                            </object>
+                          </child>
+                        </object>
+                      </child>
+                    </object>
+                  </property>
+                  <property name="content">
+                    <!-- Details of the opened service, full height beside the services list, which
+                         shrinks to make room. Too narrow for that, details open in a dialog instead. -->
+                    <object class="AdwOverlaySplitView" id="details_split">
+                      <property name="sidebar-position">end</property>
+                      <property name="show-sidebar">False</property>
+                      <property name="min-sidebar-width">380</property>
+                      <!-- No real cap (the default is 280): the width fraction alone decides. -->
+                      <property name="max-sidebar-width">100000</property>
+                      <property name="sidebar-width-fraction">0.6</property>
+                      <property name="sidebar">
+                        <object class="AdwBin" id="details_bin"/>
+                      </property>
+                      <property name="content">
+                        <object class="AdwToolbarView">
+                          <child type="top">
+                            <object class="AdwHeaderBar">
+                              <property name="show-title">False</property>
+                              <child type="start">
+                                <object class="GtkToggleButton" id="sidebar_button">
+                                  <property name="icon-name">sidebar-show-symbolic</property>
+                                  <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
+                                  <property name="active">True</property>
+                                </object>
+                              </child>
+                              <child type="end">
+                                <object class="GtkMenuButton" id="host_menu_button">
+                                  <property name="icon-name">view-more-symbolic</property>
+                                  <property name="menu-model">host_menu</property>
+                                  <property name="tooltip-text" translatable="yes">Host Menu</property>
+                                </object>
+                              </child>
+                              <child type="end">
+                                <object class="GtkToggleButton" id="search_button">
+                                  <property name="icon-name">system-search-symbolic</property>
+                                  <property name="tooltip-text" translatable="yes">Search</property>
+                                  <property name="active" bind-source="search_bar" bind-property="search-mode-enabled" bind-flags="sync-create|bidirectional"/>
+                                </object>
+                              </child>
+                              <child type="end">
+                                <object class="GtkButton">
+                                  <property name="icon-name">view-refresh-symbolic</property>
+                                  <property name="tooltip-text" translatable="yes">Refresh</property>
+                                  <property name="action-name">win.refresh</property>
+                                </object>
+                              </child>
+                            </object>
+                          </child>
+                          <child type="top">
+                            <object class="GtkSearchBar" id="search_bar">
+                              <property name="child">
+                                <object class="GtkSearchEntry" id="search_entry">
+                                  <property name="hexpand">True</property>
+                                  <property name="placeholder-text" translatable="yes">Search services</property>
+                                  <signal name="search-changed" handler="on_search_changed"/>
+                                </object>
+                              </property>
+                            </object>
+                          </child>
+                          <property name="content">
+                            <object class="GtkStack" id="content_stack">
+                              <property name="transition-type">crossfade</property>
+                              <property name="hhomogeneous">False</property>
+                              <child>
+                                <object class="GtkStackPage">
+                                  <property name="name">loading</property>
+                                  <property name="child">
+                                    <object class="GtkBox">
+                                      <property name="orientation">vertical</property>
+                                      <property name="spacing">18</property>
+                                      <property name="valign">center</property>
+                                      <property name="halign">center</property>
+                                      <child>
+                                        <object class="GtkSpinner" id="spinner">
+                                          <property name="width-request">32</property>
+                                          <property name="height-request">32</property>
+                                        </object>
+                                      </child>
+                                      <child>
+                                        <object class="GtkLabel" id="loading_label">
+                                          <style>
+                                            <class name="dim-label"/>
+                                          </style>
+                                        </object>
+                                      </child>
+                                      <child>
+                                        <object class="GtkButton" id="cancel_connect_button">
+                                          <property name="label" translatable="yes">_Cancel</property>
+                                          <property name="use-underline">True</property>
+                                          <property name="halign">center</property>
+                                          <property name="action-name">win.cancel-connect</property>
+                                          <style>
+                                            <class name="pill"/>
+                                          </style>
+                                        </object>
+                                      </child>
+                                    </object>
+                                  </property>
+                                </object>
+                              </child>
+                              <child>
+                                <object class="GtkStackPage">
+                                  <property name="name">main</property>
+                                  <property name="child">
+                                    <object class="AdwBin" id="services_bin"/>
+                                  </property>
+                                </object>
+                              </child>
+                              <child>
+                                <object class="GtkStackPage">
+                                  <property name="name">disconnected</property>
+                                  <property name="child">
+                                    <object class="AdwStatusPage" id="disconnected_page">
+                                      <property name="icon-name">network-wired-symbolic</property>
+                                      <property name="title" translatable="yes">Not Connected</property>
+                                      <property name="child">
+                                        <object class="GtkButton">
+                                          <property name="label" translatable="yes">_Connect</property>
+                                          <property name="use-underline">True</property>
+                                          <property name="halign">center</property>
+                                          <property name="action-name">win.connect</property>
+                                          <style>
+                                            <class name="pill"/>
+                                            <class name="suggested-action"/>
+                                          </style>
+                                        </object>
+                                      </property>
+                                    </object>
+                                  </property>
+                                </object>
+                              </child>
+                              <child>
+                                <object class="GtkStackPage">
+                                  <property name="name">error</property>
+                                  <property name="child">
+                                    <object class="AdwStatusPage" id="error_page">
+                                      <property name="icon-name">dialog-warning-symbolic</property>
+                                      <property name="child">
+                                        <object class="GtkBox">
+                                          <property name="spacing">12</property>
+                                          <property name="halign">center</property>
+                                          <child>
+                                            <object class="GtkButton" id="error_edit_button">
+                                              <property name="label" translatable="yes">_Edit Host</property>
+                                              <property name="use-underline">True</property>
+                                              <property name="action-name">win.edit-host</property>
+                                              <style>
+                                                <class name="pill"/>
+                                              </style>
+                                            </object>
+                                          </child>
+                                          <child>
+                                            <object class="GtkButton">
+                                              <property name="label" translatable="yes">_Try Again</property>
+                                              <property name="use-underline">True</property>
+                                              <property name="action-name">win.refresh</property>
+                                              <style>
+                                                <class name="pill"/>
+                                                <class name="suggested-action"/>
+                                              </style>
+                                            </object>
+                                          </child>
+                                        </object>
+                                      </property>
+                                    </object>
+                                  </property>
+                                </object>
+                              </child>
+                            </object>
+                          </property>
+                        </object>
+                      </property>
+                    </object>
+                  </property>
+                </object>
                 </property>
-                <child type="bottom">
-                  <object class="GtkActionBar">
-                    <child type="start">
-                      <object class="GtkMenuButton" id="machine_button">
-                        <property name="hexpand">True</property>
-                        <property name="direction">up</property>
-                        <property name="tooltip-text" translatable="yes">Choose a Machine</property>
-                        <style>
-                          <class name="flat"/>
-                          <class name="machine-button"/>
-                        </style>
-                        <property name="child">
-                          <object class="GtkBox">
-                            <property name="spacing">10</property>
-                            <child>
-                              <object class="GtkImage" id="machine_icon">
-                                <property name="icon-name">computer-symbolic</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkBox">
-                                <property name="orientation">vertical</property>
-                                <property name="hexpand">True</property>
-                                <child>
-                                  <object class="GtkLabel" id="machine_name">
-                                    <property name="xalign">0</property>
-                                    <property name="ellipsize">end</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkLabel" id="machine_subtitle">
-                                    <property name="xalign">0</property>
-                                    <property name="ellipsize">end</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                      <class name="caption"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkBox" id="machine_dot">
-                                <property name="visible">False</property>
-                                <property name="valign">center</property>
-                                <property name="tooltip-text" translatable="yes">Connected</property>
-                                <style>
-                                  <class name="status-dot"/>
-                                  <class name="small"/>
-                                  <class name="running"/>
-                                </style>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkImage">
-                                <property name="icon-name">pan-up-symbolic</property>
-                              </object>
-                            </child>
-                          </object>
-                        </property>
-                        <property name="popover">
-                          <object class="GtkPopover" id="machine_popover">
-                            <property name="child">
-                              <object class="GtkScrolledWindow">
-                                <property name="hscrollbar-policy">never</property>
-                                <property name="propagate-natural-height">True</property>
-                                <property name="max-content-height">420</property>
-                                <property name="child">
-                                  <object class="GtkListBox" id="machine_list">
-                                    <property name="selection-mode">browse</property>
-                                    <style>
-                                      <class name="navigation-sidebar"/>
-                                    </style>
-                                    <signal name="row-selected" handler="on_machine_selected"/>
-                                    <signal name="row-activated" handler="on_machine_activated"/>
-                                  </object>
-                                </property>
-                              </object>
-                            </property>
-                          </object>
-                        </property>
-                      </object>
-                    </child>
-                    <child type="end">
-                      <object class="GtkButton">
-                        <property name="icon-name">list-add-symbolic</property>
-                        <property name="tooltip-text" translatable="yes">Add Remote Host</property>
-                        <property name="action-name">win.add-host</property>
-                        <property name="valign">center</property>
-                        <style>
-                          <class name="flat"/>
-                        </style>
-                      </object>
-                    </child>
-                  </object>
-                </child>
               </object>
-            </property>
-            <property name="content">
-              <!-- Details of the opened service, full height beside the services list, which
-                   shrinks to make room. Too narrow for that, details open in a dialog instead. -->
-              <object class="AdwOverlaySplitView" id="details_split">
-                <property name="sidebar-position">end</property>
-                <property name="show-sidebar">False</property>
-                <property name="min-sidebar-width">380</property>
-                <!-- No real cap (the default is 280): the width fraction alone decides. -->
-                <property name="max-sidebar-width">100000</property>
-                <property name="sidebar-width-fraction">0.6</property>
-                <property name="sidebar">
-                  <object class="AdwBin" id="details_bin"/>
-                </property>
-                <property name="content">
-                  <object class="AdwToolbarView">
-                    <child type="top">
-                      <object class="AdwHeaderBar">
-                        <property name="show-title">False</property>
-                        <child type="start">
-                          <object class="GtkToggleButton" id="sidebar_button">
-                            <property name="icon-name">sidebar-show-symbolic</property>
-                            <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
-                            <property name="active">True</property>
-                          </object>
-                        </child>
-                        <child type="end">
-                          <object class="GtkMenuButton" id="host_menu_button">
-                            <property name="icon-name">view-more-symbolic</property>
-                            <property name="menu-model">host_menu</property>
-                            <property name="tooltip-text" translatable="yes">Host Menu</property>
-                          </object>
-                        </child>
-                        <child type="end">
-                          <object class="GtkToggleButton" id="search_button">
-                            <property name="icon-name">system-search-symbolic</property>
-                            <property name="tooltip-text" translatable="yes">Search</property>
-                            <property name="active" bind-source="search_bar" bind-property="search-mode-enabled" bind-flags="sync-create|bidirectional"/>
-                          </object>
-                        </child>
-                        <child type="end">
-                          <object class="GtkButton">
-                            <property name="icon-name">view-refresh-symbolic</property>
-                            <property name="tooltip-text" translatable="yes">Refresh</property>
-                            <property name="action-name">win.refresh</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child type="top">
-                      <object class="GtkSearchBar" id="search_bar">
-                        <property name="child">
-                          <object class="GtkSearchEntry" id="search_entry">
-                            <property name="hexpand">True</property>
-                            <property name="placeholder-text" translatable="yes">Search services</property>
-                            <signal name="search-changed" handler="on_search_changed"/>
-                          </object>
-                        </property>
-                      </object>
-                    </child>
-                    <property name="content">
-                      <object class="GtkStack" id="content_stack">
-                        <property name="transition-type">crossfade</property>
-                        <property name="hhomogeneous">False</property>
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">loading</property>
-                            <property name="child">
-                              <object class="GtkBox">
-                                <property name="orientation">vertical</property>
-                                <property name="spacing">18</property>
-                                <property name="valign">center</property>
-                                <property name="halign">center</property>
-                                <child>
-                                  <object class="GtkSpinner" id="spinner">
-                                    <property name="width-request">32</property>
-                                    <property name="height-request">32</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkLabel" id="loading_label">
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkButton" id="cancel_connect_button">
-                                    <property name="label" translatable="yes">_Cancel</property>
-                                    <property name="use-underline">True</property>
-                                    <property name="halign">center</property>
-                                    <property name="action-name">win.cancel-connect</property>
-                                    <style>
-                                      <class name="pill"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">main</property>
-                            <property name="child">
-                              <object class="AdwBin" id="services_bin"/>
-                            </property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">disconnected</property>
-                            <property name="child">
-                              <object class="AdwStatusPage" id="disconnected_page">
-                                <property name="icon-name">network-wired-symbolic</property>
-                                <property name="title" translatable="yes">Not Connected</property>
-                                <property name="child">
-                                  <object class="GtkButton">
-                                    <property name="label" translatable="yes">_Connect</property>
-                                    <property name="use-underline">True</property>
-                                    <property name="halign">center</property>
-                                    <property name="action-name">win.connect</property>
-                                    <style>
-                                      <class name="pill"/>
-                                      <class name="suggested-action"/>
-                                    </style>
-                                  </object>
-                                </property>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">error</property>
-                            <property name="child">
-                              <object class="AdwStatusPage" id="error_page">
-                                <property name="icon-name">dialog-warning-symbolic</property>
-                                <property name="child">
-                                  <object class="GtkBox">
-                                    <property name="spacing">12</property>
-                                    <property name="halign">center</property>
-                                    <child>
-                                      <object class="GtkButton" id="error_edit_button">
-                                        <property name="label" translatable="yes">_Edit Host</property>
-                                        <property name="use-underline">True</property>
-                                        <property name="action-name">win.edit-host</property>
-                                        <style>
-                                          <class name="pill"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkButton">
-                                        <property name="label" translatable="yes">_Try Again</property>
-                                        <property name="use-underline">True</property>
-                                        <property name="action-name">win.refresh</property>
-                                        <style>
-                                          <class name="pill"/>
-                                          <class name="suggested-action"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </property>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-                      </object>
-                    </property>
-                  </object>
-                </property>
-              </object>
-            </property>
+            </child>
           </object>
         </property>
       </object>

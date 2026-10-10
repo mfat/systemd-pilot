@@ -23,8 +23,8 @@ from ..i18n import _, ngettext
 from . import prompts
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
+from .journal_page import JournalPage
 from .journal_view import JournalView
-from .journal_window import JournalWindow
 from .operations import Operations, describe
 from .resources import app_icon, template
 from .services_view import ServicesView
@@ -68,6 +68,7 @@ class Window(Adw.ApplicationWindow):
     __gtype_name__ = "SystemdPilotWindow"
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
+    nav_view: Adw.NavigationView = Gtk.Template.Child()
     split_view: Adw.OverlaySplitView = Gtk.Template.Child()
     filters_bin: Adw.Bin = Gtk.Template.Child()
     # The machine selector at the bottom of the sidebar.
@@ -128,15 +129,15 @@ class Window(Adw.ApplicationWindow):
         # The advanced table; its selection drives the "unit" actions and context menu.
         self.unit_list = self.services.unit_list
         self.unit_list.connect("selection-changed", lambda *_: self._update_actions())
-        # The journal has a window of its own; its prompts and toasts show there.
+        # The journal is a page pushed over the services; its prompts belong to it.
         journal_operations = Operations(self, self.toast)
         self.journal = JournalView(journal_operations)
         self.journal.connect("open-unit", lambda _v, name: self._open_unit_by_name(name))
         self.journal.connect("changed", lambda *_: self._update_badges())
-        self.journal_window = JournalWindow(self.journal, self)  # joins the application once opened
+        self.journal_page = JournalPage(self.journal)
+        self.nav_view.add(self.journal_page)
         journal_operations.parent = self.journal
-        journal_operations.toast = self.journal_window.toast
-        self.search_bar.set_key_capture_widget(self)
+        self.search_bar.set_key_capture_widget(self.split_view)
         self.search_bar.connect("notify::search-mode-enabled", self._on_search_mode)
 
         self._setup_actions()
@@ -169,7 +170,6 @@ class Window(Adw.ApplicationWindow):
         add("disconnect", self.disconnect_current)
         add("daemon-reload", self.daemon_reload)
         add("create-unit", self.create_unit)
-
 
         inactive = Gio.SimpleAction.new_stateful(
             "show-inactive", None, GLib.Variant("b", self.settings.get_boolean("show-inactive"))
@@ -235,15 +235,18 @@ class Window(Adw.ApplicationWindow):
 
     def show_journal(self):
         host = self._current_host()
-        self.journal_window.set_machine(host.name if host else _("This Computer"))
-        if self.journal_window.get_application() is None:
-            self.journal_window.set_application(self.get_application())
-        self.journal_window.present()
+        self.journal_page.set_machine(host.name if host else _("This Computer"))
+        if not self.journal_shown:
+            self.nav_view.push(self.journal_page)
         self.journal.show()
 
     @property
     def journal_shown(self) -> bool:
-        return self.journal_window.get_visible()
+        return self.nav_view.get_visible_page() is self.journal_page
+
+    def _close_journal(self):
+        if self.journal_shown:
+            self.nav_view.pop()
 
     def _on_mode_changed(self, action, value):
         action.set_state(value)
@@ -359,7 +362,7 @@ class Window(Adw.ApplicationWindow):
         self._close_details()
         self.journal.set_manager(self.sessions.get(self.machine_id))
         host = self._current_host()
-        self.journal_window.set_machine(host.name if host else _("This Computer"))
+        self.journal_page.set_machine(host.name if host else _("This Computer"))
         if self.journal_shown:
             self.journal.show()
         if self.sessions.is_connected(self.machine_id):
@@ -489,6 +492,7 @@ class Window(Adw.ApplicationWindow):
         self._refresh_row_status(self.machine_id)
         self.services.clear()
         self.journal.set_manager(None)
+        self._close_journal()
         self._show_disconnected()
         self._update_actions()
 
@@ -612,6 +616,7 @@ class Window(Adw.ApplicationWindow):
             if isinstance(error, ConnectionFailed) and machine_id != LOCAL_ID:
                 self.sessions.disconnect(machine_id)
                 self.journal.set_manager(None)
+                self._close_journal()
                 self._refresh_row_status(machine_id)
                 self._update_actions()
                 self._show_error(_("Connection Lost"), describe(error))
@@ -717,6 +722,7 @@ class Window(Adw.ApplicationWindow):
         manager = self.sessions.get(self.machine_id)
         if not unit or not manager:
             return
+
         def finish():
             if action in (UnitAction.ENABLE, UnitAction.DISABLE):
                 manager.invalidate_unit_files()
@@ -845,9 +851,9 @@ class Window(Adw.ApplicationWindow):
         self.unit_list.set_compact(self.details_split.get_show_sidebar())
 
     def _open_unit_by_name(self, name: str):
-        """From the journal window: the service opens in this one."""
+        """From the journal: back to the services, with that one open."""
         unit = next((u for u in self.services.units if u.name == name), None)
-        self.present()
+        self._close_journal()
         self.show_unit(unit or Unit(name))
 
     def _after_unit_created(self, manager: SystemdManager, name: str):
@@ -922,7 +928,6 @@ class Window(Adw.ApplicationWindow):
         Adw.ApplicationWindow.do_size_allocate(self, width, height, baseline)
 
     def do_close_request(self):
-        self.journal_window.destroy()  # hidden, it would keep the application running
         if not self.is_maximized():
             width, height = self.get_default_size()
             self.settings.set_int("window-width", width)

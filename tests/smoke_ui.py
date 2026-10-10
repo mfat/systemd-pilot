@@ -72,9 +72,9 @@ def run_steps(window):
         lambda: check(window._details.stack.get_visible_child_name() == "overview", "no overview page"),
         lambda: window._close_details(),
         lambda: check(window._details is None, "details panel not closed"),
-        # The journal opens in a window of its own.
+        # The journal is pushed over the whole window.
         lambda: window.activate_action("win.journal", None),
-        lambda: check(window.journal_window.get_visible(), "journal window not shown"),
+        lambda: check(window.journal_shown, "journal page not shown"),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "ssh")),
         lambda: window.journal.activate_action("journal.filter", GLib.Variant("s", "all")),
         lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
@@ -82,12 +82,10 @@ def run_steps(window):
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "")),
         # Hidden entries: the banner offers access, which asks first.
         lambda: show_hidden_entries(window),
-        lambda: check(
-            isinstance(window.journal_window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"
-        ),
-        lambda: answer(window.journal_window.get_visible_dialog(), "cancel"),
-        lambda: window.journal_window.close(),
-        lambda: check(not window.journal_window.get_visible(), "journal window not hidden"),
+        lambda: check(isinstance(window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"),
+        lambda: answer(window.get_visible_dialog(), "cancel"),
+        lambda: window.nav_view.pop(),
+        lambda: check(not window.journal_shown, "journal page not closed"),
         # Context menu from the keyboard (Menu / Shift+F10).
         # One step, so a service list loading in the background can't replace the row in between.
         lambda: open_context_menu_from_keyboard(window, unit),

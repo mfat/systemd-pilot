@@ -1,24 +1,23 @@
-"""The journal of the current machine, in a window of its own."""
+"""The journal of the current machine, as a page pushed over the whole main window."""
 
 from __future__ import annotations
 
-from gi.repository import Adw, Gio, GObject, Gtk
+from gi.repository import Adw, GObject, Gtk
 
 from ..i18n import _
 from .journal_view import JournalView
 
 
-class JournalWindow(Adw.Window):
-    """Hosts the main window's :class:`JournalView`; closing only hides it.
+class JournalPage(Adw.NavigationPage):
+    """Hosts the main window's :class:`JournalView` in place of the services.
 
-    The main window's actions are reachable as ``win.*``, so the Simple/Advanced
-    switch in the journal stays in step with the services.
+    Nothing of the services page applies to the journal, so it covers all of it;
+    swapping whole pages also leaves the services layout untouched underneath.
     """
 
-    def __init__(self, journal: JournalView, actions: Gio.ActionGroup):
-        super().__init__(default_width=1000, default_height=720, hide_on_close=True)
+    def __init__(self, journal: JournalView):
+        super().__init__(tag="journal", title=_("systemd Journal"))
         self.journal = journal
-        self.insert_action_group("win", actions)
 
         self.window_title = Adw.WindowTitle(title=_("systemd Journal"))
         header = Adw.HeaderBar(title_widget=self.window_title)
@@ -33,6 +32,7 @@ class JournalWindow(Adw.Window):
         clamp = Adw.Clamp(maximum_size=600, child=entry)
         self.search_bar = Gtk.SearchBar(child=clamp)
         self.search_bar.connect_entry(entry)
+        # Typing on this page searches the journal, not the services.
         self.search_bar.set_key_capture_widget(self)
         self.search_bar.bind_property(
             "search-mode-enabled",
@@ -48,12 +48,7 @@ class JournalWindow(Adw.Window):
         view.add_top_bar(header)
         view.add_top_bar(self.search_bar)
         view.set_content(journal)
-        self.toast_overlay = Adw.ToastOverlay(child=view)
-        self.set_content(self.toast_overlay)
+        self.set_child(view)
 
     def set_machine(self, name: str) -> None:
-        self.set_title(_("systemd Journal — {machine}").format(machine=name))
         self.window_title.set_subtitle(name)
-
-    def toast(self, message: str) -> None:
-        self.toast_overlay.add_toast(Adw.Toast(title=message, use_markup=False, timeout=3))
