@@ -6,7 +6,7 @@ from collections.abc import Callable
 from gettext import gettext as _
 from gettext import ngettext
 
-from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
+from gi.repository import Adw, Gio, GLib, GObject, Gtk
 
 from ..core.journal import ERROR, PRESETS, PRESETS_BY_ID, Issue, find_issues
 from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
@@ -165,9 +165,9 @@ class IssueRow(Gtk.ListBoxRow):
             open_button = Gtk.Button(label=_("Open Service"), css_classes=["small-pill"])
             open_button.connect("clicked", lambda *_: open_unit(issue.unit))
             buttons.append(open_button)
-        toggle = Gtk.ToggleButton(css_classes=["flat", "small-pill"], tooltip_text=_("Show entries"))
+        toggle = Gtk.ToggleButton(css_classes=["flat", "small-pill"], tooltip_text=_("Show details"))
         toggle_content = Gtk.Box(spacing=6)
-        toggle_content.append(Gtk.Label(label=_("Entries")))
+        toggle_content.append(Gtk.Label(label=_("Details")))
         chevron = Gtk.Image(icon_name="pan-down-symbolic")
         toggle_content.append(chevron)
         toggle.set_child(toggle_content)
@@ -175,22 +175,23 @@ class IssueRow(Gtk.ListBoxRow):
         box.append(buttons)
         outer.append(box)
 
-        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, css_classes=["issue-lines"])
+        lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=["issue-lines"])
+        detail_lines = []
         for entry in issue.entries[:30]:
             stamp = entry.timestamp.strftime("%b %d %H:%M:%S") if entry.timestamp else "—"
             source = entry.identifier + (f"[{entry.pid}]" if entry.pid else "")
-            line = widgets.label(
-                f"{stamp} {source}: {entry.message.partition(chr(10))[0]}",
-                "monospace",
-                "caption",
-                wrap=True,
-                wrap_mode=Pango.WrapMode.WORD_CHAR,
-                selectable=True,
+            detail_lines.append(f"{stamp} {source}: {entry.message.partition(chr(10))[0]}")
+        if detail_lines:
+            lines.append(
+                widgets.label(
+                    "\n".join(detail_lines),
+                    "monospace",
+                    "caption",
+                    wrap=True,
+                    selectable=True,
+                    hexpand=True,
+                )
             )
-            css = words.level(entry.priority)[1]
-            if css:
-                line.add_css_class(css)
-            lines.append(line)
         if count > 30:
             lines.append(widgets.label(_("…and {n} more").format(n=count - 30), "dim-label", "caption"))
         revealer = Gtk.Revealer(child=lines)
