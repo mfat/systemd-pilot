@@ -794,15 +794,14 @@ class JournalView(Gtk.Box):
             return
 
         # Paint the timeline in chunks so switching to Journal does not stall.
-        target = min(len(shown), self._shown)
-        state = {"pos": 0, "last_boot": None, "older": False}
+        state = {"pos": 0, "target": min(len(shown), self._shown), "last_boot": None, "older": False}
         # Errors and Warnings list only those anyway; elsewhere, say where the other entries stop.
         older_from = self._older_from if flt == "all" or preset_title else None
 
         def add_chunk():
             if gen != self._render_gen:
                 return GLib.SOURCE_REMOVE
-            end = min(state["pos"] + CHUNK, target)
+            end = min(state["pos"] + CHUNK, state["target"])
             for index, entry in shown[state["pos"] : end]:
                 if older_from and not state["older"] and entry.timestamp and entry.timestamp < older_from:
                     timeline.list.append(self._older_row())
@@ -815,9 +814,9 @@ class JournalView(Gtk.Box):
                 if entry is selected:
                     timeline.list.select_row(row)
             state["pos"] = end
-            if state["pos"] < target:
+            if state["pos"] < state["target"]:
                 return GLib.SOURCE_CONTINUE
-            if len(shown) > self._shown:
+            if len(shown) > state["target"]:
                 more = Gtk.Button(
                     label=_("Show More"),
                     halign=Gtk.Align.CENTER,
@@ -825,9 +824,22 @@ class JournalView(Gtk.Box):
                     margin_top=6,
                     margin_bottom=6,
                 )
-                more.connect("clicked", self._show_more)
-                timeline.list.append(Gtk.ListBoxRow(child=more, activatable=False, selectable=False))
+                more_row = Gtk.ListBoxRow(child=more, activatable=False, selectable=False)
+                more.connect("clicked", lambda _b: show_more(more_row))
+                timeline.list.append(more_row)
             return GLib.SOURCE_REMOVE
+
+        def show_more(more_row):
+            # Added below the rows already there, so the list stays where it was scrolled.
+            # Focus moves to the last entry first: left on the removed button, it would
+            # jump to the top of the page, and the view would follow it there.
+            last = more_row.get_prev_sibling()
+            if last is not None:
+                last.grab_focus()
+            timeline.list.remove(more_row)
+            self._shown += PAGE
+            state["target"] = min(len(shown), self._shown)
+            GLib.idle_add(add_chunk)
 
         GLib.idle_add(add_chunk)
 
@@ -877,12 +889,6 @@ class JournalView(Gtk.Box):
             return GLib.SOURCE_REMOVE if adjustment.get_value() >= point.y - 1 else GLib.SOURCE_CONTINUE
 
         self._simple_scroll.add_tick_callback(tick)
-
-    def _show_more(self, _button):
-        position = self._simple_scroll.get_vadjustment().get_value()
-        self._shown += PAGE
-        self._refresh()
-        GLib.idle_add(lambda: self._simple_scroll.get_vadjustment().set_value(position) and False)
 
     def _older_row(self) -> Gtk.ListBoxRow:
         box = Gtk.Box(spacing=10, css_classes=["boot-header"])
