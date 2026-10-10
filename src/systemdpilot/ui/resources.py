@@ -44,12 +44,15 @@ def app_icon(size: int) -> Gdk.Paintable | None:
 
 
 def load_css_from_source() -> None:
-    """Load style.css from the source tree when the bundle is not registered.
+    """Load style.css and the app's own icons from the source tree when the bundle is not registered.
 
-    With the bundle, Adw.Application loads it from its resource base path.
+    With the bundle, Adw.Application loads them from its resource base path.
     """
     if _in_bundle("style.css"):
         return
+    Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(
+        str(_SOURCE_DIR.parents[2] / "data" / "icons" / "actions")
+    )
     provider = Gtk.CssProvider()
     provider.load_from_path(str(_SOURCE_DIR / "style.css"))
     Gtk.StyleContext.add_provider_for_display(

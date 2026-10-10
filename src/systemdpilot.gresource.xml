@@ -9,5 +9,7 @@
     <!-- The app icon, for the icon theme (GtkApplication adds <prefix>/icons). -->
     <file alias="icons/scalable/apps/io.github.mfat.systemdpilot.svg">../data/icons/hicolor/scalable/apps/io.github.mfat.systemdpilot.svg</file>
     <file alias="icons/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg">../data/icons/hicolor/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg</file>
+    <!-- Icons only the app uses; not installed into the system theme. -->
+    <file alias="icons/scalable/actions/cogged-wheel-symbolic.svg">../data/icons/actions/cogged-wheel-symbolic.svg</file>
   </gresource>
 </gresources>

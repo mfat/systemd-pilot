@@ -46,7 +46,7 @@ class FilterRow(Gtk.ListBoxRow):
             mark = Gtk.Box(width_request=16, valign=Gtk.Align.CENTER)  # dots line up with the icons
             mark.append(widgets.dot(dot_kind, small=True))
         else:
-            mark = Gtk.Image(icon_name=icon_name or "view-list-symbolic")
+            mark = Gtk.Image(icon_name=icon_name or "cogged-wheel-symbolic")
         box.append(mark)
         box.append(widgets.label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
         self.count = widgets.label("", "dim-label", "numeric")
