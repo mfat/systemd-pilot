@@ -11,5 +11,6 @@
     <file alias="icons/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg">../data/icons/hicolor/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg</file>
     <!-- Icons only the app uses; not installed into the system theme. -->
     <file alias="icons/scalable/actions/cogged-wheel-symbolic.svg">../data/icons/actions/cogged-wheel-symbolic.svg</file>
+    <file alias="icons/scalable/actions/bell-symbolic.svg">../data/icons/actions/bell-symbolic.svg</file>
   </gresource>
 </gresources>

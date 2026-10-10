@@ -284,7 +284,7 @@ class Window(Adw.ApplicationWindow):
     def _journal_button(self) -> tuple[Gtk.Button, Gtk.Label]:
         """For the details column's header bar: one each for the placeholder and the panel."""
         # A bell, with the count of problems on its corner.
-        bell = Gtk.Overlay(child=Gtk.Image(icon_name="preferences-system-notifications-symbolic"))
+        bell = Gtk.Overlay(child=Gtk.Image(icon_name="bell-symbolic"))
         badge = count_badge("error")
         badge.add_css_class("on-icon")
         badge.set_xalign(0.5)
