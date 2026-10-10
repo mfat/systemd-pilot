@@ -15,6 +15,7 @@
       <li>Browse system and user services, with instant search</li>
       <li>Start, stop, restart, enable and disable services</li>
       <li>Read a service's status, logs, unit file and properties</li>
+      <li>Read the system journal, with filters and a custom time range</li>
       <li>Create new services from templates</li>
       <li>Connect to remote hosts with a password, a private key or your SSH agent</li>
     </ul>
@@ -53,6 +54,17 @@
   </screenshots>
 
   <releases>
+    <release version="4.1.0" date="2026-10-11">
+      <description>
+        <p>The journal and the services list now share the main window.</p>
+        <ul>
+          <li>Read the journal with filters, common-problem presets, search and a custom time range</li>
+          <li>System and user services are listed together, with filters in the sidebar</li>
+          <li>Service details open beside the list, including the log and an editor for the unit file</li>
+          <li>A failed command is shown with its output, which can be copied</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.0.0" date="2026-10-09">
       <description>
         <p>A complete rewrite for GTK 4 and libadwaita.</p>

@@ -1,6 +1,6 @@
 project(
   'systemd-pilot',
-  version: '4.0.0',
+  version: '4.1.0',
   meson_version: '>= 1.0.0',
   license: 'GPL-3.0-or-later',
   default_options: ['warning_level=2'],

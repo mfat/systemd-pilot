@@ -1,3 +1,11 @@
+systemd-pilot (4.1.0) unstable; urgency=medium
+
+  * Add a journal view with filters, time ranges and search.
+  * List system and user services together, with details beside the list.
+  * Show a failed command and its output in a dialog.
+
+ -- mFat <newmfat@gmail.com>  Sun, 11 Oct 2026 03:06:13 +0330
+
 systemd-pilot (4.0.0) unstable; urgency=medium
 
   * Rewrite for GTK 4 and libadwaita, built with meson.

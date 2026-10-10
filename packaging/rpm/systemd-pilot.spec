@@ -1,5 +1,5 @@
 Name:           systemd-pilot
-Version:        4.0.0
+Version:        4.1.0
 Release:        1%{?dist}
 Summary:        Manage systemd services locally and over SSH
 
@@ -60,5 +60,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.mfat.system
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg
 
 %changelog
+* Sun Oct 11 2026 mFat <newmfat@gmail.com> - 4.1.0-1
+- Add a journal view with filters, time ranges and search
+- List system and user services together, with details beside the list
+
 * Fri Oct 09 2026 mFat <newmfat@gmail.com> - 4.0.0-1
 - Rewrite for GTK 4 and libadwaita, built with meson
