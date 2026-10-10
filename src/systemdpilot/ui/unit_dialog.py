@@ -56,6 +56,7 @@ class UnitPanel(Adw.BreakpointBin):
     action_box: Gtk.FlowBox = Gtk.Template.Child()
     state_label: Gtk.Label = Gtk.Template.Child()
     stack: Adw.ViewStack = Gtk.Template.Child()
+    loading_stack: Gtk.Stack = Gtk.Template.Child()
     pages_spinner: Gtk.Spinner = Gtk.Template.Child()
     overview_page: Adw.ViewStackPage = Gtk.Template.Child()
     activity_page: Adw.ViewStackPage = Gtk.Template.Child()
@@ -103,11 +104,9 @@ class UnitPanel(Adw.BreakpointBin):
         self._remote = isinstance(manager.runner, SSHRunner)
         self._elevated = False
         self._loads = 0
-        self._fetching = False
         self._details_load: int | None = None  # the load the shown details came from
         self.journal_badge: Gtk.Label | None = None  # on the window's Journal button, beside the list
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
-        self.stack.connect("notify::visible-child-name", lambda *_: self._update_pages_spinner())
 
         # Beside the list the window's Simple/Advanced switch applies.
         self.mode_box.set_visible(not in_pane)
@@ -124,8 +123,6 @@ class UnitPanel(Adw.BreakpointBin):
         self._apply_mode(initial=True)
 
         self._show_unit(unit)
-        self._build_shell()
-        self._activity_loading()
 
     def start_loading(self) -> None:
         """Fetch fresh data in the background (call after :meth:`present`)."""
@@ -212,20 +209,17 @@ class UnitPanel(Adw.BreakpointBin):
 
     def _set_fetching(self, fetching: bool) -> None:
         """Background refresh: keep start/stop/enable usable while details load."""
-        self._fetching = fetching
         self.refresh_button.set_sensitive(not fetching)
         # The refresh button turns into a spinner while details load.
         if fetching:
             self.refresh_button.set_child(Gtk.Spinner(spinning=True))
         else:
             self.refresh_button.set_icon_name("view-refresh-symbolic")
-        self._update_pages_spinner()
 
-    def _update_pages_spinner(self) -> None:
-        """The raw output pages are blank until the first load: a spinner shows over them."""
-        shown = self._fetching and self._details is None and self.stack.get_visible_child_name() in _ADVANCED_PAGES
-        self.pages_spinner.set_visible(shown)
-        self.pages_spinner.set_spinning(shown)
+    def _show_pages(self) -> None:
+        """Everything has loaded (or failed): the spinner gives way to the pages, once."""
+        self.pages_spinner.stop()
+        self.loading_stack.set_visible_child_name("pages")
 
     # -- loading ----------------------------------------------------------
 
@@ -252,11 +246,7 @@ class UnitPanel(Adw.BreakpointBin):
             if self._closed or load != self._loads:
                 return
             props, unit = result
-            self._properties = props
-            self._show_unit(unit)
-            self._build_overview(
-                _Details(unit=unit, status="", properties=props, unit_file="", logs=LogResult([], ""))
-            )
+            # Shown with the rest, so the pages don't fill in twice.
             self._load_heavy(props, unit, load)
 
         def core_failed(error):
@@ -363,6 +353,7 @@ class UnitPanel(Adw.BreakpointBin):
     def _build_activity_idle(self, details: _Details):
         if not self._closed:
             self._build_activity(details)
+            self._show_pages()
         return GLib.SOURCE_REMOVE
 
     def _scroll_logs_to_end(self):
@@ -385,28 +376,7 @@ class UnitPanel(Adw.BreakpointBin):
             )
         )
         self.toast_overlay.add_toast(Adw.Toast(title=_("Could not load details"), timeout=3))
-
-    def _build_shell(self) -> None:
-        """Overview from the list row so the dialog can open immediately."""
-        unit = self.unit
-        box = self.overview_box
-        widgets.clear(box)
-        if unit.is_failed:
-            banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
-            banner.append(Gtk.Image(icon_name="dialog-error-symbolic", css_classes=["error"]))
-            banner.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
-            box.append(banner)
-        behavior = Adw.PreferencesGroup(title=_("Behavior"))
-        loading = Adw.ActionRow(title=_("Enabled"), subtitle=_("Checking whether this starts at boot"))
-        loading.add_suffix(Gtk.Spinner(spinning=True, valign=Gtk.Align.CENTER))
-        behavior.add(loading)
-        box.append(behavior)
-
-    def _activity_loading(self) -> None:
-        widgets.clear(self.activity_box)
-        self.activity_box.append(
-            Gtk.Spinner(spinning=True, width_request=32, height_request=32, margin_top=48, halign=Gtk.Align.CENTER)
-        )
+        self._show_pages()
 
     # -- simple pages -----------------------------------------------------
 
