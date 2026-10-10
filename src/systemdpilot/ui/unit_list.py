@@ -48,6 +48,15 @@ def state_css_class(unit: Unit) -> str:
     return "dim-label"
 
 
+def matches_filter(unit: Unit, value: str) -> bool:
+    """Whether the sidebar filter ``value`` ("all", "user" or a :attr:`Unit.kind`) shows ``unit``."""
+    if value == "all":
+        return True
+    if value == "user":
+        return unit.is_user
+    return unit.kind == value
+
+
 class UnitList(Gtk.ScrolledWindow):
     """Shows units in a :class:`Gtk.ColumnView`: the advanced services view.
 
@@ -153,7 +162,7 @@ class UnitList(Gtk.ScrolledWindow):
         self.selection.set_selected(Gtk.INVALID_LIST_POSITION)
 
     def set_kind(self, kind: str) -> None:
-        """Show only units of this :attr:`Unit.kind`, or "all"."""
+        """Show only units that the sidebar filter ``kind`` shows (see :func:`matches_filter`)."""
         if kind != self._kind:
             self._kind = kind
             self._filter.changed(Gtk.FilterChange.DIFFERENT)
@@ -175,7 +184,7 @@ class UnitList(Gtk.ScrolledWindow):
     # -- internals --------------------------------------------------------
 
     def _matches(self, item: UnitItem) -> bool:
-        if self._kind != "all" and item.unit.kind != self._kind:
+        if not matches_filter(item.unit, self._kind):
             return False
         if not self._query:
             return True

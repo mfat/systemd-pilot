@@ -8,7 +8,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
 from ..core.models import Unit, UnitAction
 from . import widgets, words
-from .unit_list import UnitList
+from .unit_list import UnitList, matches_filter
 
 SIMPLE_CHUNK = 25  # service rows built per idle tick on first paint
 
@@ -184,11 +184,13 @@ class ServicesView(Gtk.Box):
     }
 
     FILTERS = (
-        ("all", _("All"), None),
-        ("failed", _("Needs attention"), "failed"),
-        ("running", _("Running"), "running"),
-        ("exited", _("Done"), "exited"),
-        ("dead", _("Stopped"), "dead"),
+        ("all", _("All"), None, ""),
+        ("failed", _("Needs attention"), "failed", ""),
+        ("running", _("Running"), "running", ""),
+        ("exited", _("Done"), "exited", ""),
+        ("dead", _("Stopped"), "dead", ""),
+        # Not a state: services run by the user's own systemd, in whatever state.
+        ("user", _("User services"), None, "avatar-default-symbolic"),
     )
     GROUPS = (
         ("failed", _("Needs attention"), _("These services stopped with an error"), "error"),
@@ -223,8 +225,8 @@ class ServicesView(Gtk.Box):
         # The state filters live in the window sidebar.
         self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
         self._filter_rows: dict[str, FilterRow] = {}
-        for value, text, dot_kind in self.FILTERS:
-            row = FilterRow(value, text, dot_kind)
+        for value, text, dot_kind, icon_name in self.FILTERS:
+            row = FilterRow(value, text, dot_kind, icon_name)
             self._filter_rows[value] = row
             self.filter_list.append(row)
         self.filter_list.select_row(self._filter_rows["all"])
@@ -338,12 +340,12 @@ class ServicesView(Gtk.Box):
 
     def _visible(self) -> list[Unit]:
         kind = self.kind_filter
-        return [u for u in self._matching() if kind == "all" or u.kind == kind]
+        return [u for u in self._matching() if matches_filter(u, kind)]
 
     def _refresh(self) -> None:
         matching = self._matching()
         for value, row in self._filter_rows.items():
-            row.set_count(len(matching) if value == "all" else sum(1 for u in matching if u.kind == value))
+            row.set_count(sum(1 for u in matching if matches_filter(u, value)))
 
         visible = self._visible()
         if not visible:
