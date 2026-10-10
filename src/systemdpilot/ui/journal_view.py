@@ -684,13 +684,14 @@ class JournalView(Gtk.Box):
         """Scroll the timeline's heading to the top once the new widgets are laid out.
 
         Rows are painted in chunks, so the page may be too short to reach it at
-        first; keep going until it gets there, for a second at most.
+        first; keep going until it gets there, for a few seconds at most. ``widget``
+        is made at least a page tall, or a short list would stop at the bottom.
         """
-        frames = {"left": 60}
+        deadline = {}
 
-        def tick(_scroll, _clock):
-            frames["left"] -= 1
-            if gen != self._render_gen or not frames["left"]:
+        def tick(_scroll, clock):
+            now = clock.get_frame_time()
+            if gen != self._render_gen or now > deadline.setdefault("at", now + 3 * 1_000_000):
                 return GLib.SOURCE_REMOVE
             if not widget.get_height():
                 return GLib.SOURCE_CONTINUE  # not allocated until the next frame
@@ -698,6 +699,10 @@ class JournalView(Gtk.Box):
             if not ok:
                 return GLib.SOURCE_REMOVE
             adjustment = self._simple_scroll.get_vadjustment()
+            page = int(adjustment.get_page_size())
+            if widget.get_height() < page:
+                widget.set_size_request(-1, page)
+                return GLib.SOURCE_CONTINUE  # taller from the next frame
             adjustment.set_value(point.y)
             return GLib.SOURCE_REMOVE if adjustment.get_value() >= point.y - 1 else GLib.SOURCE_CONTINUE
 
