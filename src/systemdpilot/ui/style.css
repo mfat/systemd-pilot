@@ -118,6 +118,40 @@ button.option:checked .option-count { background-color: @accent_bg_color; color:
 .unit-title { font-weight: 600; }
 .state-word { font-size: 13px; font-weight: 600; }
 button.row-action { min-width: 32px; min-height: 32px; padding: 0; }
+/* The simple list draws each group of rows as a boxed-list card. */
+listview.services-list { background: none; padding-bottom: 24px; }
+listview.services-list > row,
+listview.services-list > row:hover,
+listview.services-list > row:active,
+listview.services-list > row:focus { padding: 0; background: none; outline: none; }
+listview.services-list > header { padding: 0; background: none; border: none; }
+.service-row {
+  background-color: @card_bg_color;
+  color: @card_fg_color;
+  border-bottom: 1px solid @card_shade_color;
+  box-shadow: -1px 0 alpha(black, 0.03), 1px 0 alpha(black, 0.03);
+}
+.service-row.first {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  box-shadow: -1px 0 alpha(black, 0.03), 1px 0 alpha(black, 0.03), 0 -1px alpha(black, 0.03);
+}
+.service-row.last {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  border-bottom-width: 0;
+  box-shadow: -1px 0 alpha(black, 0.03), 1px 0 alpha(black, 0.03), 0 1px alpha(black, 0.03),
+    0 2px 3px -1px alpha(black, 0.07), 0 4px 6px -2px alpha(black, 0.03);
+}
+.service-row.first.last {
+  box-shadow: 0 0 0 1px alpha(black, 0.03), 0 1px 3px 1px alpha(black, 0.07), 0 2px 6px 2px alpha(black, 0.03);
+}
+listview.services-list > row:hover > .service-row { background-image: image(alpha(currentColor, 0.03)); }
+listview.services-list > row:active > .service-row { background-image: image(alpha(currentColor, 0.08)); }
+listview.services-list > row:focus-visible > .service-row {
+  outline: 2px solid alpha(@accent_color, 0.5);
+  outline-offset: -2px;
+}
 .identity-card { padding: 14px 16px 14px 18px; }
 
 .table-card { padding: 0; }

@@ -114,23 +114,25 @@ def run_steps(window):
         window.unit_list.select_name(unit.name)
         check(window.unit_list._popup_for_focus(), "keyboard context menu did not open")
 
-    def same_name_in_both_scopes(window):
-        from systemdpilot.ui.services_view import UnitRow
+    def simple_units(window):
+        from systemdpilot.ui.services_view import ServiceItem
 
+        model = window.services.model
+        items = (model.get_item(i) for i in range(model.get_n_items()))
+        return [item.unit for item in items if isinstance(item, ServiceItem)]
+
+    def same_name_in_both_scopes(window):
         running = dict(load_state="loaded", active_state="active", sub_state="running")
         window.services.set_units([Unit("dbus.service", **running), Unit("dbus.service", **running, scope=Scope.USER)])
-        rows = [w for w in _descendants(window.services._groups) if isinstance(w, UnitRow)]
-        check(sorted(r.unit.scope.value for r in rows) == ["system", "user"], "a same-named service is missing")
+        units = simple_units(window)
+        check(sorted(u.scope.value for u in units) == ["system", "user"], "a same-named service is missing")
 
     def check_no_enable_switch(window):
         from gi.repository import Gtk
 
-        from systemdpilot.ui.services_view import UnitRow
-
         window.services.set_units(demo_units())
-        rows = [w for w in _descendants(window.services._groups) if isinstance(w, UnitRow)]
-        check(rows, "no simple service rows")
-        has_switch = any(isinstance(w, Gtk.Switch) for w in _descendants(window.services._groups))
+        check(simple_units(window), "no simple service rows")
+        has_switch = any(isinstance(w, Gtk.Switch) for w in _descendants(window.services.simple_list))
         check(not has_switch, "list still has enable switches")
 
     def _descendants(widget):

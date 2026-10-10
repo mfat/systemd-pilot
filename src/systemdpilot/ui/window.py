@@ -115,8 +115,6 @@ class Window(Adw.ApplicationWindow):
         self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_badges())
-        self.services.connect("built", lambda *_: self._on_list_built())
-        self._reveal_when_built = False  # the loading page waits for the list's first paint
         self.services_bin.set_child(self.services)
         self.filters_bin.set_child(self.services.sidebar)
         self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
@@ -625,21 +623,12 @@ class Window(Adw.ApplicationWindow):
     def _on_units_loaded(self, units: list[Unit]):
         self.services.set_units(self._carry_over(units))
         self.journal.set_known_units({u.name for u in units})
-        if self._loading_shown and self.services.building:
-            # One spinner, not the loading page's and then the list's own.
-            self._reveal_when_built = True
-        else:
-            self._show_list()
+        self._show_list()
         self._update_badges()
         self._update_actions()
         self._schedule_journal_badge()
 
-    def _on_list_built(self) -> None:
-        if self._reveal_when_built and self._loading_shown:
-            self._show_list()
-
     def _show_list(self) -> None:
-        self._reveal_when_built = False
         self.content_stack.set_visible_child_name("main")
         self.spinner.stop()
 
@@ -686,10 +675,6 @@ class Window(Adw.ApplicationWindow):
 
         self._set_pending(generation, "runtime", True, quiet)
         run_in_thread(manager.add_runtime, payload, on_done=runtime_done, on_error=runtime_failed)
-
-    @property
-    def _loading_shown(self) -> bool:
-        return self.content_stack.get_visible_child_name() == "loading"
 
     def _set_pending(self, generation: int, task: str, running: bool, quiet: bool = False) -> None:
         """The spinner above the services list shows while any of them is still fetching."""
@@ -903,7 +888,6 @@ class Window(Adw.ApplicationWindow):
     # -- pages ------------------------------------------------------------
 
     def _show_loading(self, text: str, cancellable: bool = False):
-        self._reveal_when_built = False
         self.loading_label.set_label(text)
         self.cancel_connect_button.set_visible(cancellable)
         self.spinner.start()
