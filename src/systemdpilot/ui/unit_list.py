@@ -263,7 +263,12 @@ class UnitList(Gtk.ScrolledWindow):
         box.append(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True, width_chars=16))
         box.append(
             widgets.label(
-                _("User"), "badge", valign=Gtk.Align.CENTER, visible=False, tooltip_text=_("User-level systemd unit")
+                _("User"),
+                "badge",
+                "user",
+                valign=Gtk.Align.CENTER,
+                visible=False,
+                tooltip_text=_("User-level systemd unit"),
             )
         )
         list_item.set_child(box)

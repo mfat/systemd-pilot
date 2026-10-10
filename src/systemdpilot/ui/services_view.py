@@ -28,6 +28,7 @@ def user_tag() -> Gtk.Widget:
     return widgets.label(
         _("User"),
         "badge",
+        "user",
         "compact",
         valign=Gtk.Align.CENTER,
         tooltip_text=_("User-level systemd unit"),
@@ -184,7 +185,7 @@ class ServicesView(Gtk.Box):
     }
 
     FILTERS = (
-        ("all", _("All"), None),
+        ("all", _("All services"), None),
         ("failed", _("Needs attention"), "failed"),
         ("running", _("Running"), "running"),
         ("exited", _("Done"), "exited"),

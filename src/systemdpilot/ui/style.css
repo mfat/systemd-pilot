@@ -13,6 +13,7 @@
 .badge.error { color: @error_color; background-color: alpha(@error_color, 0.15); }
 .badge.warning { color: @warning_color; background-color: alpha(@warning_color, 0.15); }
 .badge.accent { color: @accent_color; background-color: alpha(@accent_bg_color, 0.15); }
+.badge.user { color: @purple_3; background-color: alpha(@purple_3, 0.15); }
 
 textview.output {
   padding: 6px 12px;
