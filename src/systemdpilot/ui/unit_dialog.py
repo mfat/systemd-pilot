@@ -56,6 +56,7 @@ class UnitPanel(Adw.BreakpointBin):
     action_box: Gtk.FlowBox = Gtk.Template.Child()
     state_label: Gtk.Label = Gtk.Template.Child()
     stack: Adw.ViewStack = Gtk.Template.Child()
+    pages_spinner: Gtk.Spinner = Gtk.Template.Child()
     overview_page: Adw.ViewStackPage = Gtk.Template.Child()
     activity_page: Adw.ViewStackPage = Gtk.Template.Child()
     status_page: Adw.ViewStackPage = Gtk.Template.Child()
@@ -102,9 +103,11 @@ class UnitPanel(Adw.BreakpointBin):
         self._remote = isinstance(manager.runner, SSHRunner)
         self._elevated = False
         self._loads = 0
+        self._fetching = False
         self._details_load: int | None = None  # the load the shown details came from
         self.journal_badge: Gtk.Label | None = None  # on the window's Journal button, beside the list
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
+        self.stack.connect("notify::visible-child-name", lambda *_: self._update_pages_spinner())
 
         # Beside the list the window's Simple/Advanced switch applies.
         self.mode_box.set_visible(not in_pane)
@@ -209,7 +212,20 @@ class UnitPanel(Adw.BreakpointBin):
 
     def _set_fetching(self, fetching: bool) -> None:
         """Background refresh: keep start/stop/enable usable while details load."""
+        self._fetching = fetching
         self.refresh_button.set_sensitive(not fetching)
+        # The refresh button turns into a spinner while details load.
+        if fetching:
+            self.refresh_button.set_child(Gtk.Spinner(spinning=True))
+        else:
+            self.refresh_button.set_icon_name("view-refresh-symbolic")
+        self._update_pages_spinner()
+
+    def _update_pages_spinner(self) -> None:
+        """The raw output pages are blank until the first load: a spinner shows over them."""
+        shown = self._fetching and self._details is None and self.stack.get_visible_child_name() in _ADVANCED_PAGES
+        self.pages_spinner.set_visible(shown)
+        self.pages_spinner.set_spinning(shown)
 
     # -- loading ----------------------------------------------------------
 
@@ -381,9 +397,9 @@ class UnitPanel(Adw.BreakpointBin):
             banner.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
             box.append(banner)
         behavior = Adw.PreferencesGroup(title=_("Behavior"))
-        behavior.add(
-            self._row(_("Enabled"), _("Loading…"), _("Checking whether this starts at boot"))
-        )
+        loading = Adw.ActionRow(title=_("Enabled"), subtitle=_("Checking whether this starts at boot"))
+        loading.add_suffix(Gtk.Spinner(spinning=True, valign=Gtk.Align.CENTER))
+        behavior.add(loading)
         box.append(behavior)
 
     def _activity_loading(self) -> None:

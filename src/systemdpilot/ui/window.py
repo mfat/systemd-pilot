@@ -101,6 +101,7 @@ class Window(Adw.ApplicationWindow):
         self.machine_id = LOCAL_ID
         self._generation = 0
         self._runtime_loaded = False
+        self._pending: set[tuple[int, str]] = set()  # (generation, task) fetches still running
         self._journal_badge_source = 0
         self._connecting: dict[str, SSHRunner] = {}  # host id -> connection attempt
         self.operations = Operations(self, self.toast)
@@ -348,6 +349,7 @@ class Window(Adw.ApplicationWindow):
         self.machine_id = row.machine_id
         self._show_machine(row)
         self._generation += 1  # results still on their way belong to the previous machine
+        self._update_busy()
         self.services.clear()
         self._close_details()
         self.journal.set_manager(self.sessions.get(self.machine_id))
@@ -477,6 +479,7 @@ class Window(Adw.ApplicationWindow):
 
     def disconnect_current(self):
         self._generation += 1
+        self._update_busy()
         self.sessions.disconnect(self.machine_id)
         self._refresh_row_status(self.machine_id)
         self.services.clear()
@@ -552,6 +555,7 @@ class Window(Adw.ApplicationWindow):
         machine_id, include_inactive = self.machine_id, self.show_inactive
         if show_spinner or not self.services.units:
             self._show_loading(_("Loading services…"))
+        self._set_pending(generation, "list", True)
         self.journal.set_manager(manager)
         # Only refetch the journal when that page is open. Reloading it on every
         # service action was freezing the UI (1 500 entries + full page rebuild).
@@ -566,8 +570,10 @@ class Window(Adw.ApplicationWindow):
         def done(units):
             if generation != self._generation:
                 return
+            self._set_pending(generation, "list", False)
             self._on_units_loaded(units)
             if include_inactive:
+                self._set_pending(generation, "inactive", True)
                 run_in_thread(
                     manager.attach_file_states,
                     units,
@@ -581,17 +587,20 @@ class Window(Adw.ApplicationWindow):
         def inactive_done(units):
             if generation != self._generation:
                 return
+            self._set_pending(generation, "inactive", False)
             self._on_units_loaded(units)
             if self.mode == "advanced":
                 self._load_runtime(units, generation)
 
         def incomplete(error):
             if generation == self._generation:
+                self._set_pending(generation, "inactive", False)
                 self.toast(_("Could not load inactive services: {error}").format(error=describe(error)))
 
         def failed(error):
             if generation != self._generation:
                 return
+            self._set_pending(generation, "list", False)
             if isinstance(error, ConnectionFailed) and machine_id != LOCAL_ID:
                 self.sessions.disconnect(machine_id)
                 self.journal.set_manager(None)
@@ -642,14 +651,30 @@ class Window(Adw.ApplicationWindow):
 
         def runtime_done(completed: list[Unit]):
             if generation == self._generation:
+                self._set_pending(generation, "runtime", False)
                 self._runtime_loaded = True
                 self._on_units_loaded(completed)
 
         def runtime_failed(error):
             if generation == self._generation:
+                self._set_pending(generation, "runtime", False)
                 self.toast(_("Could not load service details: {error}").format(error=describe(error)))
 
+        self._set_pending(generation, "runtime", True)
         run_in_thread(manager.add_runtime, payload, on_done=runtime_done, on_error=runtime_failed)
+
+    def _set_pending(self, generation: int, task: str, running: bool) -> None:
+        """The spinner above the services list shows while any of them is still fetching."""
+        if running:
+            self._pending.add((generation, task))
+        else:
+            self._pending.discard((generation, task))
+        self._update_busy()
+
+    def _update_busy(self) -> None:
+        # Fetches of an earlier generation were superseded; their results are dropped.
+        self._pending = {p for p in self._pending if p[0] == self._generation}
+        self.services.set_busy(bool(self._pending))
 
     def _carry_over(self, units: list[Unit]) -> list[Unit]:
         """While startup states and runtime details load, keep the previous ones."""

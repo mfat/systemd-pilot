@@ -217,6 +217,12 @@ class ServicesView(Gtk.Box):
         self.insert_action_group("services", actions)
 
         bar = Gtk.Box(spacing=6, margin_top=12, margin_bottom=4, margin_start=24, margin_end=24)
+        # While services are still being fetched or filled in the background.
+        self._busy_spinner = Gtk.Spinner(valign=Gtk.Align.CENTER)
+        self._busy = Gtk.Box(spacing=8, visible=False, valign=Gtk.Align.CENTER)
+        self._busy.append(self._busy_spinner)
+        self._busy.append(widgets.label(_("Loading…"), "dim-label", "caption"))
+        bar.append(self._busy)
         bar.append(Gtk.Box(hexpand=True))
         switch = mode_switch()
         switch.set_valign(Gtk.Align.START)
@@ -263,6 +269,11 @@ class ServicesView(Gtk.Box):
 
         self.empty_page = Adw.StatusPage(icon_name="edit-find-symbolic")
         self.stack.add_named(self.empty_page, "empty")
+        # While a long list is built, e.g. after switching to a bigger filter.
+        self._building_spinner = Gtk.Spinner(
+            width_request=32, height_request=32, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER
+        )
+        self.stack.add_named(self._building_spinner, "building")
         self.append(self.stack)
 
     # -- public API -------------------------------------------------------
@@ -273,8 +284,13 @@ class ServicesView(Gtk.Box):
             self.unit_list.set_units(units)
         self._refresh()
 
+    def set_busy(self, busy: bool) -> None:
+        self._busy.set_visible(busy)
+        self._busy_spinner.set_spinning(busy)
+
     def clear(self) -> None:
         self._build_gen += 1
+        self._building_spinner.stop()
         self._units = []
         self._structure = None
         self.unit_list.clear()
@@ -349,14 +365,22 @@ class ServicesView(Gtk.Box):
             row.set_count(sum(1 for u in matching if matches_filter(u, value)))
 
         visible = self._visible()
-        if not visible:
-            self._show_empty()
+        if not visible or self._mode == "advanced":
+            self._stop_building()
+            if not visible:
+                self._show_empty()
+            else:
+                self.stack.set_visible_child_name("advanced")
             return
-        if self._mode == "advanced":
-            self.stack.set_visible_child_name("advanced")
-            return
-        self._rebuild_groups(visible)
-        self.stack.set_visible_child_name("simple")
+        if self._rebuild_groups(visible):
+            self.stack.set_visible_child_name("simple")
+
+    def _stop_building(self) -> None:
+        """A batched build still running would otherwise show the list when it finishes."""
+        if self._building_spinner.get_spinning():
+            self._build_gen += 1
+            self._structure = None  # half built; the next build starts over, reusing its rows
+            self._building_spinner.stop()
 
     def _show_empty(self) -> None:
         if self._query:
@@ -367,7 +391,8 @@ class ServicesView(Gtk.Box):
             self.empty_page.set_description(GLib.markup_escape_text(self._empty_hint))
         self.stack.set_visible_child_name("empty")
 
-    def _rebuild_groups(self, visible: list[Unit]) -> None:
+    def _rebuild_groups(self, visible: list[Unit]) -> bool:
+        """False while the rows are still being added; the list then shows itself when done."""
         ordered = sorted(visible, key=lambda u: (u.name.lower(), u.is_user))
         plan: list[tuple[str, str, str, str | None, list[Unit]]] = []
         for kind, title, hint, css in self.GROUPS:
@@ -378,7 +403,7 @@ class ServicesView(Gtk.Box):
         # Same services in the same groups: update labels in place (common after
         # start/stop or a background refresh).
         if structure == self._structure and self._update_rows(plan):
-            return
+            return True
 
         adjustment = self._simple_scroll.get_vadjustment()
         position = adjustment.get_value()
@@ -388,14 +413,18 @@ class ServicesView(Gtk.Box):
         self._build_gen += 1
         widgets.clear(self._groups)
         self._structure = structure
-        row_count = sum(len(units) for *_rest, units in plan)
-        if row_count > SIMPLE_CHUNK and not existing:
-            self._rebuild_groups_chunked(plan, adjustment, position, focused, gen=self._build_gen)
-            return
+        # Many new rows (first paint, or a bigger filter): add them in batches behind
+        # a spinner, so the window stays responsive.
+        new_rows = sum(1 for *_rest, units in plan for u in units if u.key not in existing)
+        if new_rows > SIMPLE_CHUNK:
+            self._rebuild_groups_chunked(plan, existing, adjustment, position, focused, gen=self._build_gen)
+            return False
+        self._building_spinner.stop()
         focus_row = self._fill_groups(plan, existing, focused)
         GLib.idle_add(lambda: adjustment.set_value(position) and False)
         if focus_row:
             focus_row.grab_focus()
+        return True
 
     def _fill_groups(
         self,
@@ -422,17 +451,24 @@ class ServicesView(Gtk.Box):
     def _rebuild_groups_chunked(
         self,
         plan: list[tuple[str, str, str, str | None, list[Unit]]],
+        existing: dict[tuple, UnitRow],
         adjustment,
         position: float,
         focused: tuple | None,
         *,
         gen: int,
     ) -> None:
-        """First paint: add service rows in small batches so the window stays responsive."""
+        """Add service rows in small batches while a spinner shows."""
         state = {"section_idx": 0, "unit_idx": 0, "section": None, "focus_row": None}
+        self._building_spinner.start()
+        self.stack.set_visible_child_name("building")
 
         def append_unit(section: widgets.Section, unit: Unit) -> UnitRow:
-            row = UnitRow(unit, self)
+            row = existing.pop(unit.key, None)
+            if row is None:
+                row = UnitRow(unit, self)
+            elif unit != row.unit:
+                row.update(unit)
             section.list.append(row)
             return row
 
@@ -461,6 +497,8 @@ class ServicesView(Gtk.Box):
                     state["section"] = None
             if state["section_idx"] < len(plan):
                 return GLib.SOURCE_CONTINUE
+            self._building_spinner.stop()
+            self.stack.set_visible_child_name("simple")
             GLib.idle_add(lambda: adjustment.set_value(position) and False)
             if state["focus_row"]:
                 state["focus_row"].grab_focus()
