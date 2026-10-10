@@ -230,6 +230,15 @@ class JournalView(Gtk.Box):
         self.entry_count = 0
         self.loaded = False
         self._loading = False
+        self._stale = False
+        self._needs_render = True  # False after a UI render matches the current analysis
+        # Cached filter work: recomputed when the entry set, query or preset changes.
+        self._analysis_key: tuple | None = None
+        self._entries: list[LogEntry] = []
+        self._ranged: list[LogEntry] = []
+        self._flagged: dict = {}
+        self._filter_counts: dict[str, int] = {}
+        self._counts_ready = False
 
         actions = Gio.SimpleActionGroup()
         defaults = {"filter": "problems", "since": "24h", "boot": "all", "source": "all", "preset": ""}
@@ -374,20 +383,37 @@ class JournalView(Gtk.Box):
         self.entry_count = 0
         self.loaded = False
         self._loading = False
+        self._stale = False
+        self._analysis_key = None
+        self._needs_render = True
         self.emit("changed")
 
-    def ensure_loaded(self) -> None:
-        if not self.loaded and not self._loading:
-            self.reload()
+    def mark_stale(self) -> None:
+        """Note that a later visit should refetch; do not refetch in the background."""
+        if self.loaded:
+            self._stale = True
 
-    def reload(self) -> None:
+    def ensure_loaded(self) -> None:
+        """Fetch in the background for the issues badge, without building the page widgets."""
+        if not self.loaded and not self._loading:
+            self.reload(ui=False)
+
+    def show(self) -> None:
+        """Open the journal page: fetch if needed, or refresh if services changed it."""
+        if self._stale or not self.loaded:
+            self.reload(ui=True)
+        elif self._needs_render:
+            self._refresh()
+
+    def reload(self, *, ui: bool = True) -> None:
         manager = self._manager
         if manager is None:
             return
         self._generation += 1
         generation = self._generation
         self._loading = True
-        if self._result is None:
+        self._stale = False
+        if ui and self._result is None:
             self.stack.set_visible_child_name("loading")
         since = _pick(SINCE, self._state("since"))[3]
         boot = _pick(BOOTS, self._state("boot"))[4]
@@ -410,19 +436,23 @@ class JournalView(Gtk.Box):
             if boot_id is not None:
                 self._boot_id = boot_id
             self.loaded = True
+            self._stale = False
             self._shown = PAGE
-            self._refresh()
+            self._analysis_key = None
+            self._refresh(ui=ui)
 
         def failed(error):
             if generation != self._generation:
                 return
             self._loading = False
             self._result = None
+            self._analysis_key = None
             self.issues = []
-            self._status.set_icon_name("dialog-warning-symbolic")
-            self._status.set_title(_("Could Not Read the Journal"))
-            self._status.set_description(GLib.markup_escape_text(describe(error)))
-            self.stack.set_visible_child_name("status")
+            if ui:
+                self._status.set_icon_name("dialog-warning-symbolic")
+                self._status.set_title(_("Could Not Read the Journal"))
+                self._status.set_description(GLib.markup_escape_text(describe(error)))
+                self.stack.set_visible_child_name("status")
             self.emit("changed")
 
         if not elevated:
@@ -433,7 +463,7 @@ class JournalView(Gtk.Box):
             # Cancelled or failed (the error was shown): go back to what the user can read.
             if generation == self._generation and self._loading:
                 self._elevated = False
-                self.reload()
+                self.reload(ui=ui)
 
         # Asks for the sudo password when needed, once per connection.
         self.operations.run(
@@ -450,8 +480,19 @@ class JournalView(Gtk.Box):
         self._refresh()
 
     def set_mode(self, mode: str) -> None:
+        if mode == self._mode:
+            return
         self._mode = mode
-        self._refresh()
+        if self.loaded and self._page_visible():
+            self._refresh()
+        else:
+            self._needs_render = True
+
+    def _page_visible(self) -> bool:
+        """True when the journal stack page is the one on screen."""
+        parent = self.get_parent()
+        stack = parent.get_parent() if parent is not None else None
+        return isinstance(stack, Gtk.Stack) and stack.get_visible_child() is parent
 
     def set_known_units(self, names: set[str]) -> None:
         self._known_units = names
@@ -492,23 +533,53 @@ class JournalView(Gtk.Box):
         self._boot.set_text(_pick(BOOTS, self._state("boot"))[3])
         self._source.set_text(_pick(SOURCES, self._state("source"))[3])
 
-    def _refresh(self) -> None:
+    def _refresh(self, *, ui: bool = True) -> None:
         if self._result is None:
             return
         query = self._query
-        ranged = [
-            e for e in self._result.entries if not query or query in e.message.lower() or query in e.identifier.lower()
-        ]
         preset_id = self._state("preset")
         preset = PRESETS_BY_ID.get(preset_id)
-        entries = [e for e in ranged if preset.matches(e, self._boot_id)] if preset else ranged
-        self.issues, flagged = find_issues(entries)
-        self.entry_count = len(entries)
+        # Searching, changing preset, or a new fetch: re-scan. Filter/mode changes reuse this.
+        analysis_key = (id(self._result), query, preset_id, self._boot_id)
+        if analysis_key != self._analysis_key:
+            self._analysis_key = analysis_key
+            ranged = [
+                e
+                for e in self._result.entries
+                if not query or query in e.message.lower() or query in e.identifier.lower()
+            ]
+            entries = [e for e in ranged if preset.matches(e, self._boot_id)] if preset else ranged
+            self.issues, flagged = find_issues(entries)
+            self._ranged = ranged
+            self._entries = entries
+            self._flagged = flagged
+            self.entry_count = len(entries)
+            self._counts_ready = False
+            self._needs_render = True
 
+        if not ui:
+            # Badge path: issues only — skip chip/preset counts and widget builds.
+            self.emit("changed")
+            return
+
+        if not self._counts_ready:
+            flagged = self._flagged
+            self._filter_counts = {
+                value: sum(1 for i, e in enumerate(self._entries) if match(i, e, flagged))
+                for value, match in _FILTER_MATCH.items()
+            }
+            preset_counts = dict.fromkeys((p.id for p in PRESETS), 0)
+            for entry in self._ranged:
+                for p in PRESETS:
+                    if p.matches(entry, self._boot_id):
+                        preset_counts[p.id] += 1
+            for p in PRESETS:
+                self._presets.set_option_count(p.id, preset_counts[p.id])
+            self._counts_ready = True
+
+        entries, flagged = self._entries, self._flagged
         for value, chip in self._chips.items():
-            chip.set_count(sum(1 for i, e in enumerate(entries) if _FILTER_MATCH[value](i, e, flagged)))
-        for p in PRESETS:
-            self._presets.set_option_count(p.id, sum(1 for e in ranged if p.matches(e, self._boot_id)))
+            chip.set_count(self._filter_counts.get(value, 0))
         if preset:
             self._presets.set_text(f"{PRESET_TEXT[preset.id][0]}  {len(entries)}")
             self._presets.set_css_classes(["chip", "preset-active"])
@@ -525,6 +596,7 @@ class JournalView(Gtk.Box):
             self._render_advanced(shown, flagged, preset)
         else:
             self._render_simple(shown, flagged, flt)
+        self._needs_render = False
         self.emit("changed")
 
     # -- hidden entries ---------------------------------------------------

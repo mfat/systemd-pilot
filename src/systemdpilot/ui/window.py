@@ -210,7 +210,7 @@ class Window(Adw.ApplicationWindow):
         self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search services"))
         self.search_bar.set_search_mode(False)
         if journal:
-            self.journal.ensure_loaded()
+            self.journal.show()
         self._update_header()
 
     @property
@@ -485,8 +485,12 @@ class Window(Adw.ApplicationWindow):
         if show_spinner or not self.services.units:
             self._show_loading(_("Loading services…"))
         self.journal.set_manager(manager)
-        if self.view == "journal" or self.journal.loaded:
+        # Only refetch the journal when that page is open. Reloading it on every
+        # service action was freezing the UI (1 500 entries + full page rebuild).
+        if self.view == "journal":
             self.journal.reload()
+        else:
+            self.journal.mark_stale()
 
         # Loaded units come back almost instantly; startup states and units
         # that are not loaded take systemd much longer, so they follow later.
@@ -527,7 +531,13 @@ class Window(Adw.ApplicationWindow):
         self.spinner.stop()
         self._update_header()
         self._update_actions()
-        self.journal.ensure_loaded()  # in the background, for the badge
+        # After the services list has painted, load the journal once for the badge.
+        GLib.idle_add(self._load_journal_badge)
+
+    def _load_journal_badge(self):
+        if self.sessions.is_connected(self.machine_id) and not self.journal.loaded:
+            self.journal.ensure_loaded()
+        return GLib.SOURCE_REMOVE
 
     def _carry_over(self, units: list[Unit]) -> list[Unit]:
         """While startup states and runtime details load, keep the previous ones."""

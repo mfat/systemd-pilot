@@ -31,53 +31,43 @@ class UnitRow(Gtk.ListBoxRow):
     def __init__(self, unit: Unit, view: ServicesView):
         super().__init__(activatable=True)
         self.unit = unit
+        self._view = view
         box = Gtk.Box(spacing=14, margin_top=12, margin_bottom=12, margin_start=16, margin_end=16)
-        box.append(widgets.dot(unit.kind))
+        self._dot = widgets.dot(unit.kind)
+        box.append(self._dot)
 
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True, valign=Gtk.Align.CENTER)
-        title = words.unit_title(unit)
-        text.append(widgets.label(title, "unit-title", ellipsize=Pango.EllipsizeMode.END))
-        text.append(widgets.label(words.unit_subtitle(unit), "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END))
+        self._title = widgets.label(words.unit_title(unit), "unit-title", ellipsize=Pango.EllipsizeMode.END)
+        self._subtitle = widgets.label(
+            words.unit_subtitle(unit), "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END
+        )
+        text.append(self._title)
+        text.append(self._subtitle)
         box.append(text)
 
-        actions = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
-        if unit.kind == "running":
-            buttons = (
-                (UnitAction.RESTART, _("Restart"), "view-refresh-symbolic"),
-                (UnitAction.STOP, _("Stop"), "media-playback-stop-symbolic"),
-            )
-        else:
-            buttons = ((UnitAction.START, _("Start"), "media-playback-start-symbolic"),)
-        for action, tooltip, icon in buttons:
-            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip, css_classes=["circular", "row-action"])
-            button.connect("clicked", lambda _b, a=action: view.emit("unit-action", self.unit, a.value))
-            actions.append(button)
+        self._action_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        self._fill_actions()
         self._actions = Gtk.Revealer(
-            child=actions, transition_type=Gtk.RevealerTransitionType.CROSSFADE, transition_duration=100
+            child=self._action_box, transition_type=Gtk.RevealerTransitionType.CROSSFADE, transition_duration=100
         )
         box.append(self._actions)
 
         state = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, width_request=110, valign=Gtk.Align.CENTER)
-        state.append(widgets.label(words.state_word(unit), "state-word", words.state_css(unit), xalign=1))
-        state.append(widgets.label(words.boot_text(unit.file_state), "dim-label", "caption", xalign=1))
+        self._state = widgets.label(words.state_word(unit), "state-word", words.state_css(unit), xalign=1)
+        self._boot = widgets.label(words.boot_text(unit.file_state), "dim-label", "caption", xalign=1)
+        state.append(self._state)
+        state.append(self._boot)
         box.append(state)
 
         # Same width with or without a switch, so the columns line up.
-        enable = Gtk.Box(width_request=52, halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
-        if words.can_toggle_startup(unit):
-            enabled = words.starts_at_boot(unit)
-            switch = Gtk.Switch(
-                active=enabled,
-                valign=Gtk.Align.CENTER,
-                tooltip_text=_("Disable (don’t start at boot)") if enabled else _("Enable (start at boot)"),
-            )
-            switch.update_property([Gtk.AccessibleProperty.LABEL], [_("Enabled")])
-            switch.connect("state-set", self._on_enable_set, view)
-            enable.append(switch)
-        box.append(enable)
+        self._enable = Gtk.Box(width_request=52, halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
+        self._switch: Gtk.Switch | None = None
+        self._switch_handler = 0
+        self._sync_switch()
+        box.append(self._enable)
         box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"]))
         self.set_child(box)
-        self.update_property([Gtk.AccessibleProperty.LABEL], [f"{title}, {words.state_word(unit)}"])
+        self._sync_a11y()
 
         self._hovered = self._focused = False
         motion = Gtk.EventControllerMotion()
@@ -89,10 +79,65 @@ class UnitRow(Gtk.ListBoxRow):
         focus.connect("leave", lambda *_: self._set_hover(focused=False))
         self.add_controller(focus)
 
-    def _on_enable_set(self, _switch, state, view):
+    def update(self, unit: Unit) -> None:
+        """Refresh labels and controls without rebuilding the row widget tree."""
+        kind_changed = unit.kind != self.unit.kind
+        self.unit = unit
+        if kind_changed:
+            widgets.set_dot(self._dot, unit.kind)
+            self._fill_actions()
+        self._title.set_label(words.unit_title(unit))
+        self._subtitle.set_label(words.unit_subtitle(unit))
+        self._state.set_label(words.state_word(unit))
+        self._state.set_css_classes(["state-word", words.state_css(unit)])
+        self._boot.set_label(words.boot_text(unit.file_state))
+        self._sync_switch()
+        self._sync_a11y()
+
+    def _fill_actions(self) -> None:
+        widgets.clear(self._action_box)
+        if self.unit.kind == "running":
+            buttons = (
+                (UnitAction.RESTART, _("Restart"), "view-refresh-symbolic"),
+                (UnitAction.STOP, _("Stop"), "media-playback-stop-symbolic"),
+            )
+        else:
+            buttons = ((UnitAction.START, _("Start"), "media-playback-start-symbolic"),)
+        for action, tooltip, icon in buttons:
+            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip, css_classes=["circular", "row-action"])
+            button.connect("clicked", lambda _b, a=action: self._view.emit("unit-action", self.unit, a.value))
+            self._action_box.append(button)
+
+    def _sync_switch(self) -> None:
+        can_toggle = words.can_toggle_startup(self.unit)
+        if can_toggle and self._switch is None:
+            switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+            switch.update_property([Gtk.AccessibleProperty.LABEL], [_("Enabled")])
+            self._switch_handler = switch.connect("state-set", self._on_enable_set)
+            self._enable.append(switch)
+            self._switch = switch
+        elif not can_toggle and self._switch is not None:
+            self._enable.remove(self._switch)
+            self._switch = None
+            self._switch_handler = 0
+        if self._switch is not None:
+            enabled = words.starts_at_boot(self.unit)
+            self._switch.handler_block(self._switch_handler)
+            self._switch.set_active(enabled)
+            self._switch.handler_unblock(self._switch_handler)
+            self._switch.set_tooltip_text(
+                _("Disable (don’t start at boot)") if enabled else _("Enable (start at boot)")
+            )
+
+    def _sync_a11y(self) -> None:
+        self.update_property(
+            [Gtk.AccessibleProperty.LABEL], [f"{words.unit_title(self.unit)}, {words.state_word(self.unit)}"]
+        )
+
+    def _on_enable_set(self, _switch, state):
         if state != words.starts_at_boot(self.unit):
-            view.emit("unit-action", self.unit, (UnitAction.ENABLE if state else UnitAction.DISABLE).value)
-        # Leave the switch pending; the list is rebuilt once the action has finished.
+            self._view.emit("unit-action", self.unit, (UnitAction.ENABLE if state else UnitAction.DISABLE).value)
+        # Leave the switch pending; the list is refreshed once the action has finished.
         return True
 
     def _set_hover(self, hovered: bool | None = None, focused: bool | None = None):
@@ -132,7 +177,7 @@ class ServicesView(Gtk.Box):
         self._units: list[Unit] = []
         self._query = ""
         self._mode = "simple"
-        self._dirty = False
+        self._structure: tuple | None = None  # (kind, unit names…) of the built simple list
         self._empty_hint = ""
 
         actions = Gio.SimpleActionGroup()
@@ -208,6 +253,7 @@ class ServicesView(Gtk.Box):
 
     def clear(self) -> None:
         self._units = []
+        self._structure = None
         self.unit_list.clear()
         widgets.clear(self._groups)
 
@@ -283,20 +329,35 @@ class ServicesView(Gtk.Box):
         self.stack.set_visible_child_name("empty")
 
     def _rebuild_groups(self, visible: list[Unit]) -> None:
+        ordered = sorted(visible, key=lambda u: u.name.lower())
+        plan: list[tuple[str, str, str, str | None, list[Unit]]] = []
+        for kind, title, hint, css in self.GROUPS:
+            units = [u for u in ordered if u.kind == kind]
+            if units:
+                plan.append((kind, title, hint, css, units))
+        structure = tuple((kind, tuple(u.name for u in units)) for kind, _t, _h, _c, units in plan)
+        # Same services in the same groups: update labels in place (common after
+        # startup states load, and after enable/disable).
+        if structure == self._structure and self._update_rows(plan):
+            return
+
         adjustment = self._simple_scroll.get_vadjustment()
         position = adjustment.get_value()
         focused = self._focused_unit_name()
+        # Reuse row widgets when units move between groups (start/stop/filter).
+        existing = self._take_rows()
         widgets.clear(self._groups)
-        ordered = sorted(visible, key=lambda u: u.name.lower())
+        self._structure = structure
         focus_row = None
-        for kind, title, hint, css in self.GROUPS:
-            units = [u for u in ordered if u.kind == kind]
-            if not units:
-                continue
+        for _kind, title, hint, css, units in plan:
             section = widgets.Section(title, hint, title_css=css)
             section.list.connect("row-activated", lambda _l, row: self.emit("unit-activated", row.unit))
             for unit in units:
-                row = UnitRow(unit, self)
+                row = existing.pop(unit.name, None)
+                if row is None:
+                    row = UnitRow(unit, self)
+                elif unit != row.unit:
+                    row.update(unit)
                 section.list.append(row)
                 if unit.name == focused:
                     focus_row = row
@@ -305,6 +366,53 @@ class ServicesView(Gtk.Box):
         GLib.idle_add(lambda: adjustment.set_value(position) and False)
         if focus_row:
             focus_row.grab_focus()
+
+    def _take_rows(self) -> dict[str, UnitRow]:
+        """Detach existing service rows so they can be re-parented into a new layout."""
+        rows: dict[str, UnitRow] = {}
+        section_box = self._groups.get_first_child()
+        while section_box is not None:
+            listbox = self._section_list(section_box)
+            if listbox is not None:
+                row = listbox.get_first_child()
+                while row is not None:
+                    nxt = row.get_next_sibling()
+                    if isinstance(row, UnitRow):
+                        listbox.remove(row)
+                        rows[row.unit.name] = row
+                    row = nxt
+            section_box = section_box.get_next_sibling()
+        return rows
+
+    def _update_rows(self, plan: list[tuple[str, str, str, str | None, list[Unit]]]) -> bool:
+        """Update existing rows when the group/name layout still matches. False → rebuild."""
+        section_box = self._groups.get_first_child()
+        for _kind, _title, _hint, _css, units in plan:
+            if section_box is None:
+                return False
+            listbox = self._section_list(section_box)
+            if listbox is None:
+                return False
+            row = listbox.get_first_child()
+            for unit in units:
+                if not isinstance(row, UnitRow) or row.unit.name != unit.name:
+                    return False
+                if unit != row.unit:
+                    row.update(unit)
+                row = row.get_next_sibling()
+            if row is not None:
+                return False
+            section_box = section_box.get_next_sibling()
+        return section_box is None
+
+    @staticmethod
+    def _section_list(section_box: Gtk.Widget) -> Gtk.ListBox | None:
+        child = section_box.get_first_child()
+        while child is not None:
+            if isinstance(child, Gtk.ListBox):
+                return child
+            child = child.get_next_sibling()
+        return None
 
     def _focused_unit_name(self) -> str | None:
         root = self.get_root()
