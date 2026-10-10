@@ -43,11 +43,11 @@ SOURCES = (
 # value, sidebar label, dot (or icon), timeline title; in the order of the services' filters
 FILTERS = (
     ("all", _("All entries"), "bell-symbolic", _("All entries")),
-    ("problems", _("Needs attention"), "dialog-warning-symbolic", _("Flagged entries")),
+    ("problems", _("Needs attention"), "dialog-warning-symbolic", None),  # problems only, no timeline
     ("errors", _("Errors"), "failed", _("Errors")),
     ("warnings", _("Warnings"), "warning", _("Warnings")),
 )
-# Chips that keep only the problem cards of one severity, and what to say when there are none.
+# Filters that keep only the problem cards of one severity, and what to say when there are none.
 CARD_FILTERS = {
     "errors": (ERROR, _("No errors found in this range")),
     "warnings": (WARNING, _("No warnings found in this range")),
@@ -645,8 +645,12 @@ class JournalView(Gtk.Box):
         self._render_gen += 1
         gen = self._render_gen
         widgets.clear(self._simple)
+        # Needs attention lists the problems, All entries the timeline; Errors and Warnings both, of their level.
+        show_cards, show_timeline = flt != "all", flt != "problems"
+        if not show_timeline:
+            shown = []
         severity, none_found = CARD_FILTERS.get(flt, (None, _("No problems found in this range")))
-        issues = [i for i in self.issues if severity in (None, i.severity)]
+        issues = [i for i in self.issues if severity in (None, i.severity)] if show_cards else []
         selected = self.selected
         # The same problem after a refetch is a new object with the same id.
         if isinstance(selected, Issue):
@@ -670,26 +674,32 @@ class JournalView(Gtk.Box):
                 if issue is selected:
                     problems.select_row(row)
             self._simple.append(section.box)
-        else:
+        elif show_cards:
             ok = Gtk.Box(spacing=12, css_classes=["ok-banner"])
             ok.append(widgets.dot("running"))
             ok.append(widgets.label(none_found, "success", "unit-title"))
             self._simple.append(ok)
 
-        title = _pick(FILTERS, flt)[3]
-        timeline = widgets.Section(title, _("Newest first"))
-        timeline_list = timeline.list
+        timeline = None
+        if show_timeline:
+            timeline = widgets.Section(_pick(FILTERS, flt)[3], _("Newest first"))
+            timeline_list = timeline.list
+            self._simple.append(timeline.box)
         for listbox, other in ((problems, timeline_list), (timeline_list, problems)):
             if listbox is not None:
                 listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
                 listbox.connect("row-selected", self._on_row_selected, other)
                 listbox.connect("row-activated", self._on_row_activated)
-        self._simple.append(timeline.box)
         self.stack.set_visible_child_name("simple")
         if self._jump_to_timeline:
             self._jump_to_timeline = False
-            self._scroll_to(timeline.box, gen)
+            if timeline is not None and show_cards:
+                self._scroll_to(timeline.box, gen)
+            else:
+                self._simple_scroll.get_vadjustment().set_value(0)  # only one list: start at its top
 
+        if timeline is None:
+            return
         if not shown:
             message = widgets.no_results(self._query) if self._query else _("No entries")
             timeline.list.append(widgets.placeholder_row(message))
