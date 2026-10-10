@@ -129,15 +129,10 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkFlowBox" id="action_box">
-                                    <property name="selection-mode">none</property>
-                                    <property name="homogeneous">False</property>
+                                  <object class="GtkBox" id="action_box">
+                                    <property name="spacing">10</property>
                                     <property name="halign">center</property>
                                     <property name="margin-top">14</property>
-                                    <property name="max-children-per-line">5</property>
-                                    <property name="min-children-per-line">1</property>
-                                    <property name="column-spacing">10</property>
-                                    <property name="row-spacing">10</property>
                                   </object>
                                 </child>
                               </object>

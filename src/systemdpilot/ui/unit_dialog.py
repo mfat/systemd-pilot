@@ -48,7 +48,7 @@ class UnitPanel(Adw.BreakpointBin):
     icon_tile: Gtk.Box = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
-    action_box: Gtk.FlowBox = Gtk.Template.Child()
+    action_box: Gtk.Box = Gtk.Template.Child()
     stack: Adw.ViewStack = Gtk.Template.Child()
     loading_stack: Gtk.Stack = Gtk.Template.Child()
     pages_spinner: Gtk.Spinner = Gtk.Template.Child()
