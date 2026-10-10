@@ -556,10 +556,6 @@ class UnitPanel(Adw.BreakpointBin):
         box.append(widgets.label(words.ago(entry.timestamp), "dim-label", "caption", valign=Gtk.Align.START))
         return Gtk.ListBoxRow(child=box, activatable=False)
 
-    @Gtk.Template.Callback()
-    def on_refresh_clicked(self, _button):
-        self.load()
-
     def _on_startup_toggled(self, row, _pspec):
         if row.get_active() == words.starts_at_boot(self.unit):
             return
