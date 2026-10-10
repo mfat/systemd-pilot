@@ -102,6 +102,7 @@ class ListRow(Adw.Bin):
         self.item = item
         is_service = isinstance(item, ServiceItem)
         self._list_item.set_activatable(is_service)
+        self._list_item.set_selectable(is_service)
         self._list_item.set_focusable(is_service)
         if is_service:
             if self.service is None:
@@ -330,13 +331,15 @@ class ServicesView(Gtk.Box):
         self._store = Gio.ListStore(item_type=GObject.Object)
         order = Gtk.CustomSorter.new(lambda a, b, _d: _compare(_sort_key(a), _sort_key(b)))
         self.model = Gtk.SortListModel(model=self._store, sorter=order)
+        self._selection = Gtk.SingleSelection(model=self.model, autoselect=False, can_unselect=True)
+        self._selected_unit: Unit | None = None  # open in the details panel; kept highlighted
         self._fill_source = 0  # adds the next new services to the list
         factory = Gtk.SignalListItemFactory()
         factory.connect("setup", lambda _f, list_item: list_item.set_child(ListRow(self, list_item)))
         factory.connect("bind", lambda _f, list_item: list_item.get_child().bind(list_item.get_item()))
         factory.connect("unbind", lambda _f, list_item: list_item.get_child().unbind())
         self.simple_list = Gtk.ListView(
-            model=Gtk.NoSelection(model=self.model),
+            model=self._selection,
             factory=factory,
             single_click_activate=True,
             css_classes=["services-list"],
@@ -362,10 +365,16 @@ class ServicesView(Gtk.Box):
 
     def clear(self) -> None:
         self._units = []
+        self._selected_unit = None
         if self._fill_source:
             GLib.source_remove(self._fill_source)
             self._fill_source = 0
         self._store.remove_all()
+
+    def select_unit(self, unit: Unit | None) -> None:
+        """Keep ``unit`` highlighted, or clear the highlight when details close."""
+        self._selected_unit = unit
+        self._apply_selection()
 
     @property
     def units(self) -> list[Unit]:
@@ -487,6 +496,7 @@ class ServicesView(Gtk.Box):
             # Rows whose neighbours changed, e.g. a group's new last service.
             for row in self._bound_rows():
                 row.sync()
+        self._apply_selection()
 
     def _fill_more(self) -> bool:
         self._fill_source = 0
@@ -504,7 +514,22 @@ class ServicesView(Gtk.Box):
     def _on_row_activated(self, _view, position: int) -> None:
         item = self.model.get_item(position)
         if isinstance(item, ServiceItem):
+            self._selected_unit = item.unit
             self.emit("unit-activated", item.unit)
+
+    def _apply_selection(self) -> None:
+        """Select the open service in the list model, if it is still shown."""
+        target = Gtk.INVALID_LIST_POSITION
+        unit = self._selected_unit
+        if unit is not None:
+            for position in range(self.model.get_n_items()):
+                item = self.model.get_item(position)
+                if isinstance(item, ServiceItem) and item.unit.key == unit.key:
+                    target = position
+                    self._selected_unit = item.unit  # the list's current object
+                    break
+        if self._selection.get_selected() != target:
+            self._selection.set_selected(target)
 
     def _refresh_row_labels(self) -> None:
         for row in self._bound_rows():

@@ -73,6 +73,7 @@ listview.services-list { background: none; padding-bottom: 24px; }
 listview.services-list > row,
 listview.services-list > row:hover,
 listview.services-list > row:active,
+listview.services-list > row:selected,
 listview.services-list > row:focus { padding: 0; background: none; outline: none; }
 listview.services-list > header { padding: 0; background: none; border: none; }
 .service-row {
@@ -96,9 +97,19 @@ listview.services-list > header { padding: 0; background: none; border: none; }
 .service-row.first.last {
   box-shadow: 0 0 0 1px alpha(black, 0.03), 0 1px 3px 1px alpha(black, 0.07), 0 2px 6px 2px alpha(black, 0.03);
 }
-listview.services-list > row:hover > .service-row { background-image: image(alpha(currentColor, 0.03)); }
-listview.services-list > row:active > .service-row { background-image: image(alpha(currentColor, 0.08)); }
-listview.services-list > row:focus-visible > .service-row {
+/* .service-row sits in an Adw.Bin under the list row, not as its direct child. */
+listview.services-list > row:hover .service-row { background-image: image(alpha(currentColor, 0.03)); }
+listview.services-list > row:active .service-row { background-image: image(alpha(currentColor, 0.08)); }
+listview.services-list > row:selected .service-row {
+  background-image: image(alpha(@accent_bg_color, 0.25));
+}
+listview.services-list > row:selected:hover .service-row {
+  background-image: image(alpha(@accent_bg_color, 0.32));
+}
+listview.services-list > row:selected:active .service-row {
+  background-image: image(alpha(@accent_bg_color, 0.39));
+}
+listview.services-list > row:focus-visible .service-row {
   outline: 2px solid alpha(@accent_color, 0.5);
   outline-offset: -2px;
 }

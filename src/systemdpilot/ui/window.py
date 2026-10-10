@@ -741,6 +741,7 @@ class Window(Adw.ApplicationWindow):
             on_changed=self.reload,
             action_message=self._action_message,
         )
+        self.services.select_unit(unit)
         if not self.details_split.get_collapsed():
             if self._details:
                 self._details.discard()
@@ -782,6 +783,7 @@ class Window(Adw.ApplicationWindow):
         if self._details:
             self._details.discard()
             self._details = None
+        self.services.select_unit(None)
         if not self.journal_shown:
             self.details_bin.set_child(self._details_placeholder)
 
