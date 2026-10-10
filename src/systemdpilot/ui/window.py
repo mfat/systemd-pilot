@@ -27,7 +27,7 @@ from .host_dialog import HostDialog
 from .journal_view import JournalView
 from .journal_window import JournalWindow
 from .operations import Operations, describe
-from .resources import template
+from .resources import app_icon, template
 from .services_view import ServicesView
 from .settings import Settings
 from .tasks import run_in_thread
@@ -748,13 +748,16 @@ class Window(Adw.ApplicationWindow):
         header.pack_end(button)
         view = Adw.ToolbarView()
         view.add_top_bar(header)
-        view.set_content(
-            Adw.StatusPage(
-                icon_name=APP_ID,
-                title=_("No Service Selected"),
-                description=_("Select a service to see what it does and to start, stop or restart it."),
-            )
+        page = Adw.StatusPage(
+            title=_("No Service Selected"),
+            description=_("Select a service to see what it does and to start, stop or restart it."),
         )
+        icon = app_icon(128)
+        if icon:
+            page.set_paintable(icon)
+        else:
+            page.set_icon_name(APP_ID)
+        view.set_content(page)
         return view
 
     def _sync_details_shown(self):

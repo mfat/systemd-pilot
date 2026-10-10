@@ -11,7 +11,7 @@ from pathlib import Path
 
 from gi.repository import Gdk, Gio, GLib, Gtk
 
-from .. import RESOURCE_PATH
+from .. import APP_ID, RESOURCE_PATH
 
 _SOURCE_DIR = Path(__file__).resolve().parent
 
@@ -29,6 +29,18 @@ def template(name: str) -> Gtk.Template:
     if _in_bundle(f"ui/{name}"):
         return Gtk.Template(resource_path=f"{RESOURCE_PATH}/ui/{name}")
     return Gtk.Template(filename=str(_SOURCE_DIR / name))
+
+
+def app_icon(size: int) -> Gdk.Paintable | None:
+    """The app icon from the bundle, or None without one.
+
+    Looking it up by name would find an installed copy first, which may be older.
+    """
+    name = f"icons/scalable/apps/{APP_ID}.svg"
+    if not _in_bundle(name):
+        return None
+    file = Gio.File.new_for_uri(f"resource://{RESOURCE_PATH}/{name}")
+    return Gtk.IconPaintable.new_for_file(file, size, 2)  # drawn at twice the size, sharp on HiDPI
 
 
 def load_css_from_source() -> None:

@@ -6,5 +6,8 @@
     <file preprocess="xml-stripblanks" alias="ui/host-dialog.ui">systemdpilot/ui/host-dialog.ui</file>
     <file preprocess="xml-stripblanks" alias="ui/create-unit-dialog.ui">systemdpilot/ui/create-unit-dialog.ui</file>
     <file alias="style.css">systemdpilot/ui/style.css</file>
+    <!-- The app icon, for the icon theme (GtkApplication adds <prefix>/icons). -->
+    <file alias="icons/scalable/apps/io.github.mfat.systemdpilot.svg">../data/icons/hicolor/scalable/apps/io.github.mfat.systemdpilot.svg</file>
+    <file alias="icons/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg">../data/icons/hicolor/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg</file>
   </gresource>
 </gresources>
