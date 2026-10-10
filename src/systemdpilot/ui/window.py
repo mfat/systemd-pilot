@@ -101,7 +101,8 @@ class Window(Adw.ApplicationWindow):
         self.machine_id = LOCAL_ID
         self._generation = 0
         self._runtime_loaded = False
-        self._pending: set[tuple[int, str]] = set()  # (generation, task) fetches still running
+        # (generation, task) -> quiet: fetches still running; quiet ones don't show the spinner.
+        self._pending: dict[tuple[int, str], bool] = {}
         self._journal_badge_source = 0
         self._connecting: dict[str, SSHRunner] = {}  # host id -> connection attempt
         self.operations = Operations(self, self.toast)
@@ -555,7 +556,10 @@ class Window(Adw.ApplicationWindow):
         generation = self._generation
         self._runtime_loaded = False
         machine_id, include_inactive = self.machine_id, self.show_inactive
-        if show_spinner or not self.services.units:
+        # A first load: the list shows as soon as it arrives, and the rest fills in
+        # quietly, without the spinner above it.
+        quiet = show_spinner or not self.services.units
+        if quiet:
             self._show_loading(_("Loading services…"))
         self._set_pending(generation, "list", True)
         self.journal.set_manager(manager)
@@ -569,40 +573,34 @@ class Window(Adw.ApplicationWindow):
         # list-units is fast. Enable/disabled state is not shown in the list (details
         # dialog loads it). list-unit-files is only needed to add unloaded units when
         # “Show Inactive” is on. Advanced mode then fills PID/memory.
-        # On a first load the loading page stays until all of that is in, so the
-        # list shows once, complete; a list already on screen updates at each step.
         def done(units):
             if generation != self._generation:
                 return
             self._set_pending(generation, "list", False)
-            if not (self._loading_shown and (include_inactive or self.mode == "advanced")):
-                self._on_units_loaded(units)
+            self._on_units_loaded(units)
             if include_inactive:
-                self._set_pending(generation, "inactive", True)
+                self._set_pending(generation, "inactive", True, quiet)
                 run_in_thread(
                     manager.attach_file_states,
                     units,
                     True,
                     on_done=inactive_done,
-                    on_error=lambda e: incomplete(e, units),
+                    on_error=incomplete,
                 )
             elif self.mode == "advanced":
-                self._load_runtime(units, generation)
+                self._load_runtime(units, generation, quiet)
 
         def inactive_done(units):
             if generation != self._generation:
                 return
             self._set_pending(generation, "inactive", False)
-            if not (self._loading_shown and self.mode == "advanced"):
-                self._on_units_loaded(units)
+            self._on_units_loaded(units)
             if self.mode == "advanced":
-                self._load_runtime(units, generation)
+                self._load_runtime(units, generation, quiet)
 
-        def incomplete(error, units):
+        def incomplete(error):
             if generation == self._generation:
                 self._set_pending(generation, "inactive", False)
-                if self._loading_shown:
-                    self._on_units_loaded(units)  # the loaded ones, without the inactive
                 self.toast(_("Could not load inactive services: {error}").format(error=describe(error)))
 
         def failed(error):
@@ -658,7 +656,9 @@ class Window(Adw.ApplicationWindow):
             self.journal.ensure_loaded()
         return GLib.SOURCE_REMOVE
 
-    def _load_runtime(self, units: list[Unit] | None = None, generation: int | None = None) -> None:
+    def _load_runtime(
+        self, units: list[Unit] | None = None, generation: int | None = None, quiet: bool = False
+    ) -> None:
         """PID/memory for the advanced table and unit dialog; skipped in simple mode."""
         if self._runtime_loaded:
             return
@@ -678,29 +678,27 @@ class Window(Adw.ApplicationWindow):
         def runtime_failed(error):
             if generation == self._generation:
                 self._set_pending(generation, "runtime", False)
-                if self._loading_shown:
-                    self._on_units_loaded(payload)  # without PID/memory
                 self.toast(_("Could not load service details: {error}").format(error=describe(error)))
 
-        self._set_pending(generation, "runtime", True)
+        self._set_pending(generation, "runtime", True, quiet)
         run_in_thread(manager.add_runtime, payload, on_done=runtime_done, on_error=runtime_failed)
 
     @property
     def _loading_shown(self) -> bool:
         return self.content_stack.get_visible_child_name() == "loading"
 
-    def _set_pending(self, generation: int, task: str, running: bool) -> None:
+    def _set_pending(self, generation: int, task: str, running: bool, quiet: bool = False) -> None:
         """The spinner above the services list shows while any of them is still fetching."""
         if running:
-            self._pending.add((generation, task))
+            self._pending[generation, task] = quiet
         else:
-            self._pending.discard((generation, task))
+            self._pending.pop((generation, task), None)
         self._update_busy()
 
     def _update_busy(self) -> None:
         # Fetches of an earlier generation were superseded; their results are dropped.
-        self._pending = {p for p in self._pending if p[0] == self._generation}
-        self.services.set_busy(bool(self._pending))
+        self._pending = {p: q for p, q in self._pending.items() if p[0] == self._generation}
+        self.services.set_busy(not all(self._pending.values()))
 
     def _carry_over(self, units: list[Unit]) -> list[Unit]:
         """While startup states and runtime details load, keep the previous ones."""
