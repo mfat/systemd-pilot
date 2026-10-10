@@ -67,7 +67,9 @@ JOURNAL_GROUP = "systemd-journal"
 ACCESS_FULL, ACCESS_PENDING, ACCESS_MISSING = "full", "pending", "missing"
 _USER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*\$?$")
 
-_RUNTIME_PROPERTIES = "Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,StateChangeTimestamp"
+_RUNTIME_PROPERTIES = (
+    "Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,ActiveExitTimestamp,InactiveEnterTimestamp,InactiveExitTimestamp"
+)
 
 # Only what the journal view shows; keeps the JSON small over SSH.
 _JOURNAL_FIELDS = ",".join(
@@ -189,13 +191,13 @@ class SystemdManager:
             if props is None:
                 completed.append(unit)
                 continue
-            since = props.get("ActiveEnterTimestamp", "") if unit.kind == "running" else ""
+            since = props.get(_since_property(unit.active_state), "")
             completed.append(
                 dataclasses.replace(
                     unit,
                     main_pid=parse_int(props.get("MainPID", "")) or 0,
                     memory=parse_int(props.get("MemoryCurrent", "")),
-                    since=parse_unix_timestamp(since or props.get("StateChangeTimestamp", "")),
+                    since=parse_unix_timestamp(since),
                 )
             )
         return completed
@@ -404,3 +406,14 @@ def _split_scopes(text: str) -> dict[str, tuple[str, int]]:
         parts[match.group(1)] = (text[start : match.start()], int(match.group(2)))
         start = match.end()
     return parts
+
+
+def _since_property(active_state: str) -> str:
+    """The timestamp ``systemctl status`` shows after "since" for this state."""
+    if active_state in ("active", "reloading", "refreshing"):
+        return "ActiveEnterTimestamp"
+    if active_state in ("inactive", "failed"):
+        return "InactiveEnterTimestamp"
+    if active_state == "activating":
+        return "InactiveExitTimestamp"
+    return "ActiveExitTimestamp"

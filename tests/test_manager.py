@@ -256,9 +256,9 @@ def test_complete_units_adds_runtime(runner):
         "show",
         stdout=(
             "Id=a.service\nMainPID=42\nMemoryCurrent=1048576\nActiveEnterTimestamp=@1700000000\n"
-            "StateChangeTimestamp=@1700000000\n\n"
-            "Id=b.service\nMainPID=0\nMemoryCurrent=[not set]\nActiveEnterTimestamp=\n"
-            "StateChangeTimestamp=@1700000100\n"
+            "InactiveEnterTimestamp=@1600000000\n\n"
+            "Id=b.service\nMainPID=0\nMemoryCurrent=[not set]\nActiveEnterTimestamp=@1700000000\n"
+            "InactiveEnterTimestamp=@1700000100\n"
         ),
     )
     loaded = [
@@ -273,6 +273,33 @@ def test_complete_units_adds_runtime(runner):
     show = next(call["argv"] for call in runner.calls if "show" in call["argv"])
     assert "--timestamp=unix" in show
     assert show[-2:] == ["a.service", "b.service"]  # inactive units have nothing to show
+
+
+@pytest.mark.parametrize(
+    "active_state, prop",
+    [
+        ("active", "ActiveEnterTimestamp"),
+        ("reloading", "ActiveEnterTimestamp"),
+        ("failed", "InactiveEnterTimestamp"),
+        ("activating", "InactiveExitTimestamp"),
+        ("deactivating", "ActiveExitTimestamp"),
+    ],
+)
+def test_since_follows_systemctl_status(runner, active_state, prop):
+    stamps = {
+        "ActiveEnterTimestamp": 1,
+        "ActiveExitTimestamp": 2,
+        "InactiveEnterTimestamp": 3,
+        "InactiveExitTimestamp": 4,
+    }
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "show",
+        stdout="Id=a.service\n" + "".join(f"{name}=@{value}\n" for name, value in stamps.items()),
+    )
+    (unit,) = SystemdManager(runner).add_runtime([Unit("a.service", active_state=active_state, sub_state="x")])
+    assert unit.since.timestamp() == stamps[prop]
 
 
 def test_attach_file_states_skips_runtime(runner):
@@ -318,7 +345,7 @@ def test_runtime_without_unix_timestamps(runner):
         "systemctl",
         "--no-pager",
         "show",
-        "--property=Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,StateChangeTimestamp",
+        "--property=Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,ActiveExitTimestamp,InactiveEnterTimestamp,InactiveExitTimestamp",
         "--timestamp=unix",
         returncode=1,
         stderr="unrecognized option '--timestamp=unix'",
