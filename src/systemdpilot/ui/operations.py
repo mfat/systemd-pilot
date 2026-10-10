@@ -63,7 +63,7 @@ class Operations:
                 cancelled()
                 return
             if not (on_error and on_error(error)):
-                prompts.show_error(self.parent, error_heading or _("Operation Failed"), describe(error))
+                prompts.show_error(self.parent, error_heading or _("Operation Failed"), error)
             if on_finish:
                 on_finish()
 

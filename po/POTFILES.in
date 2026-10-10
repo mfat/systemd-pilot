@@ -17,4 +17,5 @@ src/systemdpilot/ui/unit_dialog.py
 src/systemdpilot/ui/widgets.py
 src/systemdpilot/ui/window.py
 src/systemdpilot/ui/window.ui
+src/systemdpilot/ui/websearch.py
 src/systemdpilot/ui/words.py

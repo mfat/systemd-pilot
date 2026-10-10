@@ -148,3 +148,10 @@ button.small-pill { min-height: 30px; padding: 0 12px; font-size: 13px; font-wei
 }
 .ok-banner { background-color: alpha(@success_color, 0.1); }
 .error-banner { background-color: alpha(@error_color, 0.08); }
+
+/* Error dialogs: what a failed command printed, in a card. */
+.error-content { padding: 6px 24px 24px; }
+.error-message { font-size: 1.05em; }
+.error-output-title { padding: 14px 16px; font-size: 1.05em; }
+.error-output { padding: 12px 16px 14px; }
+.error-buttons > button { min-width: 100px; }

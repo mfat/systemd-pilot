@@ -2,17 +2,67 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable
 
 from gi.repository import Adw, Gtk
 
+from ..core.errors import CommandError, PilotError
 from ..i18n import _
+from . import widgets
+
+# Taller output scrolls inside the dialog.
+OUTPUT_MAX_HEIGHT = 300
 
 
-def show_error(parent: Gtk.Widget, heading: str, body: str) -> None:
-    dialog = Adw.AlertDialog(heading=heading, body=body)
-    dialog.add_response("close", _("_Close"))
+def show_error(parent: Gtk.Widget, heading: str, error: BaseException | str) -> None:
+    """Tell what went wrong in text that can be selected and copied.
+
+    A failed command shows as a card of its command line and output.
+    """
+    if isinstance(error, CommandError):
+        text = error.stderr.strip() or _("Exited with status {code}").format(code=error.returncode)
+        if error.argv:
+            text = f"$ {shlex.join(error.argv)}\n{text}"
+        body = _output_card(text)
+    else:
+        text = str(error) if isinstance(error, (str, PilotError)) else f"{type(error).__name__}: {error}"
+        body = widgets.label(text, "error-message", wrap=True, selectable=True)
+
+    dialog = Adw.Dialog(title=heading, content_width=560)
+    copy = Gtk.Button(label=_("_Copy"), use_underline=True, css_classes=["pill"])
+    copy.connect("clicked", lambda b: (b.get_clipboard().set(text), b.set_label(_("Copied"))))
+    close = Gtk.Button(label=_("_Close"), use_underline=True, css_classes=["pill", "suggested-action"])
+    close.connect("clicked", lambda _b: dialog.close())
+    buttons = Gtk.Box(spacing=12, halign=Gtk.Align.END, css_classes=["error-buttons"])
+    buttons.append(copy)
+    buttons.append(close)
+
+    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, css_classes=["error-content"])
+    content.append(body)
+    content.append(buttons)
+    view = Adw.ToolbarView(content=content)
+    view.add_top_bar(Adw.HeaderBar())
+    dialog.set_child(view)
+    # Not the text: focusing a selectable label selects all of it.
+    dialog.props.focus_widget = close
+    dialog.set_default_widget(close)
     dialog.present(parent)
+
+
+def _output_card(text: str) -> Gtk.Widget:
+    output = widgets.label(text, "monospace", "error-output", wrap=True, selectable=True, valign=Gtk.Align.START)
+    scroller = Gtk.ScrolledWindow(
+        child=output,
+        hscrollbar_policy=Gtk.PolicyType.NEVER,
+        propagate_natural_height=True,
+        max_content_height=OUTPUT_MAX_HEIGHT,
+    )
+    card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["card"])
+    card.append(widgets.label(_("Command output"), "error-output-title"))
+    card.append(Gtk.Separator())
+    card.append(scroller)
+    return card
 
 
 def confirm(

@@ -20,7 +20,7 @@ from ..core.models import AuthMethod, Host, Unit, UnitAction
 from ..core.session import LOCAL_ID, Sessions
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
-from . import prompts
+from . import prompts, websearch
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
 from .journal_details import JournalDetails, JournalDetailsDialog
@@ -145,6 +145,7 @@ class Window(Adw.ApplicationWindow):
         self.search_bar.connect("notify::search-mode-enabled", self._on_search_mode)
 
         self._setup_actions()
+        websearch.install(self)
         self._sync_details_shown()
         self.services.set_empty_hint(self._empty_hint())
         self._rebuild_machine_list()
