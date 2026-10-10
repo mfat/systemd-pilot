@@ -317,7 +317,9 @@ class UnitPanel(Adw.BreakpointBin):
         self.logs_banner.set_revealed(bool(details.logs.warning))
         GLib.idle_add(self._scroll_logs_to_end)
         self._build_overview(details)
-        GLib.idle_add(self._build_activity_idle, details)
+        # Ahead of GTK's own idle work: text views validating hundreds of log lines
+        # would otherwise hold the spinner up for seconds.
+        GLib.idle_add(self._build_activity_idle, details, priority=GLib.PRIORITY_HIGH_IDLE)
 
     def _build_activity_idle(self, details: _Details):
         if not self._closed:

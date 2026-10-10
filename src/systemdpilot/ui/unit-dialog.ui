@@ -138,6 +138,9 @@
                     <property name="name">pages</property>
                     <property name="child">
               <object class="AdwViewStack" id="stack">
+                <!-- Measuring every page (300 activity rows, long text views) slows each layout. -->
+                <property name="hhomogeneous">False</property>
+                <property name="vhomogeneous">False</property>
                 <child>
                   <object class="AdwViewStackPage" id="overview_page">
                     <property name="name">overview</property>
