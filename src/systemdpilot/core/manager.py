@@ -284,6 +284,7 @@ class SystemdManager:
         boot: int | None = None,
         kernel: bool = False,
         lines: int = 1500,
+        priority: int | None = None,
         privileged: bool = False,
     ) -> LogResult:
         """The newest ``lines`` journal entries, newest first.
@@ -291,6 +292,8 @@ class SystemdManager:
         ``since`` and ``until`` are journalctl times such as "today", "24 hours ago"
         or "2026-10-10 14:00:00";
         ``boot`` is 0 for this boot, -1 for the one before, and so on.
+        ``priority`` keeps entries of that syslog priority and more severe, so
+        ``lines`` counts only those: 4 is warnings and worse.
         ``privileged`` reads it as root, so nothing is hidden.
         """
         argv = [
@@ -310,6 +313,8 @@ class SystemdManager:
             argv.append(f"--until={until}")
         if kernel:
             argv.append("--dmesg")
+        if priority is not None:
+            argv.append(f"--priority={int(priority)}")
         result = self.runner.run(argv, privileged=privileged)
         entries = parse_journal(result.stdout)
         stderr = strip_ansi(result.stderr).strip()

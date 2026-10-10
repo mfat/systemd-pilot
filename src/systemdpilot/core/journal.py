@@ -10,10 +10,26 @@ import re
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from .models import LogEntry
 
 ERROR, WARNING = "error", "warning"
+WARNING_PRIORITY = 4  # syslog priority of a warning; journalctl --priority=4 keeps it and worse
+
+
+# -- fetching ---------------------------------------------------------------
+
+
+def oldest_time(entries: list[LogEntry]) -> datetime | None:
+    """When the oldest of ``entries`` (newest first) was logged."""
+    return next((e.timestamp for e in reversed(entries) if e.timestamp), None)
+
+
+def until_before(moment: datetime) -> str:
+    """A journalctl --until that ends just before ``moment``; journalctl's own end is inclusive."""
+    micros = round(moment.timestamp() * 1_000_000) - 1
+    return f"@{micros // 1_000_000}.{micros % 1_000_000:06d}"
 
 
 # -- presets ----------------------------------------------------------------

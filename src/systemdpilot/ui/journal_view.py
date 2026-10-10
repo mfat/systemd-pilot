@@ -7,7 +7,17 @@ from datetime import datetime
 
 from gi.repository import Adw, Gio, GLib, GObject, Graphene, Gtk
 
-from ..core.journal import ERROR, PRESETS, PRESETS_BY_ID, WARNING, Issue, find_issues
+from ..core.journal import (
+    ERROR,
+    PRESETS,
+    PRESETS_BY_ID,
+    WARNING,
+    WARNING_PRIORITY,
+    Issue,
+    find_issues,
+    oldest_time,
+    until_before,
+)
 from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
 from ..core.models import LogEntry, LogResult
 from ..core.ssh import SSHRunner
@@ -18,7 +28,10 @@ from .operations import Operations, describe
 from .tasks import run_in_thread
 from .widgets import FilterRow, Option, OptionDropDown
 
-LIMIT = 1500  # newest entries fetched; enough to spot problems without a slow transfer over SSH
+# Newest entries fetched, of any priority; then as many older errors and warnings,
+# so problems are found across the whole range. Lower over SSH, where the transfer is slow.
+LOCAL_LIMIT = 5000
+REMOTE_LIMIT = 1500
 PAGE = 300  # rows shown in the simple timeline before “Show More”
 CHUNK = 40  # timeline rows created per idle tick so the first open stays responsive
 
@@ -268,6 +281,8 @@ class JournalView(Gtk.Box):
         self._banner_action: Callable[[], None] | None = None
         self._generation = 0
         self._result: LogResult | None = None
+        self._older_from: datetime | None = None  # entries before this are only errors and warnings
+        self._capped = False  # the range has more errors and warnings than were fetched
         self._boot_id = ""
         self._query = ""
         self._known_units: set[str] = set()
@@ -435,21 +450,29 @@ class JournalView(Gtk.Box):
         kernel = _pick(SOURCES, self._state("source"))[4]
         need_boot_id = not self._boot_id
         elevated = self._elevated
+        limit = REMOTE_LIMIT if isinstance(manager.runner, SSHRunner) else LOCAL_LIMIT
 
         def fetch():
             boot_id = manager.boot_id() if need_boot_id else None
-            result = manager.journal(
-                since=since, until=until, boot=boot, kernel=kernel, lines=LIMIT, privileged=elevated
-            )
+            query = {"since": since, "boot": boot, "kernel": kernel, "lines": limit, "privileged": elevated}
+            result = manager.journal(until=until, **query)
+            older_from, capped = None, False
+            cutoff = oldest_time(result.entries) if len(result.entries) >= limit else None
+            if cutoff is not None:
+                # The newest entries end before the range does: the rest of it, errors and warnings only.
+                older = manager.journal(until=until_before(cutoff), priority=WARNING_PRIORITY, **query)
+                if older.entries:
+                    result = LogResult(result.entries + older.entries, result.warning)
+                    older_from, capped = cutoff, len(older.entries) >= limit
             # Hidden entries: say why, and whether the user can do something about it.
             access = manager.journal_access() if result.warning else ""
-            return result, boot_id, access
+            return result, older_from, capped, boot_id, access
 
         def done(result):
             if generation != self._generation:
                 return
             self._loading = False
-            self._result, boot_id, self._access = result
+            self._result, self._older_from, self._capped, boot_id, self._access = result
             if boot_id is not None:
                 self._boot_id = boot_id
             self.loaded = True
@@ -670,10 +693,8 @@ class JournalView(Gtk.Box):
             button, action = _("Allow Access…"), self._ask_grant_access
         elif self._result.warning:
             warning = self._result.warning
-        elif len(self._result.entries) >= LIMIT:
-            warning = _("Only the newest {n} entries are shown. Choose a shorter range to see older ones.").format(
-                n=LIMIT
-            )
+        elif self._capped:
+            warning = _("Not every error and warning in this range is shown. Choose a shorter range to see older ones.")
         self._banner_action = action
         self._banner.set_title(GLib.markup_escape_text(warning))
         self._banner.set_button_label(button or None)
@@ -777,13 +798,18 @@ class JournalView(Gtk.Box):
 
         # Paint the timeline in chunks so switching to Journal does not stall.
         target = min(len(shown), self._shown)
-        state = {"pos": 0, "last_boot": None}
+        state = {"pos": 0, "last_boot": None, "older": False}
+        # Errors and Warnings list only those anyway; elsewhere, say where the other entries stop.
+        older_from = self._older_from if flt == "all" or preset_title else None
 
         def add_chunk():
             if gen != self._render_gen:
                 return GLib.SOURCE_REMOVE
             end = min(state["pos"] + CHUNK, target)
             for index, entry in shown[state["pos"] : end]:
+                if older_from and not state["older"] and entry.timestamp and entry.timestamp < older_from:
+                    timeline.list.append(self._older_row())
+                    state["older"] = True
                 if entry.boot_id and entry.boot_id != state["last_boot"]:
                     timeline.list.append(self._boot_row(entry.boot_id))
                     state["last_boot"] = entry.boot_id
@@ -860,6 +886,12 @@ class JournalView(Gtk.Box):
         self._shown += PAGE
         self._refresh()
         GLib.idle_add(lambda: self._simple_scroll.get_vadjustment().set_value(position) and False)
+
+    def _older_row(self) -> Gtk.ListBoxRow:
+        box = Gtk.Box(spacing=10, css_classes=["boot-header"])
+        box.append(Gtk.Image(icon_name="dialog-information-symbolic"))
+        box.append(widgets.label(_("Older entries: errors and warnings only")))
+        return Gtk.ListBoxRow(child=box, activatable=False, selectable=False)
 
     def _boot_row(self, boot_id: str) -> Gtk.ListBoxRow:
         box = Gtk.Box(spacing=10, css_classes=["boot-header"])

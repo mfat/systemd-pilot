@@ -1,6 +1,14 @@
 from datetime import datetime, timedelta
 
-from systemdpilot.core.journal import ERROR, PRESETS_BY_ID, REPEATED_WARNINGS, WARNING, find_issues
+from systemdpilot.core.journal import (
+    ERROR,
+    PRESETS_BY_ID,
+    REPEATED_WARNINGS,
+    WARNING,
+    find_issues,
+    oldest_time,
+    until_before,
+)
 from systemdpilot.core.models import LogEntry
 
 NOW = datetime(2026, 10, 10, 3, 30)
@@ -68,3 +76,12 @@ def test_presets():
     assert PRESETS_BY_ID["boot"].matches(entry("Failed to find module 'x'", "systemd-modules-load", 3), boot)
     assert not PRESETS_BY_ID["boot"].matches(entry("bad", "app", 3, boot="old"), boot)
     assert PRESETS_BY_ID["mac"].matches(entry('apparmor="DENIED" operation="open"', "audit"), boot)
+
+
+def test_older_entries_end_just_before_the_oldest():
+    entries = [entry("new"), entry("old", minutes=5), LogEntry(None, 6, "app", "1", "no time")]
+    assert oldest_time(entries) == NOW - timedelta(minutes=5)
+    assert oldest_time([]) is None
+    moment = datetime.fromtimestamp(1791672206.580793)
+    assert until_before(moment) == "@1791672206.580792"
+    assert until_before(datetime.fromtimestamp(1791672206)) == "@1791672205.999999"
