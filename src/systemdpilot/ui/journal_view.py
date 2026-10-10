@@ -507,19 +507,6 @@ class JournalView(Gtk.Box):
     def set_known_units(self, names: set[str]) -> None:
         self._known_units = names
 
-    def summary(self) -> str:
-        if not self.loaded:
-            return _("Journal")
-        parts = [
-            _pick(SINCE, self._state("since"))[2],
-            _pick(BOOTS, self._state("boot"))[3] if self._state("boot") != "all" else "",
-            _("kernel only") if self._state("source") == "kernel" else "",
-        ]
-        rng = ", ".join(p for p in parts if p)
-        count = ngettext("{n} entry", "{n} entries", self.entry_count).format(n=self.entry_count)
-        admin = _("as administrator") if self._elevated else ""
-        return " · ".join(p for p in (_("Journal"), count, rng, admin) if p)
-
     # -- internals --------------------------------------------------------
 
     def _state(self, name: str) -> str:

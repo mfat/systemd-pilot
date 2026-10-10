@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 from gettext import gettext as _
-from gettext import ngettext
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
@@ -63,7 +62,6 @@ class Window(Adw.ApplicationWindow):
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     split_view: Adw.OverlaySplitView = Gtk.Template.Child()
     machine_list: Gtk.ListBox = Gtk.Template.Child()
-    window_title: Adw.WindowTitle = Gtk.Template.Child()
     failed_badge: Gtk.Label = Gtk.Template.Child()
     issues_badge: Gtk.Label = Gtk.Template.Child()
     # The same switch at the bottom of narrow windows.
@@ -255,7 +253,7 @@ class Window(Adw.ApplicationWindow):
             self._load_runtime()
 
     def _update_header(self):
-        """Badges, and the title's subtitle for the current machine and view."""
+        """Failed-service and journal-issue badges on the view switch."""
         connected = self.sessions.is_connected(self.machine_id)
         failed = self.services.failed_count if connected else 0
         issues = len(self.journal.issues) if connected else 0
@@ -263,14 +261,6 @@ class Window(Adw.ApplicationWindow):
             set_count_badge(badge, failed)
         for badge in (self.issues_badge, self.issues_badge_bottom):
             set_count_badge(badge, issues)
-        if not connected or self.content_stack.get_visible_child_name() != "main":
-            self.window_title.set_subtitle("")
-        elif self.view == "journal":
-            self.window_title.set_subtitle(self.journal.summary())
-        else:
-            scope = _("User services") if self.scope is Scope.USER else _("System services")
-            n = len(self.services.units)
-            self.window_title.set_subtitle(f"{scope} · " + ngettext("{n} service", "{n} services", n).format(n=n))
 
     @property
     def show_inactive(self) -> bool:
@@ -313,8 +303,6 @@ class Window(Adw.ApplicationWindow):
         self.services.clear()
         self.journal.set_manager(self.sessions.get(self.machine_id))
         host = self._current_host()
-        self.window_title.set_title(host.name if host else _("This Computer"))
-        self.window_title.set_subtitle("")
         if self.sessions.is_connected(self.machine_id):
             self.reload(show_spinner=True)
         elif self.machine_id in self._connecting:

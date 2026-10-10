@@ -78,16 +78,6 @@
                 <child type="top">
                   <object class="AdwHeaderBar">
                     <property name="title-widget">
-                      <object class="AdwWindowTitle" id="window_title"/>
-                    </property>
-                    <child type="start">
-                      <object class="GtkToggleButton" id="sidebar_button">
-                        <property name="icon-name">sidebar-show-symbolic</property>
-                        <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
-                        <property name="active">True</property>
-                      </object>
-                    </child>
-                    <child type="start">
                       <object class="GtkBox" id="view_switch">
                         <style>
                           <class name="linked"/>
@@ -147,6 +137,13 @@
                             </property>
                           </object>
                         </child>
+                      </object>
+                    </property>
+                    <child type="start">
+                      <object class="GtkToggleButton" id="sidebar_button">
+                        <property name="icon-name">sidebar-show-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
+                        <property name="active">True</property>
                       </object>
                     </child>
                     <child type="end">
