@@ -147,6 +147,10 @@ def issue_badge(issue: Issue) -> str:
     return badges.get(issue.kind, _("Repeated warnings"))
 
 
+# The icon for an entry's level, by its text css class; other levels get an information icon.
+LEVEL_ICONS = {"error": "dialog-error-symbolic", "warning": "dialog-warning-symbolic"}
+
+
 class IssueRow(Gtk.ListBoxRow):
     """A problem card. Selecting it shows its entries, and its service, in the details column."""
 
@@ -175,6 +179,42 @@ class IssueRow(Gtk.ListBoxRow):
         box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER))
         self.set_child(box)
         self.update_property([Gtk.AccessibleProperty.LABEL], [title])
+
+
+class EntryRow(Gtk.ListBoxRow):
+    """A timeline entry, laid out like a problem card: where it came from, its message, when."""
+
+    def __init__(self, entry: LogEntry, issue: Issue | None):
+        super().__init__()
+        self.entry = entry
+        box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=16, margin_end=16)
+        level_word, level_css = words.level(entry.priority)
+        icon = LEVEL_ICONS.get(level_css, "dialog-information-symbolic")
+        box.append(Gtk.Image(icon_name=icon, valign=Gtk.Align.START, css_classes=[level_css or "dim-label"]))
+
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
+        heading = Gtk.Box(spacing=8)
+        source = entry.identifier or entry.unit or _("Unknown source")
+        heading.append(widgets.label(source, "unit-title", wrap=True, hexpand=True))
+        if issue:
+            badge = widgets.label(
+                issue_badge(issue),
+                "badge",
+                "error" if issue.severity == ERROR else "warning",
+                valign=Gtk.Align.CENTER,
+                tooltip_text=issue_text(issue)[0],
+            )
+            heading.append(badge)
+        texts.append(heading)
+        first, _sep, rest = entry.message.partition("\n")
+        texts.append(widgets.label(first + (" …" if rest.strip() else ""), "issue-explanation", wrap=True))
+        when = entry.timestamp.strftime("%b %d, %H:%M:%S") if entry.timestamp else ""
+        meta = " · ".join(part for part in (when, f"PID {entry.pid}" if entry.pid else "", level_word) if part)
+        texts.append(widgets.label(meta, "dim-label", "caption", wrap=True))
+        box.append(texts)
+        box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER))
+        self.set_child(box)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [f"{source}: {first}"])
 
 
 def issue_meta(issue: Issue) -> str:
@@ -717,13 +757,7 @@ class JournalView(Gtk.Box):
                 if entry.boot_id and entry.boot_id != state["last_boot"]:
                     timeline.list.append(self._boot_row(entry.boot_id))
                     state["last_boot"] = entry.boot_id
-                issue = flagged.get(index)
-                badge = css = tooltip = ""
-                if issue:
-                    badge = issue_badge(issue)
-                    css = "error" if issue.severity == ERROR else "warning"
-                    tooltip = issue_text(issue)[0]
-                row = widgets.log_row(entry, badge=badge, badge_css=css, badge_tooltip=tooltip, activatable=True)
+                row = EntryRow(entry, flagged.get(index))
                 timeline.list.append(row)
                 if entry is selected:
                     timeline.list.select_row(row)

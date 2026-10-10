@@ -164,15 +164,7 @@ class Section:
         self.box.append(self.list)
 
 
-def log_row(
-    entry: LogEntry,
-    *,
-    show_source: bool = True,
-    badge: str = "",
-    badge_css: str = "",
-    badge_tooltip: str = "",
-    activatable: bool = False,
-) -> Gtk.ListBoxRow:
+def log_row(entry: LogEntry, *, show_source: bool = True) -> Gtk.ListBoxRow:
     """One journal entry: time, a dot for its level, the message and where it came from."""
     grid = Gtk.Box(spacing=12, margin_top=10, margin_bottom=10, margin_start=16, margin_end=16)
     when = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, width_request=52, valign=Gtk.Align.START)
@@ -200,20 +192,7 @@ def log_row(
     meta = f"{source} · {level_word}" if show_source and source else level_word
     text.append(label(meta, "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END))
     grid.append(text)
-    if badge:
-        grid.append(
-            Gtk.Label(
-                label=badge,
-                css_classes=["badge", badge_css],
-                valign=Gtk.Align.START,
-                tooltip_text=badge_tooltip or badge,
-            )
-        )
-    row = Gtk.ListBoxRow(child=grid, activatable=activatable)
-    row.entry = entry
-    if badge:
-        row.add_css_class(f"flagged-{badge_css}")
-    return row
+    return Gtk.ListBoxRow(child=grid, activatable=False)
 
 
 def scroller(child: Gtk.Widget) -> Gtk.ScrolledWindow:

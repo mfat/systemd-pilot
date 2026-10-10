@@ -187,8 +187,6 @@ menubutton.picker > button {
   background-color: alpha(currentColor, 0.04);
 }
 .boot-header > label { opacity: 0.7; }
-row.flagged-error { background-color: alpha(@error_color, 0.05); }
-row.flagged-warning { background-color: alpha(@warning_color, 0.07); }
 .issue-explanation { opacity: 0.8; }
 .entry-message {
   padding: 10px 12px;

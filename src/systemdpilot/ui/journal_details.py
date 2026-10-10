@@ -9,7 +9,7 @@ from ..core.journal import ERROR, Issue
 from ..core.models import LogEntry
 from ..i18n import _, ngettext
 from . import widgets, words
-from .journal_view import JournalView, issue_meta, issue_text
+from .journal_view import LEVEL_ICONS, JournalView, issue_meta, issue_text
 from .resources import app_icon
 
 ENTRY_LIMIT = 200  # a problem's entries listed; a crash loop can have thousands
@@ -118,8 +118,11 @@ class JournalDetails(Adw.Bin):
     def _show_entry(self, entry: LogEntry) -> None:
         level_word, level_css = words.level(entry.priority)
         first = entry.message.partition("\n")[0]
-        mark = Gtk.Box(width_request=24, height_request=24)
-        mark.append(widgets.dot(words.level_dot(entry.priority)))
+        mark = Gtk.Image(
+            icon_name=LEVEL_ICONS.get(level_css, "dialog-information-symbolic"),
+            pixel_size=24,
+            css_classes=[level_css or "dim-label"],
+        )
         self._heading(mark, first or _("Journal Entry"), (level_word, level_css) if level_css else None)
         self._open_button(entry.unit)
 
