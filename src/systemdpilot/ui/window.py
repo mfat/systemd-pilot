@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 from gettext import gettext as _
+from gettext import ngettext
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
@@ -266,9 +267,14 @@ class Window(Adw.ApplicationWindow):
         """The count of journal problems on the Journal buttons."""
         connected = self.sessions.is_connected(self.machine_id)
         issues = len(self.journal.issues) if connected else 0
+        tooltip = _("Open system log")
+        if issues:
+            found = ngettext("{n} problem found", "{n} problems found", issues).format(n=issues)
+            tooltip = f"{tooltip}. {found}"
         for badge in (self._placeholder_journal_badge, self._details and self._details.journal_badge):
             if badge:
                 set_count_badge(badge, issues)
+                badge.get_ancestor(Gtk.Button).set_tooltip_text(tooltip)
 
     def _journal_button(self) -> tuple[Gtk.Button, Gtk.Label]:
         """For the details column's header bar: one each for the placeholder and the panel."""
@@ -280,7 +286,7 @@ class Window(Adw.ApplicationWindow):
         button = Gtk.Button(
             child=box,
             action_name="win.journal",
-            tooltip_text=_("Open the system logs in their own window; the badge counts problems found"),
+            tooltip_text=_("Open system log"),
         )
         return button, badge
 
