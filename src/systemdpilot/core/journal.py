@@ -18,6 +18,11 @@ ERROR, WARNING = "error", "warning"
 WARNING_PRIORITY = 4  # syslog priority of a warning; journalctl --priority=4 keeps it and worse
 
 
+def matches_query(entry: LogEntry, query: str) -> bool:
+    """Whether a search, lower case, finds ``entry``: in its message or the program that logged it."""
+    return not query or query in entry.message.lower() or query in entry.identifier.lower()
+
+
 # -- fetching ---------------------------------------------------------------
 
 

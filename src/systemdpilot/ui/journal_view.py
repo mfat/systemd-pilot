@@ -15,6 +15,7 @@ from ..core.journal import (
     WARNING_PRIORITY,
     Issue,
     find_issues,
+    matches_query,
     oldest_time,
     until_before,
 )
@@ -630,11 +631,7 @@ class JournalView(Gtk.Box):
         analysis_key = (id(self._result), query, self._boot_id)
         if analysis_key != self._analysis_key:
             self._analysis_key = analysis_key
-            ranged = [
-                e
-                for e in self._result.entries
-                if not query or query in e.message.lower() or query in e.identifier.lower()
-            ]
+            ranged = [e for e in self._result.entries if matches_query(e, query)]
             self.issues, flagged = find_issues(ranged)
             self._ranged = ranged
             self._flagged = flagged

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from gi.repository import Adw, GLib, Gtk, Pango
 
+from ..core.journal import matches_query
 from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
 from ..core.parsers import parse_int, unit_file_body
@@ -55,6 +56,7 @@ class UnitPanel(Adw.BreakpointBin):
     overview_page: Adw.ViewStackPage = Gtk.Template.Child()
     activity_page: Adw.ViewStackPage = Gtk.Template.Child()
     overview_box: Gtk.Box = Gtk.Template.Child()
+    log_search: Gtk.SearchEntry = Gtk.Template.Child()
     raw_switch: Gtk.Switch = Gtk.Template.Child()
     activity_stack: Gtk.Stack = Gtk.Template.Child()
     activity_box: Gtk.Box = Gtk.Template.Child()
@@ -84,6 +86,7 @@ class UnitPanel(Adw.BreakpointBin):
         self._details: _Details | None = None
         self._pending_activity: _Details | None = None  # loaded, its rows not built yet
         self._activity_gen = 0
+        self._log_query = ""  # lower case; the Log page shows only the entries it finds
         self._closed = False
         # On remote hosts, logs the SSH user may not read can be read through sudo.
         self._remote = isinstance(manager.runner, SSHRunner)
@@ -93,6 +96,7 @@ class UnitPanel(Adw.BreakpointBin):
         self.journal_badge: Gtk.Label | None = None  # on the window's Journal button, beside the list
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
         self.raw_switch.connect("notify::active", self._on_raw_toggled)
+        self.log_search.connect("search-changed", self._on_log_search)
         self.stack.connect(
             "notify::visible-child-name",
             lambda stack, _p: stack.get_visible_child_name() == "activity" and self._build_pending_activity(),
@@ -117,6 +121,25 @@ class UnitPanel(Adw.BreakpointBin):
         self.activity_stack.set_visible_child_name("raw" if raw else "list")
         if raw:
             GLib.idle_add(self._scroll_logs_to_end)
+
+    def _on_log_search(self, entry):
+        self._log_query = entry.get_text().strip().lower()
+        if self._details is not None:
+            self._show_raw_logs(self._details)
+            if self._pending_activity is None:  # else it is built with the query when shown
+                self._build_activity(self._details)
+
+    def _searched_logs(self, details: _Details) -> list[LogEntry]:
+        """The unit's entries the log search finds, oldest first."""
+        return [e for e in details.logs.entries if matches_query(e, self._log_query)]
+
+    def _show_raw_logs(self, details: _Details) -> None:
+        entries = self._searched_logs(details)
+        text.set_logs(self.logs_view.get_buffer(), entries)
+        if not entries:
+            message = widgets.no_results(self._log_query) if self._log_query else _("No log entries.")
+            self.logs_view.get_buffer().set_text(message)
+        GLib.idle_add(self._scroll_logs_to_end)
 
     # -- header -----------------------------------------------------------
 
@@ -261,13 +284,10 @@ class UnitPanel(Adw.BreakpointBin):
         self._details_load = load
         self._details = details
         self._show_unit(details.unit)
-        text.set_logs(self.logs_view.get_buffer(), details.logs.entries)
-        if not details.logs.entries:
-            self.logs_view.get_buffer().set_text(_("No log entries."))
+        self._show_raw_logs(details)
         self.logs_banner.set_title(GLib.markup_escape_text(self._logs_warning(details)))
         self.logs_banner.set_button_label(_("View as Administrator") if self._remote else None)
         self.logs_banner.set_revealed(bool(details.logs.warning))
-        GLib.idle_add(self._scroll_logs_to_end)
         self._build_overview(details)
         # Hundreds of activity rows take a while to build: the pages show first,
         # and the rows follow once they are on screen (at once if they are wanted).
@@ -447,10 +467,11 @@ class UnitPanel(Adw.BreakpointBin):
                 button.connect("clicked", lambda *_: self._view_logs_as_admin())
                 notice.append(button)
             box.append(notice)
-        entries = list(reversed(details.logs.entries))[:_ACTIVITY_LIMIT]
+        entries = list(reversed(self._searched_logs(details)))[:_ACTIVITY_LIMIT]
         section = widgets.Section(_("Log"), _("Newest first"))
         if not entries:
-            section.list.append(widgets.placeholder_row(_("No log entries.")))
+            message = widgets.no_results(self._log_query) if self._log_query else _("No log entries.")
+            section.list.append(widgets.placeholder_row(message))
         box.append(section.box)
         # A screenful at once, the rest in batches between frames: building
         # hundreds of rows in one go froze the window for half a second.

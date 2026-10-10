@@ -159,22 +159,32 @@
                         <property name="orientation">vertical</property>
                         <child>
                           <object class="GtkBox">
-                            <property name="spacing">8</property>
-                            <property name="halign">end</property>
+                            <property name="spacing">12</property>
                             <property name="margin-start">24</property>
                             <property name="margin-end">24</property>
                             <property name="margin-top">12</property>
-                            <property name="tooltip-text" translatable="yes">Show the log as journalctl prints it</property>
                             <child>
-                              <object class="GtkLabel">
-                                <property name="label" translatable="yes">_Raw Log</property>
-                                <property name="use-underline">True</property>
-                                <property name="mnemonic-widget">raw_switch</property>
+                              <object class="GtkSearchEntry" id="log_search">
+                                <property name="hexpand">True</property>
+                                <property name="placeholder-text" translatable="yes">Search the log</property>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkSwitch" id="raw_switch">
-                                <property name="valign">center</property>
+                              <object class="GtkBox">
+                                <property name="spacing">8</property>
+                                <property name="tooltip-text" translatable="yes">Show the log as journalctl prints it</property>
+                                <child>
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">_Raw Log</property>
+                                    <property name="use-underline">True</property>
+                                    <property name="mnemonic-widget">raw_switch</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkSwitch" id="raw_switch">
+                                    <property name="valign">center</property>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                           </object>
