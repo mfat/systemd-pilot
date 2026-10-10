@@ -9,7 +9,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 from ..core.models import Scope, Unit, UnitAction
 from . import widgets, words
 from .unit_list import UnitList
-from .widgets import Chip, Option, OptionButton
+from .widgets import Option, OptionButton
 
 SIMPLE_CHUNK = 25  # service rows built per idle tick on first paint
 
@@ -22,6 +22,29 @@ def mode_switch() -> Gtk.Widget:
     for value, text in (("simple", _("Simple")), ("advanced", _("Advanced"))):
         box.append(Gtk.ToggleButton(label=text, action_name="win.mode", action_target=GLib.Variant("s", value)))
     return box
+
+
+class FilterRow(Gtk.ListBoxRow):
+    """A state filter in the window sidebar: dot, name and how many services match."""
+
+    def __init__(self, value: str, text: str, dot_kind: str | None):
+        super().__init__()
+        self.value = value
+        box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
+        if dot_kind:
+            mark = Gtk.Box(width_request=16, valign=Gtk.Align.CENTER)  # dots line up with the icon
+            mark.append(widgets.dot(dot_kind, small=True))
+        else:
+            mark = Gtk.Image(icon_name="view-list-symbolic")
+        box.append(mark)
+        box.append(widgets.label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        self.count = widgets.label("", "dim-label", "numeric")
+        box.append(self.count)
+        self.set_child(box)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [text])
+
+    def set_count(self, count: int) -> None:
+        self.count.set_label(str(count))
 
 
 class UnitRow(Gtk.ListBoxRow):
@@ -189,26 +212,21 @@ class ServicesView(Gtk.Box):
         self.scope_button.set_tooltip_text(_("Which services to show"))
         self.scope_button.set_valign(Gtk.Align.START)
         bar.append(self.scope_button)
-        bar.append(
-            Gtk.Separator(
-                orientation=Gtk.Orientation.VERTICAL,
-                margin_top=6,
-                margin_bottom=6,
-                valign=Gtk.Align.START,
-                height_request=20,
-            )
-        )
-        chips = Gtk.Box(spacing=6, hexpand=True)
-        self._chips: dict[str, Chip] = {}
-        for value, text, dot_kind in self.FILTERS:
-            chip = Chip(text, "services.filter", value, dot_kind)
-            self._chips[value] = chip
-            chips.append(chip)
-        bar.append(chips)
+        bar.append(Gtk.Box(hexpand=True))
         switch = mode_switch()
         switch.set_valign(Gtk.Align.START)
         bar.append(switch)
         self.append(widgets.scroller(bar))
+
+        # The state filters live in the window sidebar.
+        self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
+        self._filter_rows: dict[str, FilterRow] = {}
+        for value, text, dot_kind in self.FILTERS:
+            row = FilterRow(value, text, dot_kind)
+            self._filter_rows[value] = row
+            self.filter_list.append(row)
+        self.filter_list.select_row(self._filter_rows["all"])
+        self.filter_list.connect("row-selected", self._on_filter_row_selected)
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
         self._groups = Gtk.Box(
@@ -303,8 +321,13 @@ class ServicesView(Gtk.Box):
 
     # -- internals --------------------------------------------------------
 
+    def _on_filter_row_selected(self, _listbox, row):
+        if row is not None and row.value != self.kind_filter:
+            self._filter.change_state(GLib.Variant("s", row.value))
+
     def _on_filter(self, action, value):
         action.set_state(value)
+        self.filter_list.select_row(self._filter_rows[value.get_string()])
         self.unit_list.set_kind(value.get_string())
         self._refresh()
         self.emit("filter-changed")
@@ -319,8 +342,8 @@ class ServicesView(Gtk.Box):
 
     def _refresh(self) -> None:
         matching = self._matching()
-        for value, chip in self._chips.items():
-            chip.set_count(len(matching) if value == "all" else sum(1 for u in matching if u.kind == value))
+        for value, row in self._filter_rows.items():
+            row.set_count(len(matching) if value == "all" else sum(1 for u in matching if u.kind == value))
 
         visible = self._visible()
         if not visible:

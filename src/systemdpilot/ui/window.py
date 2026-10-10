@@ -40,6 +40,8 @@ class MachineRow(Gtk.ListBoxRow):
     def __init__(self, machine_id: str, title: str, subtitle: str, icon_name: str):
         super().__init__()
         self.machine_id = machine_id
+        self.title, self.subtitle, self.icon_name = title, subtitle, icon_name
+        self.connected = False
         box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
         box.append(Gtk.Image(icon_name=icon_name))
         labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
@@ -56,6 +58,7 @@ class MachineRow(Gtk.ListBoxRow):
         self.update_property([Gtk.AccessibleProperty.LABEL], [title])
 
     def set_connected(self, connected: bool) -> None:
+        self.connected = connected
         self.status.set_visible(connected)
 
 
@@ -65,6 +68,14 @@ class Window(Adw.ApplicationWindow):
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     split_view: Adw.OverlaySplitView = Gtk.Template.Child()
+    filters_bin: Adw.Bin = Gtk.Template.Child()
+    # The machine selector at the bottom of the sidebar.
+    machine_button: Gtk.MenuButton = Gtk.Template.Child()
+    machine_popover: Gtk.Popover = Gtk.Template.Child()
+    machine_icon: Gtk.Image = Gtk.Template.Child()
+    machine_name: Gtk.Label = Gtk.Template.Child()
+    machine_subtitle: Gtk.Label = Gtk.Template.Child()
+    machine_dot: Gtk.Box = Gtk.Template.Child()
     machine_list: Gtk.ListBox = Gtk.Template.Child()
     failed_badge: Gtk.Label = Gtk.Template.Child()
     issues_badge: Gtk.Label = Gtk.Template.Child()
@@ -110,6 +121,8 @@ class Window(Adw.ApplicationWindow):
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_header())
         self.services_bin.set_child(self.services)
+        self.filters_bin.set_child(self.services.filter_list)
+        self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
         self._details_placeholder = self._build_details_placeholder()
         self.details_bin.set_child(self._details_placeholder)
         self.details_split.connect("notify::show-sidebar", lambda *_: self._fit_table())
@@ -309,6 +322,23 @@ class Window(Adw.ApplicationWindow):
         row = self._row_for(machine_id)
         if row and machine_id != LOCAL_ID:
             row.set_connected(self.sessions.is_connected(machine_id))
+            if machine_id == self.machine_id:
+                self._show_machine(row)
+
+    def _show_machine(self, row: MachineRow) -> None:
+        """The machine selector shows the chosen machine."""
+        self.machine_icon.set_from_icon_name(row.icon_name)
+        self.machine_name.set_label(row.title)
+        self.machine_subtitle.set_label(row.subtitle)
+        self.machine_dot.set_visible(row.connected)
+        self.machine_button.update_property([Gtk.AccessibleProperty.LABEL], [row.title])
+
+    def _on_filter_activated(self):
+        # The filters are for services: choosing one from the journal goes back to them.
+        if self.view != "services":
+            self.activate_action("win.view", GLib.Variant("s", "services"))
+        if self.split_view.get_collapsed():
+            self.split_view.set_show_sidebar(False)
 
     def _current_host(self) -> Host | None:
         return self.sessions.hosts.get(self.machine_id)
@@ -318,6 +348,7 @@ class Window(Adw.ApplicationWindow):
         if row is None or row.machine_id == self.machine_id and self.services.units:
             return
         self.machine_id = row.machine_id
+        self._show_machine(row)
         self._generation += 1  # results still on their way belong to the previous machine
         self.services.clear()
         self._close_details()
@@ -333,6 +364,7 @@ class Window(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback()
     def on_machine_activated(self, _listbox, row):
+        self.machine_popover.popdown()
         if row.machine_id != LOCAL_ID and not self.sessions.is_connected(row.machine_id):
             self.connect_current()
         if self.split_view.get_collapsed():

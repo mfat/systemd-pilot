@@ -69,17 +69,97 @@
                   <object class="GtkScrolledWindow">
                     <property name="hscrollbar-policy">never</property>
                     <property name="child">
-                      <object class="GtkListBox" id="machine_list">
-                        <property name="selection-mode">browse</property>
-                        <style>
-                          <class name="navigation-sidebar"/>
-                        </style>
-                        <signal name="row-selected" handler="on_machine_selected"/>
-                        <signal name="row-activated" handler="on_machine_activated"/>
-                      </object>
+                      <!-- The service state filters, from the services view. -->
+                      <object class="AdwBin" id="filters_bin"/>
                     </property>
                   </object>
                 </property>
+                <child type="bottom">
+                  <object class="GtkActionBar">
+                    <child type="start">
+                      <object class="GtkMenuButton" id="machine_button">
+                        <property name="hexpand">True</property>
+                        <property name="direction">up</property>
+                        <property name="tooltip-text" translatable="yes">Choose a Machine</property>
+                        <style>
+                          <class name="flat"/>
+                          <class name="machine-button"/>
+                        </style>
+                        <property name="child">
+                          <object class="GtkBox">
+                            <property name="spacing">10</property>
+                            <child>
+                              <object class="GtkImage" id="machine_icon">
+                                <property name="icon-name">computer-symbolic</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="hexpand">True</property>
+                                <child>
+                                  <object class="GtkLabel" id="machine_name">
+                                    <property name="xalign">0</property>
+                                    <property name="ellipsize">end</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="machine_subtitle">
+                                    <property name="xalign">0</property>
+                                    <property name="ellipsize">end</property>
+                                    <style>
+                                      <class name="dim-label"/>
+                                      <class name="caption"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="machine_dot">
+                                <property name="visible">False</property>
+                                <property name="valign">center</property>
+                                <property name="tooltip-text" translatable="yes">Connected</property>
+                                <style>
+                                  <class name="status-dot"/>
+                                  <class name="small"/>
+                                  <class name="running"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkImage">
+                                <property name="icon-name">pan-up-symbolic</property>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                        <property name="popover">
+                          <object class="GtkPopover" id="machine_popover">
+                            <property name="child">
+                              <object class="GtkScrolledWindow">
+                                <property name="hscrollbar-policy">never</property>
+                                <property name="propagate-natural-height">True</property>
+                                <property name="max-content-height">420</property>
+                                <property name="min-content-width">240</property>
+                                <property name="child">
+                                  <object class="GtkListBox" id="machine_list">
+                                    <property name="selection-mode">browse</property>
+                                    <style>
+                                      <class name="navigation-sidebar"/>
+                                    </style>
+                                    <signal name="row-selected" handler="on_machine_selected"/>
+                                    <signal name="row-activated" handler="on_machine_activated"/>
+                                  </object>
+                                </property>
+                              </object>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </property>
             <property name="content">
