@@ -46,7 +46,6 @@ class UnitPanel(Adw.BreakpointBin):
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     header_bar: Adw.HeaderBar = Gtk.Template.Child()
-    refresh_button: Gtk.Button = Gtk.Template.Child()
     mode_box: Gtk.Box = Gtk.Template.Child()
     mode_switch: Gtk.Switch = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
@@ -187,18 +186,8 @@ class UnitPanel(Adw.BreakpointBin):
             self.action_box.append(button)
 
     def _set_busy(self, busy: bool):
-        self.refresh_button.set_sensitive(not busy)
         self.action_box.set_sensitive(not busy)
         self.overview_box.set_sensitive(not busy)
-
-    def _set_fetching(self, fetching: bool) -> None:
-        """Background refresh: keep start/stop/enable usable while details load."""
-        self.refresh_button.set_sensitive(not fetching)
-        # The refresh button turns into a spinner while details load.
-        if fetching:
-            self.refresh_button.set_child(Gtk.Spinner(spinning=True))
-        else:
-            self.refresh_button.set_icon_name("view-refresh-symbolic")
 
     def _show_pages(self) -> None:
         """Everything has loaded (or failed): the spinner gives way to the pages, once."""
@@ -211,7 +200,6 @@ class UnitPanel(Adw.BreakpointBin):
         manager, name, scope = self.manager, self.unit.name, self.scope
         self._loads += 1
         load = self._loads
-        self._set_fetching(True)
 
         def fetch_core() -> tuple[dict[str, str], Unit]:
             props = manager.properties(name, scope)
@@ -236,7 +224,6 @@ class UnitPanel(Adw.BreakpointBin):
         def core_failed(error):
             if self._closed or load != self._loads:
                 return
-            self._set_fetching(False)
             self._on_load_failed(error)
 
         if self._elevated:
@@ -267,7 +254,6 @@ class UnitPanel(Adw.BreakpointBin):
         def heavy_failed(error):
             if self._closed or load != self._loads:
                 return
-            self._set_fetching(False)
             self._on_load_failed(error)
 
         run_in_thread(fetch_heavy, on_done=heavy_done, on_error=heavy_failed)
@@ -317,7 +303,6 @@ class UnitPanel(Adw.BreakpointBin):
             return
         self._details_load = load
         self._details = details
-        self._set_fetching(False)
         self._show_unit(details.unit)
         self.status_view.get_buffer().set_text(details.status)
         self.file_view.get_buffer().set_text(details.unit_file or _("No unit file found."))
@@ -348,7 +333,6 @@ class UnitPanel(Adw.BreakpointBin):
     def _on_load_failed(self, error):
         if self._closed:
             return
-        self._set_fetching(False)
         message = describe(error)
         self.status_view.get_buffer().set_text(message)
         widgets.clear(self.overview_box)
@@ -576,10 +560,6 @@ class UnitPanel(Adw.BreakpointBin):
         if row.get_active() == words.starts_at_boot(self.unit):
             return
         self._run_action(UnitAction.ENABLE if row.get_active() else UnitAction.DISABLE)
-
-    @Gtk.Template.Callback()
-    def on_refresh_clicked(self, _button):
-        self.load()
 
     @Gtk.Template.Callback()
     def on_edit_file_clicked(self, _button):
