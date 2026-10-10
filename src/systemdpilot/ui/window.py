@@ -807,8 +807,7 @@ class Window(Adw.ApplicationWindow):
         view = Adw.ToolbarView()
         view.add_top_bar(header)
         page = Adw.StatusPage(
-            title=_("No Service Selected"),
-            description=_("Select a service to see what it does and to start, stop or restart it."),
+            description=_("Select a service to display its details."),
         )
         icon = app_icon(128)
         if icon:
