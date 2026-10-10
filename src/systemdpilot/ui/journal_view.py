@@ -505,8 +505,9 @@ class JournalView(Gtk.Box):
     def _filter_header(self, row, before):
         first_preset = row.value.startswith(PRESET_ROW) and not before.value.startswith(PRESET_ROW)
         if first_preset and row.get_header() is None:
-            heading = widgets.label(_("Presets"), "dim-label", "caption-heading", margin_top=12, margin_start=12)
-            heading.set_margin_bottom(6)
+            heading = widgets.label(
+                _("Common problems"), "dim-label", "caption-heading", margin_top=12, margin_bottom=6, margin_start=12
+            )
             row.set_header(heading)
 
     def _selected_filter_row(self) -> FilterRow:
