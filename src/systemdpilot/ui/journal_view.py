@@ -144,7 +144,7 @@ def issue_badge(issue: Issue) -> str:
         "storage": _("Storage error"),
         "errors": _("Errors"),
     }
-    return badges.get(issue.kind, _("Repeated"))
+    return badges.get(issue.kind, _("Repeated warnings"))
 
 
 class IssueRow(Gtk.ListBoxRow):
