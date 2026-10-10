@@ -62,6 +62,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.mfat.system
 %changelog
 * Sun Oct 11 2026 mFat <newmfat@gmail.com> - 4.1.1-1
 - Avoid setting a panel's child again, which aborted the AppImage on libadwaita 1.5
+- Open the journal when it is chosen, even if services failed to load
 
 * Sun Oct 11 2026 mFat <newmfat@gmail.com> - 4.1.0-1
 - Add a journal view with filters, time ranges and search

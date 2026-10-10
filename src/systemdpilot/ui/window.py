@@ -256,7 +256,10 @@ class Window(Adw.ApplicationWindow):
             set_bin_child(self.details_bin, self.journal_details)
         else:
             set_bin_child(self.details_bin, self._details or self._details_placeholder)
-        if self.content_stack.get_visible_child_name() in MODES_PAGES:
+        # The loading and error pages belong to the services list. Choosing the
+        # journal still opens it. A remote host that is not connected stays there.
+        page = self.content_stack.get_visible_child_name()
+        if page != "disconnected" and self.machine_id not in self._connecting:
             self._show_list()
         if journal:
             self.journal.show()
