@@ -121,6 +121,13 @@ button.hero-action.destructive-action:hover { background-image: image(alpha(curr
 .command-row .subtitle { font-family: monospace; }
 
 /* Journal. */
+/* The big clock of the custom range, as in GNOME Settings. */
+.time-editor {
+  padding: 0 6px;
+  border-radius: 9px;
+  background-color: alpha(currentColor, 0.08);
+}
+.time-field, .time-colon { font-size: 40px; font-feature-settings: "tnum"; }
 .boot-header {
   padding: 8px 16px;
   font-size: 12px;
