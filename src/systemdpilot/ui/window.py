@@ -492,19 +492,35 @@ class Window(Adw.ApplicationWindow):
         else:
             self.journal.mark_stale()
 
-        # Loaded units come back almost instantly; startup states and units
-        # that are not loaded take systemd much longer, so they follow later.
+        # Loaded units come back almost instantly. File states (enable switches)
+        # follow next; uptimes/PID/memory last — that systemctl show is slow and
+        # used to freeze the list when applied together with the file-state pass.
         def done(units):
             if generation != self._generation:
                 return
             self._on_units_loaded(units)
             run_in_thread(
-                manager.complete_units, units, scope, include_inactive, on_done=completed, on_error=incomplete
+                manager.attach_file_states,
+                units,
+                scope,
+                include_inactive,
+                on_done=file_states_done,
+                on_error=incomplete,
             )
 
-        def completed(units):
+        def file_states_done(units):
+            if generation != self._generation:
+                return
+            self._on_units_loaded(units)
+            run_in_thread(manager.add_runtime, units, scope, on_done=runtime_done, on_error=runtime_failed)
+
+        def runtime_done(units):
             if generation == self._generation:
                 self._on_units_loaded(units)
+
+        def runtime_failed(error):
+            if generation == self._generation:
+                self.toast(_("Could not load service details: {error}").format(error=describe(error)))
 
         def incomplete(error):
             if generation == self._generation:

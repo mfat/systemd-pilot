@@ -86,19 +86,20 @@ def duration(since: datetime, now: datetime | None = None) -> str:
 def ago(when: datetime | None, now: datetime | None = None) -> str:
     if when is None:
         return ""
-    if ((now or datetime.now()) - when).total_seconds() < 60:
+    clock = now or datetime.now()
+    if (clock - when).total_seconds() < 60:
         return _("just now")
     # Translators: {time} is a duration such as "5 minutes"
-    return _("{time} ago").format(time=duration(when, now))
+    return _("{time} ago").format(time=duration(when, clock))
 
 
 def unit_subtitle(unit: Unit) -> str:
+    """Status line under the title in the services list (no uptime — that was costly)."""
     kind = unit.kind
     if unit.active_state == "activating":
         text = _("Starting up")
     elif kind == "running":
-        # Translators: {time} is a duration such as "5 minutes"
-        text = _("Running for {time}").format(time=duration(unit.since)) if unit.since else _("Running")
+        text = _("Running")
     elif kind == "exited":
         text = _("Ran and finished")
     elif kind == "failed":
@@ -108,17 +109,20 @@ def unit_subtitle(unit: Unit) -> str:
     return f"{text} · {unit.short_name}"
 
 
-def state_sentence(unit: Unit) -> str:
+def state_sentence(unit: Unit, now: datetime | None = None) -> str:
     """Follows the state word: "Running · started 3 hours ago"."""
     kind = unit.kind
+    clock = now or datetime.now()
     if kind == "running" and unit.since:
-        return _("started {ago} ({date})").format(ago=ago(unit.since), date=unit.since.strftime("%a, %b %-d at %H:%M"))
+        return _("started {ago} ({date})").format(
+            ago=ago(unit.since, clock), date=unit.since.strftime("%a, %b %-d at %H:%M")
+        )
     if kind == "running":
         return _("working in the background")
     if kind == "exited":
         return _("ran and finished normally")
     if kind == "failed" and unit.since:
-        return _("stopped with an error {ago}").format(ago=ago(unit.since))
+        return _("stopped with an error {ago}").format(ago=ago(unit.since, clock))
     if kind == "failed":
         return _("stopped with an error")
     return _("not running right now")

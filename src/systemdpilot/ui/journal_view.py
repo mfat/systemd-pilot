@@ -19,7 +19,8 @@ from .tasks import run_in_thread
 from .widgets import Chip, Option, OptionButton
 
 LIMIT = 1500  # newest entries fetched; enough to spot problems without a slow transfer over SSH
-PAGE = 300  # rows added to the simple timeline at a time
+PAGE = 300  # rows shown in the simple timeline before “Show More”
+CHUNK = 40  # timeline rows created per idle tick so the first open stays responsive
 
 # value, button text, phrase for the subtitle, journalctl --since
 SINCE = (
@@ -232,6 +233,7 @@ class JournalView(Gtk.Box):
         self._loading = False
         self._stale = False
         self._needs_render = True  # False after a UI render matches the current analysis
+        self._render_gen = 0  # cancels in-flight chunked timeline paints
         # Cached filter work: recomputed when the entry set, query or preset changes.
         self._analysis_key: tuple | None = None
         self._entries: list[LogEntry] = []
@@ -386,6 +388,7 @@ class JournalView(Gtk.Box):
         self._stale = False
         self._analysis_key = None
         self._needs_render = True
+        self._render_gen += 1
         self.emit("changed")
 
     def mark_stale(self) -> None:
@@ -656,6 +659,8 @@ class JournalView(Gtk.Box):
         )
 
     def _render_simple(self, shown, flagged, flt) -> None:
+        self._render_gen += 1
+        gen = self._render_gen
         widgets.clear(self._simple)
         if self.issues:
             n = len(self.issues)
@@ -676,27 +681,47 @@ class JournalView(Gtk.Box):
 
         title = _pick(FILTERS, flt)[3]
         timeline = widgets.Section(title, _("Newest first"))
-        last_boot = None
-        for index, entry in shown[: self._shown]:
-            if entry.boot_id and entry.boot_id != last_boot:
-                timeline.list.append(self._boot_row(entry.boot_id))
-                last_boot = entry.boot_id
-            issue = flagged.get(index)
-            badge, css = ("", "")
-            if issue:
-                badge, css = issue_text(issue)[0], "error" if issue.severity == ERROR else "warning"
-            timeline.list.append(widgets.log_row(entry, badge=badge, badge_css=css))
+        self._simple.append(timeline.box)
+        self.stack.set_visible_child_name("simple")
+
         if not shown:
             message = widgets.no_results(self._query) if self._query else _("No entries")
             timeline.list.append(widgets.placeholder_row(message))
-        elif len(shown) > self._shown:
-            more = Gtk.Button(
-                label=_("Show More"), halign=Gtk.Align.CENTER, css_classes=["flat"], margin_top=6, margin_bottom=6
-            )
-            more.connect("clicked", self._show_more)
-            timeline.list.append(Gtk.ListBoxRow(child=more, activatable=False))
-        self._simple.append(timeline.box)
-        self.stack.set_visible_child_name("simple")
+            return
+
+        # Paint the timeline in chunks so switching to Journal does not stall.
+        target = min(len(shown), self._shown)
+        state = {"pos": 0, "last_boot": None}
+
+        def add_chunk():
+            if gen != self._render_gen:
+                return GLib.SOURCE_REMOVE
+            end = min(state["pos"] + CHUNK, target)
+            for index, entry in shown[state["pos"] : end]:
+                if entry.boot_id and entry.boot_id != state["last_boot"]:
+                    timeline.list.append(self._boot_row(entry.boot_id))
+                    state["last_boot"] = entry.boot_id
+                issue = flagged.get(index)
+                badge, css = ("", "")
+                if issue:
+                    badge, css = issue_text(issue)[0], "error" if issue.severity == ERROR else "warning"
+                timeline.list.append(widgets.log_row(entry, badge=badge, badge_css=css))
+            state["pos"] = end
+            if state["pos"] < target:
+                return GLib.SOURCE_CONTINUE
+            if len(shown) > self._shown:
+                more = Gtk.Button(
+                    label=_("Show More"),
+                    halign=Gtk.Align.CENTER,
+                    css_classes=["flat"],
+                    margin_top=6,
+                    margin_bottom=6,
+                )
+                more.connect("clicked", self._show_more)
+                timeline.list.append(Gtk.ListBoxRow(child=more, activatable=False))
+            return GLib.SOURCE_REMOVE
+
+        GLib.idle_add(add_chunk)
 
     def _show_more(self, _button):
         position = self._simple_scroll.get_vadjustment().get_value()

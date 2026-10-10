@@ -111,11 +111,19 @@ class SystemdManager:
 
         Optionally adds services that have a unit file but are not loaded.
         This asks systemd for every unit file's state, which can take seconds.
+        Prefer :meth:`attach_file_states` then :meth:`add_runtime` in the UI so
+        enable switches appear before the slower uptime/memory pass.
         """
+        return self.add_runtime(self.attach_file_states(loaded, scope, include_unloaded), scope)
+
+    def attach_file_states(
+        self, loaded: list[Unit], scope: Scope = Scope.SYSTEM, include_unloaded: bool = False
+    ) -> list[Unit]:
+        """Add unit-file states (enabled/disabled/…) without fetching uptimes."""
         result = self._list(scope, ["list-unit-files", "--type=service"])
         # Startup states are a nice-to-have; don't fail the listing over them.
         files = parse_list_unit_files(result.stdout) if result.ok else {}
-        return self.add_runtime(merge_units(loaded, files, include_unloaded=include_unloaded), scope)
+        return merge_units(loaded, files, include_unloaded=include_unloaded)
 
     def add_runtime(self, units: list[Unit], scope: Scope = Scope.SYSTEM) -> list[Unit]:
         """Fill in main PID, memory and since when, for units that are or were running."""

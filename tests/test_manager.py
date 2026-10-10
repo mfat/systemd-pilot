@@ -207,6 +207,19 @@ def test_complete_units_adds_runtime(runner):
     assert show[-2:] == ["a.service", "b.service"]  # inactive units have nothing to show
 
 
+def test_attach_file_states_skips_runtime(runner):
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "list-unit-files",
+        stdout='[{"unit_file":"a.service","state":"enabled"},{"unit_file":"c.service","state":"disabled"}]',
+    )
+    loaded = [Unit("a.service", active_state="active", sub_state="running")]
+    (unit,) = SystemdManager(runner).attach_file_states(loaded)
+    assert unit.file_state == "enabled" and unit.since is None and unit.main_pid == 0
+    assert not any("show" in call["argv"] for call in runner.calls)
+
+
 def test_runtime_without_unix_timestamps(runner):
     runner.reply(
         "systemctl",

@@ -81,7 +81,19 @@ class UnitRow(Gtk.ListBoxRow):
 
     def update(self, unit: Unit) -> None:
         """Refresh labels and controls without rebuilding the row widget tree."""
-        kind_changed = unit.kind != self.unit.kind
+        old = self.unit
+        # Runtime details (uptime, PID, memory) are not shown on the row; keep the
+        # unit object current but skip widget work when nothing visible changed.
+        if (
+            unit.kind == old.kind
+            and unit.active_state == old.active_state
+            and unit.file_state == old.file_state
+            and unit.description == old.description
+            and unit.name == old.name
+        ):
+            self.unit = unit
+            return
+        kind_changed = unit.kind != old.kind
         self.unit = unit
         if kind_changed:
             widgets.set_dot(self._dot, unit.kind)
