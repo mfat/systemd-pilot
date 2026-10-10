@@ -91,9 +91,13 @@ def run_steps(window):
         lambda: check(window.get_visible_dialog() is not None, "no custom range dialog"),
         lambda: window.get_visible_dialog()._apply.emit("clicked"),
         lambda: check(window.journal._state("since") == "custom", "custom range not applied"),
-        lambda: check(window.journal._range_button.get_visible(), "custom range cannot be changed"),
+        lambda: check(window.journal._since._button_text.get("custom"), "custom range not shown on the picker"),
+        # Choosing it again changes it.
+        lambda: window.journal._since.emit("reselected", "custom"),
+        lambda: check(window.get_visible_dialog() is not None, "custom range cannot be changed"),
+        lambda: window.get_visible_dialog().close(),
         lambda: window.journal._since.set_value("24h"),
-        lambda: check(not window.journal._range_button.get_visible(), "custom range still shown"),
+        lambda: check(window.journal._state("since") == "24h", "custom range still applied"),
         # Hidden entries: the banner offers access, which asks first.
         lambda: show_hidden_entries(window),
         lambda: check(isinstance(window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"),

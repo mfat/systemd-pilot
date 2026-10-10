@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from gi.repository import Adw, Gtk, Pango
+from gi.repository import GLib, GObject, Gtk, Pango
 
 from ..core.models import LogEntry
 from ..i18n import _
@@ -45,10 +45,17 @@ class Option:
     label: str
     help: str = ""
     flag: str = ""  # the matching command-line option, shown dimmed
+    short: str = ""  # on a closed dropdown, instead of the label
 
 
 class OptionDropDown(Gtk.DropDown):
-    """A dropdown of :class:`Option` values. The open list shows each option's help and flag too."""
+    """A dropdown of :class:`Option` values. The open list shows each option's help and flag too.
+
+    Emits ``reselected`` (value) when the option already chosen is clicked in the list again.
+    """
+
+    __gtype_name__ = "SystemdPilotOptionDropDown"
+    __gsignals__ = {"reselected": (GObject.SignalFlags.RUN_FIRST, None, (str,))}
 
     def __init__(self, options: list[Option], **props):
         super().__init__(model=Gtk.StringList.new([o.value for o in options]), **props)
@@ -58,7 +65,8 @@ class OptionDropDown(Gtk.DropDown):
         self._button_text: dict[str, str] = {}
         self._button_labels: dict[Gtk.ListItem, Gtk.Label] = {}
         button = Gtk.SignalListItemFactory()
-        button.connect("setup", lambda _f, item: item.set_child(Gtk.Label(xalign=0)))
+        # Cut short, so dropdowns side by side can share a narrow row.
+        button.connect("setup", lambda _f, item: item.set_child(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)))
         button.connect("bind", self._bind_button)
         button.connect("unbind", lambda _f, item: self._button_labels.pop(item, None))
         self.set_factory(button)
@@ -93,13 +101,12 @@ class OptionDropDown(Gtk.DropDown):
 
     def _show_button_text(self, item: Gtk.ListItem, button_label: Gtk.Label) -> None:
         option = self._option(item)
-        button_label.set_label(self._button_text.get(option.value) or option.label)
+        button_label.set_label(self._button_text.get(option.value) or option.short or option.label)
 
     def _option(self, item: Gtk.ListItem) -> Option:
         return self.options[item.get_position()]
 
-    @staticmethod
-    def _setup_row(_factory, item: Gtk.ListItem) -> None:
+    def _setup_row(self, _factory, item: Gtk.ListItem) -> None:
         row = Gtk.Box(spacing=12, margin_top=2, margin_bottom=2)
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True, valign=Gtk.Align.CENTER)
         text.append(label())
@@ -107,7 +114,17 @@ class OptionDropDown(Gtk.DropDown):
         row.append(text)
         row.append(label("", "dim-label", "monospace", "caption", valign=Gtk.Align.CENTER))
         row.append(Gtk.Image(icon_name="object-select-symbolic", valign=Gtk.Align.CENTER))
+        # Choosing the current option again changes nothing, so the dropdown says nothing: tell.
+        click = Gtk.GestureClick(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        click.connect("pressed", lambda *_: self._on_row_pressed(item))
+        row.add_controller(click)
         item.set_child(row)
+
+    def _on_row_pressed(self, item: Gtk.ListItem) -> None:
+        if item.get_position() == self.get_selected():
+            value = self.value
+            # After the list closes.
+            GLib.idle_add(lambda: self.emit("reselected", value) and False)
 
     def _bind_row(self, _factory, item: Gtk.ListItem) -> None:
         option = self._option(item)
@@ -126,28 +143,6 @@ class OptionDropDown(Gtk.DropDown):
         selected = self.get_selected()
         for item, check in self._checks.items():
             check.set_opacity(1 if item.get_position() == selected else 0)
-
-
-def wrap_box(**props) -> Gtk.Widget:
-    """Lays its children out in a row that wraps onto more lines when narrow.
-
-    Adw.WrapBox is libadwaita 1.7; before it, a flow box, which lines its
-    children up in columns as wide as the widest.
-    """
-    if hasattr(Adw, "WrapBox"):
-        return Adw.WrapBox(child_spacing=6, line_spacing=6, **props)
-    return _FlowWrapBox(**props)
-
-
-class _FlowWrapBox(Gtk.FlowBox):
-    def __init__(self, **props):
-        super().__init__(
-            selection_mode=Gtk.SelectionMode.NONE, column_spacing=6, row_spacing=6, halign=Gtk.Align.START, **props
-        )
-
-    def append(self, child: Gtk.Widget) -> None:
-        super().append(child)
-        child.get_parent().set_focusable(False)  # the child itself takes focus
 
 
 class FilterRow(Gtk.ListBoxRow):

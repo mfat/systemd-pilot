@@ -20,6 +20,22 @@ def range_text(since: datetime, until: datetime | None) -> str:
     return f"{when(since)} – {when(until) if until else _('Now')}"
 
 
+def short_range_text(since: datetime, until: datetime | None) -> str:
+    """The range in a few characters, for the time picker's button: "Oct 10 →", "14:00–16:30", "Oct 10–11"."""
+    today = datetime.now().date()
+
+    def when(moment: datetime) -> str:
+        return moment.strftime("%H:%M") if moment.date() == today else moment.strftime("%b %d")
+
+    if until is None:
+        return f"{when(since)} →"  # from then on
+    if since.date() == until.date():
+        return f"{since.strftime('%H:%M')}–{until.strftime('%H:%M')}" if since.date() == today else when(since)
+    if (since.year, since.month) == (until.year, until.month):
+        return f"{since.strftime('%b %d')}–{until.strftime('%d')}"
+    return f"{since.strftime('%b %d')}–{until.strftime('%b %d')}"
+
+
 def journal_time(moment: datetime) -> str:
     """A time as journalctl's --since and --until take it."""
     return moment.strftime("%Y-%m-%d %H:%M:%S")

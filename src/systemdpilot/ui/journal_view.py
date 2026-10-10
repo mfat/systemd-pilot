@@ -13,7 +13,7 @@ from ..core.models import LogEntry, LogResult
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
 from . import prompts, widgets, words
-from .journal_range import RangeDialog, journal_time, range_text
+from .journal_range import RangeDialog, journal_time, range_text, short_range_text
 from .operations import Operations, describe
 from .tasks import run_in_thread
 from .widgets import FilterRow, Option, OptionDropDown
@@ -22,27 +22,28 @@ LIMIT = 1500  # newest entries fetched; enough to spot problems without a slow t
 PAGE = 300  # rows shown in the simple timeline before “Show More”
 CHUNK = 40  # timeline rows created per idle tick so the first open stays responsive
 
-# value, button text, phrase for the subtitle, journalctl --since
+# The range pickers share one row over the list, so their buttons say it short.
+# value, option label, button text, journalctl --since
 SINCE = (
-    ("1h", _("Last hour"), _("in the last hour"), "1 hour ago"),
-    ("24h", _("Last 24 hours"), _("in the last 24 hours"), "24 hours ago"),
-    ("today", _("Today"), _("today"), "today"),
-    ("7d", _("Last 7 days"), _("in the last 7 days"), "7 days ago"),
-    ("any", _("Any time"), "", ""),
+    ("1h", _("Last hour"), _("1 hour"), "1 hour ago"),
+    ("24h", _("Last 24 hours"), _("24 hours"), "24 hours ago"),
+    ("today", _("Today"), _("Today"), "today"),
+    ("7d", _("Last 7 days"), _("7 days"), "7 days ago"),
+    ("any", _("Any time"), _("Any time"), ""),
     # Its start and end are picked in a dialog.
-    ("custom", _("Custom range…"), "", ""),
+    ("custom", _("Custom range…"), _("Custom"), ""),
 )
 # value, option label, help, button text, --boot
 BOOTS = (
-    ("all", _("All boots"), _("Don’t limit by startup"), _("all boots"), None),
-    ("0", _("This boot"), _("Since the computer last started"), _("this boot"), 0),
-    ("-1", _("Previous boot"), _("The time before the last restart"), _("the previous boot"), -1),
-    ("-2", _("Two boots ago"), _("The time before that"), _("two boots ago"), -2),
+    ("all", _("All boots"), _("Don’t limit by startup"), _("All boots"), None),
+    ("0", _("This boot"), _("Since the computer last started"), _("This boot"), 0),
+    ("-1", _("Previous boot"), _("The time before the last restart"), _("Last boot"), -1),
+    ("-2", _("Two boots ago"), _("The time before that"), _("2 boots ago"), -2),
 )
 # value, option label, help, button text, kernel only
 SOURCES = (
-    ("all", _("Everything"), _("Services, programs and the kernel"), _("all sources"), False),
-    ("kernel", _("Kernel only"), _("Hardware, drivers and memory messages"), _("the kernel only"), True),
+    ("all", _("Everything"), _("Services, programs and the kernel"), _("Everything"), False),
+    ("kernel", _("Kernel only"), _("Hardware, drivers and memory messages"), _("Kernel"), True),
 )
 # value, sidebar label, dot (or icon), timeline title; in the order of the services' filters
 FILTERS = (
@@ -319,32 +320,33 @@ class JournalView(Gtk.Box):
 
         # The range the entries come from.
         self._since = OptionDropDown(
-            [Option(v, label, "", f"--since “{flag}”" if flag else "") for v, label, _p, flag in SINCE[:-1]]
-            + [Option("custom", SINCE[-1][1], _("Pick a start and an end"), "--since --until")]
+            [Option(v, label, "", f"--since “{flag}”" if flag else "", short) for v, label, short, flag in SINCE[:-1]]
+            + [Option("custom", SINCE[-1][1], _("Pick a start and an end"), "--since --until", SINCE[-1][2])]
         )
-        # Beside the time picker, which then shows the custom range: changes it.
-        self._range_button = Gtk.Button(icon_name="document-edit-symbolic", tooltip_text=_("Change the Range"))
-        self._range_button.connect("clicked", lambda *_: self._ask_range())
+        # Choosing the custom range again changes it.
+        self._since.connect("reselected", lambda _d, value: value == "custom" and self._ask_range())
         self._boot = OptionDropDown(
-            [Option(v, label, help, f"-b {b}" if b else ("-b" if b == 0 else "")) for v, label, help, _t, b in BOOTS]
+            [
+                Option(v, label, help, f"-b {b}" if b else ("-b" if b == 0 else ""), short)
+                for v, label, help, short, b in BOOTS
+            ]
         )
         self._source = OptionDropDown(
-            [Option(v, label, help, "-k" if kernel else "") for v, label, help, _t, kernel in SOURCES]
+            [Option(v, label, help, "-k" if kernel else "", short) for v, label, help, short, kernel in SOURCES]
         )
-        # Pinned over the list, as it decides what every filter finds; wraps when the column is narrow.
-        pickers = widgets.wrap_box(margin_top=12, margin_bottom=4, margin_start=24, margin_end=24)
-        time = Gtk.Box(css_classes=["linked"], halign=Gtk.Align.START)
-        time.append(self._since)
-        time.append(self._range_button)
+        # Pinned over the list, as it decides what every filter finds: one row, as wide as the list.
+        pickers = Gtk.Box(spacing=4, margin_top=12, margin_bottom=4, margin_start=12, margin_end=12)
+        pickers.append(self._since)
+        pickers.append(self._boot)
+        pickers.append(self._source)
         for name, dropdown, tooltip in (
             ("since", self._since, _("Time")),
             ("boot", self._boot, _("Startup")),
             ("source", self._source, _("Source")),
         ):
             dropdown.set_tooltip_text(tooltip)
-            dropdown.set_halign(Gtk.Align.START)
+            dropdown.set_hexpand(True)
             dropdown.connect("notify::selected", self._on_picked, name)
-            pickers.append(time if dropdown is self._since else dropdown)
         self.append(pickers)
 
         self._banner = Adw.Banner()
@@ -577,8 +579,8 @@ class JournalView(Gtk.Box):
         for name, dropdown in (("since", self._since), ("boot", self._boot), ("source", self._source)):
             dropdown.set_value(self._state(name))
         custom = self._state("since") == "custom" and self._custom is not None
-        self._since.set_button_text("custom", range_text(*self._custom) if self._custom else "")
-        self._range_button.set_visible(custom)
+        self._since.set_button_text("custom", short_range_text(*self._custom) if self._custom else "")
+        self._since.set_tooltip_text(range_text(*self._custom) if custom else _("Time"))
 
     def _ask_range(self) -> None:
         """Pick the custom range; cancelled, the time picker goes back to what it showed."""
