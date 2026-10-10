@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 from gettext import gettext as _
 
-from gi.repository import Gdk, Gio, GObject, Graphene, Gtk, Pango
+from gi.repository import Gdk, Gio, GLib, GObject, Graphene, Gtk, Pango
 
 from ..core.models import Unit
 from . import widgets
@@ -51,7 +51,7 @@ def state_css_class(unit: Unit) -> str:
 class UnitList(Gtk.ScrolledWindow):
     """Shows units in a :class:`Gtk.ColumnView`: the advanced services view.
 
-    Emits ``unit-activated`` when a row is activated. Right-clicking (or
+    Emits ``unit-activated`` when a row is clicked or activated. Right-clicking (or
     long-pressing) a row selects it and shows ``context_menu``.
     """
 
@@ -83,6 +83,12 @@ class UnitList(Gtk.ScrolledWindow):
         self.selection.connect("selection-changed", lambda *_: self.emit("selection-changed"))
         self.view.set_model(self.selection)
         self.view.connect("activate", self._on_activate)
+        # Open a row on a single click, like the simple view, without single-click-activate's
+        # hover selection. Capture phase: the row claims the click before it would bubble here.
+        click = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        click.connect("pressed", self._on_click_pressed)
+        click.connect("released", self._on_click_released)
+        self.view.add_controller(click)
 
         name_col = self._add_column(_("Unit"), "name", self._setup_name, self._render_name, expand=True)
         self._description_col = self._add_column(
@@ -305,6 +311,25 @@ class UnitList(Gtk.ScrolledWindow):
     def _render_pid(self, list_item):
         pid = list_item.get_item().pid
         self._set(list_item, str(pid) if pid else "—", "monospace", "dim-label")
+
+    @staticmethod
+    def _on_click_pressed(gesture, n_press, _x, _y):
+        # The first click already opened the row; don't let a double click activate it again.
+        if n_press > 1:
+            gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+
+    def _on_click_released(self, _gesture, n_press, x, y):
+        widget = self.view.pick(x, y, Gtk.PickFlags.DEFAULT)
+        while widget and widget is not self.view and widget.get_css_name() != "row":
+            widget = widget.get_parent()
+        # Rows in the header (the column titles) sort instead.
+        if n_press == 1 and widget and widget is not self.view and widget.get_parent().get_css_name() != "header":
+            GLib.idle_add(self._activate_selected)
+
+    def _activate_selected(self):
+        if unit := self.selected_unit:
+            self.emit("unit-activated", unit)
+        return GLib.SOURCE_REMOVE
 
     def _on_activate(self, _view, position):
         item = self._sorted.get_item(position)
