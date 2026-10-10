@@ -115,6 +115,8 @@ class Window(Adw.ApplicationWindow):
         self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_badges())
+        self.services.connect("built", lambda *_: self._on_list_built())
+        self._reveal_when_built = False  # the loading page waits for the list's first paint
         self.services_bin.set_child(self.services)
         self.filters_bin.set_child(self.services.sidebar)
         self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
@@ -567,11 +569,14 @@ class Window(Adw.ApplicationWindow):
         # list-units is fast. Enable/disabled state is not shown in the list (details
         # dialog loads it). list-unit-files is only needed to add unloaded units when
         # “Show Inactive” is on. Advanced mode then fills PID/memory.
+        # On a first load the loading page stays until all of that is in, so the
+        # list shows once, complete; a list already on screen updates at each step.
         def done(units):
             if generation != self._generation:
                 return
             self._set_pending(generation, "list", False)
-            self._on_units_loaded(units)
+            if not (self._loading_shown and (include_inactive or self.mode == "advanced")):
+                self._on_units_loaded(units)
             if include_inactive:
                 self._set_pending(generation, "inactive", True)
                 run_in_thread(
@@ -579,7 +584,7 @@ class Window(Adw.ApplicationWindow):
                     units,
                     True,
                     on_done=inactive_done,
-                    on_error=incomplete,
+                    on_error=lambda e: incomplete(e, units),
                 )
             elif self.mode == "advanced":
                 self._load_runtime(units, generation)
@@ -588,13 +593,16 @@ class Window(Adw.ApplicationWindow):
             if generation != self._generation:
                 return
             self._set_pending(generation, "inactive", False)
-            self._on_units_loaded(units)
+            if not (self._loading_shown and self.mode == "advanced"):
+                self._on_units_loaded(units)
             if self.mode == "advanced":
                 self._load_runtime(units, generation)
 
-        def incomplete(error):
+        def incomplete(error, units):
             if generation == self._generation:
                 self._set_pending(generation, "inactive", False)
+                if self._loading_shown:
+                    self._on_units_loaded(units)  # the loaded ones, without the inactive
                 self.toast(_("Could not load inactive services: {error}").format(error=describe(error)))
 
         def failed(error):
@@ -615,11 +623,23 @@ class Window(Adw.ApplicationWindow):
     def _on_units_loaded(self, units: list[Unit]):
         self.services.set_units(self._carry_over(units))
         self.journal.set_known_units({u.name for u in units})
-        self.content_stack.set_visible_child_name("main")
-        self.spinner.stop()
+        if self._loading_shown and self.services.building:
+            # One spinner, not the loading page's and then the list's own.
+            self._reveal_when_built = True
+        else:
+            self._show_list()
         self._update_badges()
         self._update_actions()
         self._schedule_journal_badge()
+
+    def _on_list_built(self) -> None:
+        if self._reveal_when_built and self._loading_shown:
+            self._show_list()
+
+    def _show_list(self) -> None:
+        self._reveal_when_built = False
+        self.content_stack.set_visible_child_name("main")
+        self.spinner.stop()
 
     def _schedule_journal_badge(self) -> None:
         if self._journal_badge_source:
@@ -658,10 +678,16 @@ class Window(Adw.ApplicationWindow):
         def runtime_failed(error):
             if generation == self._generation:
                 self._set_pending(generation, "runtime", False)
+                if self._loading_shown:
+                    self._on_units_loaded(payload)  # without PID/memory
                 self.toast(_("Could not load service details: {error}").format(error=describe(error)))
 
         self._set_pending(generation, "runtime", True)
         run_in_thread(manager.add_runtime, payload, on_done=runtime_done, on_error=runtime_failed)
+
+    @property
+    def _loading_shown(self) -> bool:
+        return self.content_stack.get_visible_child_name() == "loading"
 
     def _set_pending(self, generation: int, task: str, running: bool) -> None:
         """The spinner above the services list shows while any of them is still fetching."""
@@ -877,6 +903,7 @@ class Window(Adw.ApplicationWindow):
     # -- pages ------------------------------------------------------------
 
     def _show_loading(self, text: str, cancellable: bool = False):
+        self._reveal_when_built = False
         self.loading_label.set_label(text)
         self.cancel_connect_button.set_visible(cancellable)
         self.spinner.start()

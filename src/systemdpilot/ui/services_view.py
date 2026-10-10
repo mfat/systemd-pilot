@@ -182,6 +182,8 @@ class ServicesView(Gtk.Box):
         "unit-activated": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "unit-action": (GObject.SignalFlags.RUN_FIRST, None, (object, str)),
         "filter-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # A batched build ended: the list (or what replaced it) is shown.
+        "built": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     FILTERS = (
@@ -284,6 +286,11 @@ class ServicesView(Gtk.Box):
             self.unit_list.set_units(units)
         self._refresh()
 
+    @property
+    def building(self) -> bool:
+        """Rows are still being added behind the spinner."""
+        return self._building_spinner.get_spinning()
+
     def set_busy(self, busy: bool) -> None:
         self._busy.set_visible(busy)
         self._busy_spinner.set_spinning(busy)
@@ -376,12 +383,17 @@ class ServicesView(Gtk.Box):
         if self._rebuild_groups(visible, switched):
             self.stack.set_visible_child_name("simple")
 
+    def _end_building(self) -> None:
+        if self._building_spinner.get_spinning():
+            self._building_spinner.stop()
+            self.emit("built")
+
     def _stop_building(self) -> None:
         """A batched build still running would otherwise show the list when it finishes."""
         if self._building_spinner.get_spinning():
             self._build_gen += 1
             self._structure = None  # half built; the next build starts over, reusing its rows
-            self._building_spinner.stop()
+            self._end_building()
 
     def _show_empty(self) -> None:
         if self._query:
@@ -423,7 +435,7 @@ class ServicesView(Gtk.Box):
         if new_rows > SIMPLE_CHUNK and (switched or not on_screen):
             self._rebuild_groups_chunked(plan, existing, adjustment, position, focused, gen=self._build_gen)
             return False
-        self._building_spinner.stop()
+        self._end_building()
         focus_row = self._fill_groups(plan, existing, focused)
         GLib.idle_add(lambda: adjustment.set_value(position) and False)
         if focus_row:
@@ -502,7 +514,7 @@ class ServicesView(Gtk.Box):
                     state["section"] = None
             if state["section_idx"] < len(plan):
                 return GLib.SOURCE_CONTINUE
-            self._building_spinner.stop()
+            self._end_building()
             self.stack.set_visible_child_name("simple")
             GLib.idle_add(lambda: adjustment.set_value(position) and False)
             if state["focus_row"]:
