@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from gi.repository import Adw, Gio, GLib, GObject, Graphene, Gtk
 
-from ..core.journal import ERROR, PRESETS, PRESETS_BY_ID, Issue, find_issues
+from ..core.journal import ERROR, PRESETS, PRESETS_BY_ID, WARNING, Issue, find_issues
 from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
 from ..core.models import LogEntry, LogResult
 from ..core.ssh import SSHRunner
@@ -46,6 +46,11 @@ FILTERS = (
     ("warnings", _("Warnings"), "warning", _("Warnings")),
     ("all", _("All entries"), None, _("All entries")),
 )
+# Chips that keep only the problem cards of one severity, and what to say when there are none.
+CARD_FILTERS = {
+    "errors": (ERROR, _("No errors found in this range")),
+    "warnings": (WARNING, _("No warnings found in this range")),
+}
 PRESET_GROUPS = (
     ("stability", _("System stability & crashes")),
     ("security", _("Security, auth & privileges")),
@@ -616,21 +621,23 @@ class JournalView(Gtk.Box):
         self._render_gen += 1
         gen = self._render_gen
         widgets.clear(self._simple)
-        if self.issues:
-            n = len(self.issues)
+        severity, none_found = CARD_FILTERS.get(flt, (None, _("No problems found in this range")))
+        issues = [i for i in self.issues if severity in (None, i.severity)]
+        if issues:
+            n = len(issues)
             section = widgets.Section(
                 ngettext("{n} problem needs your attention", "{n} problems need your attention", n).format(n=n),
                 _("Found by scanning the journal for errors and repeated warnings"),
                 title_css="error",
             )
-            for issue in self.issues:
+            for issue in issues:
                 unit = issue.unit if issue.unit in self._known_units else ""
                 section.list.append(IssueRow(issue, (lambda name: self.emit("open-unit", name)) if unit else None))
             self._simple.append(section.box)
         else:
             ok = Gtk.Box(spacing=12, css_classes=["ok-banner"])
             ok.append(widgets.dot("running"))
-            ok.append(widgets.label(_("No problems found in this range"), "success", "unit-title"))
+            ok.append(widgets.label(none_found, "success", "unit-title"))
             self._simple.append(ok)
 
         title = _pick(FILTERS, flt)[3]
