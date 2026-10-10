@@ -38,7 +38,7 @@ textview.output {
 .status-dot.large.exited,
 .status-dot.large.dead { min-width: 10px; min-height: 10px; }
 
-/* Counts on the Services and Journal buttons. */
+/* Count of journal problems in the sidebar. */
 .count-badge {
   min-width: 18px;
   min-height: 18px;
@@ -49,8 +49,6 @@ textview.output {
   background-color: @error_bg_color;
   color: @error_fg_color;
 }
-
-.view-switch > button { padding-left: 14px; padding-right: 12px; font-weight: bold; }
 
 /* Filter pills. */
 button.chip, menubutton.chip > button {

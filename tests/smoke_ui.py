@@ -71,11 +71,9 @@ def run_steps(window):
         lambda: check(window._details.stack.get_visible_child_name() == "overview", "no overview page"),
         lambda: window._details.close_button.emit("clicked"),
         lambda: check(window._details is None, "details panel not closed"),
-        lambda: window.activate_action("win.view", GLib.Variant("s", "journal")),
-        # Outside the services view, details open in a dialog.
-        lambda: window.show_unit(unit),
-        lambda: check(window.get_visible_dialog() is not None, "no details dialog in the journal"),
-        lambda: window.get_visible_dialog().close(),
+        # The journal opens in a window of its own.
+        lambda: window.activate_action("win.journal", None),
+        lambda: check(window.journal_window.get_visible(), "journal window not shown"),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "ssh")),
         lambda: window.journal.activate_action("journal.filter", GLib.Variant("s", "all")),
         lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
@@ -83,9 +81,12 @@ def run_steps(window):
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "")),
         # Hidden entries: the banner offers access, which asks first.
         lambda: show_hidden_entries(window),
-        lambda: check(isinstance(window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"),
-        lambda: answer(window.get_visible_dialog(), "cancel"),
-        lambda: window.activate_action("win.view", GLib.Variant("s", "services")),
+        lambda: check(
+            isinstance(window.journal_window.get_visible_dialog(), Adw.AlertDialog), "no access confirmation"
+        ),
+        lambda: answer(window.journal_window.get_visible_dialog(), "cancel"),
+        lambda: window.journal_window.close(),
+        lambda: check(not window.journal_window.get_visible(), "journal window not hidden"),
         # Context menu from the keyboard (Menu / Shift+F10).
         # One step, so a service list loading in the background can't replace the row in between.
         lambda: open_context_menu_from_keyboard(window, unit),

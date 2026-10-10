@@ -9,7 +9,6 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 from ..core.models import Scope, Unit, UnitAction
 from . import widgets, words
 from .unit_list import UnitList
-from .widgets import Option, OptionButton
 
 SIMPLE_CHUNK = 25  # service rows built per idle tick on first paint
 
@@ -25,17 +24,17 @@ def mode_switch() -> Gtk.Widget:
 
 
 class FilterRow(Gtk.ListBoxRow):
-    """A state filter in the window sidebar: dot, name and how many services match."""
+    """A filter in the window sidebar: icon or dot, name and how many services match."""
 
-    def __init__(self, value: str, text: str, dot_kind: str | None):
-        super().__init__()
+    def __init__(self, value: str, text: str, dot_kind: str | None = None, icon_name: str = "", **props):
+        super().__init__(**props)
         self.value = value
         box = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
         if dot_kind:
-            mark = Gtk.Box(width_request=16, valign=Gtk.Align.CENTER)  # dots line up with the icon
+            mark = Gtk.Box(width_request=16, valign=Gtk.Align.CENTER)  # dots line up with the icons
             mark.append(widgets.dot(dot_kind, small=True))
         else:
-            mark = Gtk.Image(icon_name="view-list-symbolic")
+            mark = Gtk.Image(icon_name=icon_name or "view-list-symbolic")
         box.append(mark)
         box.append(widgets.label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
         self.count = widgets.label("", "dim-label", "numeric")
@@ -173,6 +172,10 @@ class ServicesView(Gtk.Box):
         ("exited", _("Done"), "exited"),
         ("dead", _("Stopped"), "dead"),
     )
+    SCOPES = (
+        ("system", _("System"), "computer-symbolic", _("Shared by everyone, most start at boot (--system)")),
+        ("user", _("User"), "avatar-default-symbolic", _("Only yours, start when you log in (--user)")),
+    )
     GROUPS = (
         ("failed", _("Needs attention"), _("These services stopped with an error"), "error"),
         ("running", _("Running"), _("Working in the background right now"), None),
@@ -197,28 +200,23 @@ class ServicesView(Gtk.Box):
         self.insert_action_group("services", actions)
 
         bar = Gtk.Box(spacing=6, margin_top=12, margin_bottom=4, margin_start=24, margin_end=24)
-        self.scope_button = OptionButton(
-            "win.scope",
-            [
-                (
-                    None,
-                    [
-                        Option("system", _("System services"), _("Shared by everyone, most start at boot"), "--system"),
-                        Option("user", _("User services"), _("Only yours, start when you log in"), "--user"),
-                    ],
-                )
-            ],
-        )
-        self.scope_button.set_tooltip_text(_("Which services to show"))
-        self.scope_button.set_valign(Gtk.Align.START)
-        bar.append(self.scope_button)
         bar.append(Gtk.Box(hexpand=True))
         switch = mode_switch()
         switch.set_valign(Gtk.Align.START)
         bar.append(switch)
         self.append(widgets.scroller(bar))
 
-        # The state filters live in the window sidebar.
+        # The filters live in the window sidebar: which services (system or user), then state.
+        self.scope_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
+        self._scope_rows: dict[str, FilterRow] = {}
+        for value, text, icon, help_text in self.SCOPES:
+            row = FilterRow(
+                value, text, icon_name=icon, action_name="win.scope", action_target=GLib.Variant("s", value)
+            )
+            row.set_tooltip_text(help_text)
+            row.count.set_visible(False)
+            self._scope_rows[value] = row
+            self.scope_list.append(row)
         self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
         self._filter_rows: dict[str, FilterRow] = {}
         for value, text, dot_kind in self.FILTERS:
@@ -227,6 +225,12 @@ class ServicesView(Gtk.Box):
             self.filter_list.append(row)
         self.filter_list.select_row(self._filter_rows["all"])
         self.filter_list.connect("row-selected", self._on_filter_row_selected)
+        self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        for heading, listbox in ((_("Services"), self.scope_list), (_("State"), self.filter_list)):
+            self.sidebar.append(
+                widgets.label(heading, "caption-heading", "dim-label", margin_start=18, margin_top=12, margin_bottom=2)
+            )
+            self.sidebar.append(listbox)
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
         self._groups = Gtk.Box(
@@ -310,7 +314,7 @@ class ServicesView(Gtk.Box):
         self._refresh_row_labels()
 
     def set_scope(self, scope: Scope) -> None:
-        self.scope_button.set_text(_("User") if scope is Scope.USER else _("System"))
+        self.scope_list.select_row(self._scope_rows[scope.value])
 
     def set_empty_hint(self, hint: str) -> None:
         self._empty_hint = hint

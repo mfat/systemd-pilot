@@ -81,7 +81,8 @@ class Application(Adw.Application):
         self.set_accels_for_action("window.close", ["<primary>w"])
 
     def do_activate(self):
-        window = self.props.active_window
+        # The journal window may be the active one; it belongs to the main window.
+        window = next((w for w in self.get_windows() if isinstance(w, Window)), None)
         if not window:
             window = Window(application=self, sessions=self.sessions, settings=self.settings)
         window.present()

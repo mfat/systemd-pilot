@@ -25,8 +25,6 @@
         <condition>max-width: 560sp</condition>
         <setter object="split_view" property="collapsed">True</setter>
         <setter object="details_split" property="collapsed">True</setter>
-        <setter object="view_switch" property="visible">False</setter>
-        <setter object="view_switch_bar" property="revealed">True</setter>
       </object>
     </child>
     <property name="content">
@@ -179,68 +177,7 @@
                   <object class="AdwToolbarView">
                     <child type="top">
                       <object class="AdwHeaderBar">
-                        <property name="title-widget">
-                          <object class="GtkBox" id="view_switch">
-                            <style>
-                              <class name="linked"/>
-                              <class name="view-switch"/>
-                            </style>
-                            <child>
-                              <object class="GtkToggleButton">
-                                <property name="tooltip-text" translatable="yes">Services; the badge counts failed services</property>
-                                <property name="action-name">win.view</property>
-                                <property name="action-target">'services'</property>
-                                <property name="child">
-                                  <object class="GtkBox">
-                                    <property name="spacing">8</property>
-                                    <child>
-                                      <object class="GtkLabel">
-                                        <property name="label" translatable="yes">Services</property>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="failed_badge">
-                                        <property name="visible">False</property>
-                                        <property name="valign">center</property>
-                                        <style>
-                                          <class name="count-badge"/>
-                                          <class name="error"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkToggleButton">
-                                <property name="tooltip-text" translatable="yes">System logs, with problems flagged</property>
-                                <property name="action-name">win.view</property>
-                                <property name="action-target">'journal'</property>
-                                <property name="child">
-                                  <object class="GtkBox">
-                                    <property name="spacing">8</property>
-                                    <child>
-                                      <object class="GtkLabel">
-                                        <property name="label" translatable="yes">Journal</property>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="issues_badge">
-                                        <property name="visible">False</property>
-                                        <property name="valign">center</property>
-                                        <style>
-                                          <class name="count-badge"/>
-                                          <class name="error"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </property>
-                              </object>
-                            </child>
-                          </object>
-                        </property>
+                        <property name="show-title">False</property>
                         <child type="start">
                           <object class="GtkToggleButton" id="sidebar_button">
                             <property name="icon-name">sidebar-show-symbolic</property>
@@ -268,73 +205,6 @@
                             <property name="tooltip-text" translatable="yes">Refresh</property>
                             <property name="action-name">win.refresh</property>
                           </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child type="bottom">
-                      <object class="GtkActionBar" id="view_switch_bar">
-                        <property name="revealed">False</property>
-                        <child type="center">
-                                <object class="GtkBox" id="view_switch_bottom">
-                                  <style>
-                                    <class name="linked"/>
-                                    <class name="view-switch"/>
-                                  </style>
-                                  <child>
-                                    <object class="GtkToggleButton">
-                                      <property name="tooltip-text" translatable="yes">Services; the badge counts failed services</property>
-                                      <property name="action-name">win.view</property>
-                                      <property name="action-target">'services'</property>
-                                      <property name="child">
-                                        <object class="GtkBox">
-                                          <property name="spacing">8</property>
-                                          <child>
-                                            <object class="GtkLabel">
-                                              <property name="label" translatable="yes">Services</property>
-                                            </object>
-                                          </child>
-                                          <child>
-                                            <object class="GtkLabel" id="failed_badge_bottom">
-                                              <property name="visible">False</property>
-                                              <property name="valign">center</property>
-                                              <style>
-                                                <class name="count-badge"/>
-                                                <class name="error"/>
-                                              </style>
-                                            </object>
-                                          </child>
-                                        </object>
-                                      </property>
-                                    </object>
-                                  </child>
-                                  <child>
-                                    <object class="GtkToggleButton">
-                                      <property name="tooltip-text" translatable="yes">System logs, with problems flagged</property>
-                                      <property name="action-name">win.view</property>
-                                      <property name="action-target">'journal'</property>
-                                      <property name="child">
-                                        <object class="GtkBox">
-                                          <property name="spacing">8</property>
-                                          <child>
-                                            <object class="GtkLabel">
-                                              <property name="label" translatable="yes">Journal</property>
-                                            </object>
-                                          </child>
-                                          <child>
-                                            <object class="GtkLabel" id="issues_badge_bottom">
-                                              <property name="visible">False</property>
-                                              <property name="valign">center</property>
-                                              <style>
-                                                <class name="count-badge"/>
-                                                <class name="error"/>
-                                              </style>
-                                            </object>
-                                          </child>
-                                        </object>
-                                      </property>
-                                    </object>
-                                  </child>
-                                </object>
                         </child>
                       </object>
                     </child>
@@ -394,26 +264,7 @@
                           <object class="GtkStackPage">
                             <property name="name">main</property>
                             <property name="child">
-                              <object class="GtkStack" id="view_stack">
-                                <property name="transition-type">crossfade</property>
-                                <property name="hhomogeneous">False</property>
-                                <child>
-                                  <object class="GtkStackPage">
-                                    <property name="name">services</property>
-                                    <property name="child">
-                                      <object class="AdwBin" id="services_bin"/>
-                                    </property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkStackPage">
-                                    <property name="name">journal</property>
-                                    <property name="child">
-                                      <object class="AdwBin" id="journal_bin"/>
-                                    </property>
-                                  </object>
-                                </child>
-                              </object>
+                              <object class="AdwBin" id="services_bin"/>
                             </property>
                           </object>
                         </child>

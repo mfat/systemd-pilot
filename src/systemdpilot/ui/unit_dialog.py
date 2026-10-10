@@ -45,6 +45,7 @@ class UnitPanel(Adw.BreakpointBin):
     __gsignals__ = {"close-requested": (GObject.SignalFlags.RUN_FIRST, None, ())}
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
+    header_bar: Adw.HeaderBar = Gtk.Template.Child()
     refresh_button: Gtk.Button = Gtk.Template.Child()
     close_button: Gtk.Button = Gtk.Template.Child()
     mode_box: Gtk.Box = Gtk.Template.Child()
@@ -102,6 +103,7 @@ class UnitPanel(Adw.BreakpointBin):
         self._elevated = False
         self._loads = 0
         self._details_load: int | None = None  # the load the shown details came from
+        self.journal_badge: Gtk.Label | None = None  # on the window's Journal button, beside the list
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
 
         # Beside the list the window's Simple/Advanced switch applies.
@@ -133,6 +135,10 @@ class UnitPanel(Adw.BreakpointBin):
     def discard(self) -> None:
         """No longer shown: results still on their way are dropped."""
         self._closed = True
+
+    def add_header_end(self, widget: Gtk.Widget) -> None:
+        """A button of the window's, placed before the close button."""
+        self.header_bar.pack_end(widget)
 
     def set_advanced(self, advanced: bool) -> None:
         if advanced != self._advanced:

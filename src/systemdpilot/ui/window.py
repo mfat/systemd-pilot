@@ -24,13 +24,14 @@ from . import prompts
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
 from .journal_view import JournalView
+from .journal_window import JournalWindow
 from .operations import Operations, describe
 from .resources import template
 from .services_view import ServicesView
 from .settings import Settings
 from .tasks import run_in_thread
 from .unit_dialog import UnitDialog, UnitPanel
-from .widgets import dot, set_count_badge
+from .widgets import count_badge, dot, set_count_badge
 
 # The services list beside the details: its header bar needs about this much.
 DETAILS_LIST_MIN_WIDTH = 360
@@ -77,11 +78,6 @@ class Window(Adw.ApplicationWindow):
     machine_subtitle: Gtk.Label = Gtk.Template.Child()
     machine_dot: Gtk.Box = Gtk.Template.Child()
     machine_list: Gtk.ListBox = Gtk.Template.Child()
-    failed_badge: Gtk.Label = Gtk.Template.Child()
-    issues_badge: Gtk.Label = Gtk.Template.Child()
-    # The same switch at the bottom of narrow windows.
-    failed_badge_bottom: Gtk.Label = Gtk.Template.Child()
-    issues_badge_bottom: Gtk.Label = Gtk.Template.Child()
     host_menu_button: Gtk.MenuButton = Gtk.Template.Child()
     search_bar: Gtk.SearchBar = Gtk.Template.Child()
     search_entry: Gtk.SearchEntry = Gtk.Template.Child()
@@ -89,11 +85,9 @@ class Window(Adw.ApplicationWindow):
     spinner: Gtk.Spinner = Gtk.Template.Child()
     loading_label: Gtk.Label = Gtk.Template.Child()
     cancel_connect_button: Gtk.Button = Gtk.Template.Child()
-    view_stack: Gtk.Stack = Gtk.Template.Child()
     services_bin: Adw.Bin = Gtk.Template.Child()
     details_split: Adw.OverlaySplitView = Gtk.Template.Child()
     details_bin: Adw.Bin = Gtk.Template.Child()
-    journal_bin: Adw.Bin = Gtk.Template.Child()
     disconnected_page: Adw.StatusPage = Gtk.Template.Child()
     error_page: Adw.StatusPage = Gtk.Template.Child()
     error_edit_button: Gtk.Button = Gtk.Template.Child()
@@ -119,10 +113,11 @@ class Window(Adw.ApplicationWindow):
         self.services = ServicesView(self.unit_menu)
         self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
-        self.services.connect("filter-changed", lambda *_: self._update_header())
+        self.services.connect("filter-changed", lambda *_: self._update_badges())
         self.services_bin.set_child(self.services)
-        self.filters_bin.set_child(self.services.filter_list)
-        self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
+        self.filters_bin.set_child(self.services.sidebar)
+        for listbox in (self.services.scope_list, self.services.filter_list):
+            listbox.connect("row-activated", lambda *_: self._on_filter_activated())
         self._details_placeholder = self._build_details_placeholder()
         self.details_bin.set_child(self._details_placeholder)
         self.details_split.connect("notify::show-sidebar", lambda *_: self._fit_table())
@@ -133,10 +128,14 @@ class Window(Adw.ApplicationWindow):
         # The advanced table; its selection drives the "unit" actions and context menu.
         self.unit_list = self.services.unit_list
         self.unit_list.connect("selection-changed", lambda *_: self._update_actions())
-        self.journal = JournalView(self.operations)
+        # The journal has a window of its own; its prompts and toasts show there.
+        journal_operations = Operations(self, self.toast)
+        self.journal = JournalView(journal_operations)
         self.journal.connect("open-unit", lambda _v, name: self._open_unit_by_name(name))
-        self.journal.connect("changed", lambda *_: self._update_header())
-        self.journal_bin.set_child(self.journal)
+        self.journal.connect("changed", lambda *_: self._update_badges())
+        self.journal_window = JournalWindow(self.journal, self)  # joins the application once opened
+        journal_operations.parent = self.journal
+        journal_operations.toast = self.journal_window.toast
         self.search_bar.set_key_capture_widget(self)
         self.search_bar.connect("notify::search-mode-enabled", self._on_search_mode)
 
@@ -178,9 +177,7 @@ class Window(Adw.ApplicationWindow):
         inactive.connect("change-state", self._on_show_inactive_changed)
         self.add_action(inactive)
 
-        view = Gio.SimpleAction.new_stateful("view", GLib.VariantType.new("s"), GLib.Variant("s", "services"))
-        view.connect("change-state", self._on_view_changed)
-        self.add_action(view)
+        add("journal", self.show_journal)
 
         mode = self.settings.get_string("view-mode")
         mode = Gio.SimpleAction.new_stateful(
@@ -217,7 +214,7 @@ class Window(Adw.ApplicationWindow):
         self._enable("disconnect", remote and connected)
         self._enable("edit-host", remote)
         self._enable("remove-host", remote)
-        for name in ("refresh", "daemon-reload", "create-unit", "scope", "show-inactive", "view"):
+        for name in ("refresh", "daemon-reload", "create-unit", "scope", "show-inactive", "journal"):
             self._enable(name, connected)
         self._enable("refresh", connected or (remote and not connecting))
         has_unit = connected and self.unit_list.selected_unit is not None
@@ -226,6 +223,8 @@ class Window(Adw.ApplicationWindow):
         self.host_menu_button.set_visible(remote)
 
     def _on_scope_changed(self, action, value):
+        if value.equal(action.get_state()):
+            return  # the sidebar row of the current scope was clicked again
         action.set_state(value)
         self.scope = Scope(value.get_string())
         self.services.set_scope(self.scope)
@@ -246,20 +245,17 @@ class Window(Adw.ApplicationWindow):
             return ""
         return _("Use “Show Inactive Services” in the main menu to include stopped services.")
 
-    def _on_view_changed(self, action, value):
-        action.set_state(value)
-        journal = value.get_string() == "journal"
-        self.view_stack.set_visible_child_name("journal" if journal else "services")
-        self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search services"))
-        self.search_bar.set_search_mode(False)
-        self._sync_details_shown()
-        if journal:
-            self.journal.show()
-        self._update_header()
+    def show_journal(self):
+        host = self._current_host()
+        self.journal_window.set_machine(host.name if host else _("This Computer"))
+        if self.journal_window.get_application() is None:
+            self.journal_window.set_application(self.get_application())
+        self.journal_window.present()
+        self.journal.show()
 
     @property
-    def view(self) -> str:
-        return self.lookup_action("view").get_state().get_string()
+    def journal_shown(self) -> bool:
+        return self.journal_window.get_visible()
 
     def _on_mode_changed(self, action, value):
         action.set_state(value)
@@ -284,15 +280,27 @@ class Window(Adw.ApplicationWindow):
         if self.mode == "advanced":
             self._load_runtime()
 
-    def _update_header(self):
-        """Failed-service and journal-issue badges on the view switch."""
+    def _update_badges(self):
+        """The count of journal problems on the Journal buttons."""
         connected = self.sessions.is_connected(self.machine_id)
-        failed = self.services.failed_count if connected else 0
         issues = len(self.journal.issues) if connected else 0
-        for badge in (self.failed_badge, self.failed_badge_bottom):
-            set_count_badge(badge, failed)
-        for badge in (self.issues_badge, self.issues_badge_bottom):
-            set_count_badge(badge, issues)
+        for badge in (self._placeholder_journal_badge, self._details and self._details.journal_badge):
+            if badge:
+                set_count_badge(badge, issues)
+
+    def _journal_button(self) -> tuple[Gtk.Button, Gtk.Label]:
+        """For the details column's header bar: one each for the placeholder and the panel."""
+        box = Gtk.Box(spacing=8)
+        box.append(Gtk.Label(label=_("_Journal"), use_underline=True))
+        badge = count_badge("error")
+        badge.set_xalign(0.5)
+        box.append(badge)
+        button = Gtk.Button(
+            child=box,
+            action_name="win.journal",
+            tooltip_text=_("Open the system logs in their own window; the badge counts problems found"),
+        )
+        return button, badge
 
     @property
     def show_inactive(self) -> bool:
@@ -334,9 +342,7 @@ class Window(Adw.ApplicationWindow):
         self.machine_button.update_property([Gtk.AccessibleProperty.LABEL], [row.title])
 
     def _on_filter_activated(self):
-        # The filters are for services: choosing one from the journal goes back to them.
-        if self.view != "services":
-            self.activate_action("win.view", GLib.Variant("s", "services"))
+        # Over the content on narrow windows, the sidebar gets out of the way after a choice.
         if self.split_view.get_collapsed():
             self.split_view.set_show_sidebar(False)
 
@@ -354,6 +360,9 @@ class Window(Adw.ApplicationWindow):
         self._close_details()
         self.journal.set_manager(self.sessions.get(self.machine_id))
         host = self._current_host()
+        self.journal_window.set_machine(host.name if host else _("This Computer"))
+        if self.journal_shown:
+            self.journal.show()
         if self.sessions.is_connected(self.machine_id):
             self.reload(show_spinner=True)
         elif self.machine_id in self._connecting:
@@ -554,7 +563,7 @@ class Window(Adw.ApplicationWindow):
         self.journal.set_manager(manager)
         # Only refetch the journal when that page is open. Reloading it on every
         # service action was freezing the UI (1 500 entries + full page rebuild).
-        if self.view == "journal":
+        if self.journal_shown:
             self.journal.reload()
         else:
             self.journal.mark_stale()
@@ -608,7 +617,7 @@ class Window(Adw.ApplicationWindow):
         self.journal.set_known_units({u.name for u in units})
         self.content_stack.set_visible_child_name("main")
         self.spinner.stop()
-        self._update_header()
+        self._update_badges()
         self._update_actions()
         self._schedule_journal_badge()
 
@@ -625,7 +634,7 @@ class Window(Adw.ApplicationWindow):
 
     def _load_journal_badge(self):
         self._journal_badge_source = 0
-        if self.sessions.is_connected(self.machine_id) and self.view != "journal" and not self.journal.loaded:
+        if self.sessions.is_connected(self.machine_id) and not self.journal_shown and not self.journal.loaded:
             self.journal.ensure_loaded()
         return GLib.SOURCE_REMOVE
 
@@ -667,10 +676,7 @@ class Window(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback()
     def on_search_changed(self, entry):
-        if self.view == "journal":
-            self.journal.set_query(entry.get_text())
-        else:
-            self.services.set_query(entry.get_text())
+        self.services.set_query(entry.get_text())
 
     def _on_search_mode(self, bar, _pspec):
         if not bar.get_search_mode():
@@ -724,7 +730,7 @@ class Window(Adw.ApplicationWindow):
         return headings[action].format(unit=unit.short_name)
 
     def show_unit(self, unit: Unit | None):
-        """Beside the list in the services view; in a dialog in the journal or on narrow windows."""
+        """Beside the services list, or in a dialog when the window is too narrow."""
         manager = self.sessions.get(self.machine_id)
         if not unit or not manager:
             return
@@ -735,11 +741,14 @@ class Window(Adw.ApplicationWindow):
             on_changed=self.reload,
             action_message=self._action_message,
         )
-        if self.view == "services" and not self.details_split.get_collapsed():
+        if not self.details_split.get_collapsed():
             if self._details:
                 self._details.discard()
             panel = UnitPanel(manager, unit, self.scope, self.operations, in_pane=True, **options)
             panel.connect("close-requested", lambda *_: self._close_details())
+            button, panel.journal_badge = self._journal_button()
+            panel.add_header_end(button)
+            self._update_badges()
             self._details = panel
             self.details_bin.set_child(panel)
             panel.start_loading()
@@ -748,10 +757,12 @@ class Window(Adw.ApplicationWindow):
         dialog.present(self)
         GLib.idle_add(lambda: (dialog.start_loading(), False)[-1])
 
-    @staticmethod
-    def _build_details_placeholder() -> Gtk.Widget:
+    def _build_details_placeholder(self) -> Gtk.Widget:
+        header = Adw.HeaderBar(show_title=False)  # keeps the window buttons on this side
+        button, self._placeholder_journal_badge = self._journal_button()
+        header.pack_end(button)
         view = Adw.ToolbarView()
-        view.add_top_bar(Adw.HeaderBar(show_title=False))  # keeps the window buttons on this side
+        view.add_top_bar(header)
         view.set_content(
             Adw.StatusPage(
                 icon_name=APP_ID,
@@ -762,9 +773,9 @@ class Window(Adw.ApplicationWindow):
         return view
 
     def _sync_details_shown(self):
-        """The details column belongs to the services view, beside the list when there is room."""
+        """The details column sits beside the list when there is room."""
         split = self.details_split
-        split.set_show_sidebar(self.view == "services" and not split.get_collapsed())
+        split.set_show_sidebar(not split.get_collapsed())
 
     def _close_details(self):
         if self._details:
@@ -777,8 +788,7 @@ class Window(Adw.ApplicationWindow):
         if split.get_collapsed() and self._details:
             unit = self._details.unit
             self._close_details()
-            if self.view == "services":
-                self.show_unit(unit)
+            self.show_unit(unit)
         self._sync_details_shown()
 
     def _fit_details(self, width: int):
@@ -807,7 +817,9 @@ class Window(Adw.ApplicationWindow):
         self.unit_list.set_compact(self.details_split.get_show_sidebar())
 
     def _open_unit_by_name(self, name: str):
+        """From the journal window: the service opens in this one."""
         unit = next((u for u in self.services.units if u.name == name), None)
+        self.present()
         self.show_unit(unit or Unit(name))
 
     def _after_unit_created(self, manager: SystemdManager, name: str):
@@ -853,7 +865,7 @@ class Window(Adw.ApplicationWindow):
         self.cancel_connect_button.set_visible(cancellable)
         self.spinner.start()
         self.content_stack.set_visible_child_name("loading")
-        self._update_header()
+        self._update_badges()
 
     def _show_disconnected(self):
         host = self._current_host()
@@ -863,7 +875,7 @@ class Window(Adw.ApplicationWindow):
                 GLib.markup_escape_text(f"{host.username}@{host.hostname}:{host.port}")
             )
         self.content_stack.set_visible_child_name("disconnected")
-        self._update_header()
+        self._update_badges()
 
     def _show_error(self, title: str, message: str, offer_edit: bool = False):
         self.spinner.stop()
@@ -871,7 +883,7 @@ class Window(Adw.ApplicationWindow):
         self.error_page.set_description(GLib.markup_escape_text(message))
         self.error_edit_button.set_visible(offer_edit and self.machine_id != LOCAL_ID)
         self.content_stack.set_visible_child_name("error")
-        self._update_header()
+        self._update_badges()
 
     def toast(self, message: str):
         self.toast_overlay.add_toast(Adw.Toast(title=message, use_markup=False, timeout=3))
@@ -883,6 +895,7 @@ class Window(Adw.ApplicationWindow):
         Adw.ApplicationWindow.do_size_allocate(self, width, height, baseline)
 
     def do_close_request(self):
+        self.journal_window.destroy()  # hidden, it would keep the application running
         if not self.is_maximized():
             width, height = self.get_default_size()
             self.settings.set_int("window-width", width)
