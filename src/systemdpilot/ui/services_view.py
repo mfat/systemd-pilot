@@ -74,17 +74,19 @@ class UnitRow(Gtk.ListBoxRow):
 
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1, hexpand=True, valign=Gtk.Align.CENTER)
         order = view.label_order
-        self._title = widgets.label(words.unit_title(unit, order), "unit-title", ellipsize=Pango.EllipsizeMode.END)
+        self._title = widgets.label(
+            words.unit_title(unit, order), "unit-title", ellipsize=Pango.EllipsizeMode.END, width_chars=6
+        )
         self._subtitle = widgets.label(
             words.unit_subtitle(unit, order), "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END
         )
-        text.append(self._title)
-        # The tag goes on the second line, so a narrow list doesn't squeeze the name.
-        subtitle_line = Gtk.Box(spacing=6)
+        # The tag follows the name; a long name is cut short, never the tag.
+        title_line = Gtk.Box(spacing=6)
+        title_line.append(self._title)
         if unit.is_user:
-            subtitle_line.append(user_tag())
-        subtitle_line.append(self._subtitle)
-        text.append(subtitle_line)
+            title_line.append(user_tag())
+        text.append(title_line)
+        text.append(self._subtitle)
         box.append(text)
 
         self._action_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
