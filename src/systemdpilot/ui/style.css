@@ -31,6 +31,8 @@ textview.output {
 .status-dot.warning { background-color: @warning_color; }
 .status-dot.notice { background-color: @accent_color; }
 .status-dot.info { background-color: alpha(currentColor, 0.2); }
+/* Not a state: the sidebar filter for user services. */
+.status-dot.user { background-color: @purple_3; }
 .status-dot.exited,
 .status-dot.dead {
   min-width: 6px;

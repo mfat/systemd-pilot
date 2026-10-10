@@ -184,13 +184,13 @@ class ServicesView(Gtk.Box):
     }
 
     FILTERS = (
-        ("all", _("All"), None, ""),
-        ("failed", _("Needs attention"), "failed", ""),
-        ("running", _("Running"), "running", ""),
-        ("exited", _("Done"), "exited", ""),
-        ("dead", _("Stopped"), "dead", ""),
+        ("all", _("All"), None),
+        ("failed", _("Needs attention"), "failed"),
+        ("running", _("Running"), "running"),
+        ("exited", _("Done"), "exited"),
+        ("dead", _("Stopped"), "dead"),
         # Not a state: services run by the user's own systemd, in whatever state.
-        ("user", _("User services"), None, "avatar-default-symbolic"),
+        ("user", _("User services"), "user"),
     )
     GROUPS = (
         ("failed", _("Needs attention"), _("These services stopped with an error"), "error"),
@@ -225,8 +225,8 @@ class ServicesView(Gtk.Box):
         # The state filters live in the window sidebar.
         self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
         self._filter_rows: dict[str, FilterRow] = {}
-        for value, text, dot_kind, icon_name in self.FILTERS:
-            row = FilterRow(value, text, dot_kind, icon_name)
+        for value, text, dot_kind in self.FILTERS:
+            row = FilterRow(value, text, dot_kind)
             self._filter_rows[value] = row
             self.filter_list.append(row)
         self.filter_list.select_row(self._filter_rows["all"])
