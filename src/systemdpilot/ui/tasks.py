@@ -17,11 +17,16 @@ def run_in_thread(
     *args: Any,
     on_done: Callable[[Any], None] | None = None,
     on_error: Callable[[BaseException], None] | None = None,
+    priority: int = GLib.PRIORITY_DEFAULT_IDLE,
 ) -> None:
     """Call ``func(*args)`` in a worker thread.
 
     ``on_done(result)`` or ``on_error(exception)`` is then called on the
     GTK main thread. GTK must only be touched from those callbacks.
+    ``priority`` is the GLib priority of that delivery. The default idle
+    priority waits until background UI work (such as filling a log) has
+    finished; pass a higher priority when the result is what the user is
+    waiting on.
     """
 
     def deliver(callback, value):
@@ -34,11 +39,11 @@ def run_in_thread(
         except Exception as e:  # noqa: BLE001 - every failure is reported to the UI
             log.debug("Background task %s failed", getattr(func, "__name__", func), exc_info=True)
             if on_error:
-                GLib.idle_add(deliver, on_error, e)
+                GLib.idle_add(deliver, on_error, e, priority=priority)
             else:
                 log.exception("Unhandled error in background task")
             return
         if on_done:
-            GLib.idle_add(deliver, on_done, result)
+            GLib.idle_add(deliver, on_done, result, priority=priority)
 
     threading.Thread(target=worker, daemon=True).start()

@@ -108,6 +108,10 @@ class UnitPanel(Adw.BreakpointBin):
         """Fetch fresh data in the background (call after :meth:`present`)."""
         self.load()
 
+    def still_loading(self) -> bool:
+        """The details spinner is up, so systemd should stay free for this fetch."""
+        return not self._closed and self.loading_stack.get_visible_child_name() != "pages"
+
     def discard(self) -> None:
         """No longer shown: results still on their way are dropped."""
         self._closed = True
@@ -119,13 +123,16 @@ class UnitPanel(Adw.BreakpointBin):
     def _on_raw_toggled(self, switch, _pspec):
         raw = switch.get_active()
         self.activity_stack.set_visible_child_name("raw" if raw else "list")
-        if raw:
-            GLib.idle_add(self._scroll_logs_to_end)
+        # The text view lays out every line. Filling it while it is hidden
+        # keeps the main loop busy long after the overview is on screen.
+        if raw and self._details is not None:
+            self._show_raw_logs(self._details)
 
     def _on_log_search(self, entry):
         self._log_query = entry.get_text().strip().lower()
         if self._details is not None:
-            self._show_raw_logs(self._details)
+            if self.raw_switch.get_active():
+                self._show_raw_logs(self._details)
             if self._pending_activity is None:  # else it is built with the query when shown
                 self._build_activity(self._details)
 
@@ -218,7 +225,12 @@ class UnitPanel(Adw.BreakpointBin):
             self._load_heavy_elevated(load)
             return
 
-        run_in_thread(fetch_core, on_done=core_done, on_error=core_failed)
+        run_in_thread(
+            fetch_core,
+            on_done=core_done,
+            on_error=core_failed,
+            priority=GLib.PRIORITY_DEFAULT,
+        )
 
     def _load_heavy(self, props: dict[str, str], unit: Unit, load: int) -> None:
         manager, name, scope, elevated = self.manager, self.unit.name, self.scope, self._elevated
@@ -237,7 +249,12 @@ class UnitPanel(Adw.BreakpointBin):
                 return
             self._on_load_failed(error)
 
-        run_in_thread(fetch_heavy, on_done=heavy_done, on_error=heavy_failed)
+        run_in_thread(
+            fetch_heavy,
+            on_done=heavy_done,
+            on_error=heavy_failed,
+            priority=GLib.PRIORITY_DEFAULT,
+        )
 
     def _load_heavy_elevated(self, load: int) -> None:
         manager, name, scope = self.manager, self.unit.name, self.scope
@@ -284,17 +301,19 @@ class UnitPanel(Adw.BreakpointBin):
         self._details_load = load
         self._details = details
         self._show_unit(details.unit)
-        self._show_raw_logs(details)
+        if self.raw_switch.get_active():
+            self._show_raw_logs(details)
         self.logs_banner.set_title(GLib.markup_escape_text(self._logs_warning(details)))
         self.logs_banner.set_button_label(_("View as Administrator") if self._remote else None)
         self.logs_banner.set_revealed(bool(details.logs.warning))
         self._build_overview(details)
-        # Hundreds of activity rows take a while to build: the pages show first,
-        # and the rows follow once they are on screen (at once if they are wanted).
+        # Activity rows and the raw text view are built when that page is shown.
+        # Doing it up front, for a log the overview does not display, held the
+        # main loop for over a second and delayed the next service's details.
         self._pending_activity = details
-        if self.stack.get_visible_child_name() == "activity":
-            self._build_pending_activity()
         self._show_pages()
+        if self.stack.get_visible_child_name() != "activity":
+            return
         clock = self.get_frame_clock()
         if clock is None:
             self._queue_activity()

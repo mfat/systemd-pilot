@@ -106,6 +106,8 @@ class Window(Adw.ApplicationWindow):
         # (generation, task) -> quiet: fetches still running; quiet ones don't show the spinner.
         self._pending: dict[tuple[int, str], bool] = {}
         self._journal_badge_source = 0
+        self._inactive_source = 0
+        self._inactive_job = None
         self._connecting: dict[str, SSHRunner] = {}  # host id -> connection attempt
         self.operations = Operations(self, self.toast)
         self._details: UnitPanel | None = None  # the panel beside the services list
@@ -587,14 +589,10 @@ class Window(Adw.ApplicationWindow):
             self._set_pending(generation, "list", False)
             self._on_units_loaded(units)
             if include_inactive:
-                self._set_pending(generation, "inactive", True, quiet)
-                run_in_thread(
-                    manager.attach_file_states,
-                    units,
-                    True,
-                    on_done=inactive_done,
-                    on_error=incomplete,
+                self._inactive_job = lambda: self._start_inactive_load(
+                    generation, manager, units, quiet, inactive_done, incomplete
                 )
+                self._arm_inactive_load()
 
         def inactive_done(units):
             if generation != self._generation:
@@ -622,6 +620,37 @@ class Window(Adw.ApplicationWindow):
                 self._show_error(_("Could Not Load Services"), describe(error))
 
         run_in_thread(manager.list_services, include_inactive, on_done=done, on_error=failed)
+
+    def _arm_inactive_load(self) -> None:
+        """Start the inactive-unit catalog once details are not using systemd.
+
+        ``list-unit-files`` takes a few seconds and systemd serves one client at
+        a time, so a details open in that window waits just as long.
+        """
+        if self._inactive_source:
+            GLib.source_remove(self._inactive_source)
+            self._inactive_source = 0
+        job = self._inactive_job
+        if job is None:
+            return
+
+        def fire() -> bool:
+            self._inactive_source = 0
+            panel = self._details
+            if panel is not None and panel.still_loading():
+                self._inactive_source = GLib.timeout_add(400, fire)
+                return GLib.SOURCE_REMOVE
+            self._inactive_job = None
+            job()
+            return GLib.SOURCE_REMOVE
+
+        self._inactive_source = GLib.timeout_add(700, fire)
+
+    def _start_inactive_load(self, generation, manager, units, quiet, on_done, on_error) -> None:
+        if generation != self._generation:
+            return
+        self._set_pending(generation, "inactive", True, quiet)
+        run_in_thread(manager.attach_file_states, units, True, on_done=on_done, on_error=on_error)
 
     def _on_units_loaded(self, units: list[Unit]):
         self.services.set_units(self._carry_over(units))
@@ -742,6 +771,10 @@ class Window(Adw.ApplicationWindow):
             action_message=self._action_message,
         )
         self.services.select_unit(unit)
+        # list-unit-files keeps systemd busy for a few seconds. Hold it while
+        # details are opening so systemctl show is not stuck behind it.
+        if self._inactive_source:
+            self._arm_inactive_load()
         if not self.details_split.get_collapsed():
             if self._details:
                 self._details.discard()
