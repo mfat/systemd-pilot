@@ -21,7 +21,7 @@ class JournalWindow(Adw.Window):
         self.journal = journal
         self.insert_action_group("win", actions)
 
-        self.window_title = Adw.WindowTitle(title=_("Journal"))
+        self.window_title = Adw.WindowTitle(title=_("systemd Journal"))
         header = Adw.HeaderBar(title_widget=self.window_title)
         refresh = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text=_("Refresh"))
         refresh.connect("clicked", lambda *_: journal.reload())
@@ -53,7 +53,7 @@ class JournalWindow(Adw.Window):
         self.set_content(self.toast_overlay)
 
     def set_machine(self, name: str) -> None:
-        self.set_title(_("Journal — {machine}").format(machine=name))
+        self.set_title(_("systemd Journal — {machine}").format(machine=name))
         self.window_title.set_subtitle(name)
 
     def toast(self, message: str) -> None:
