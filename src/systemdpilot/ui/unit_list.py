@@ -8,6 +8,7 @@ from gettext import gettext as _
 from gi.repository import Gdk, Gio, GObject, Graphene, Gtk, Pango
 
 from ..core.models import Unit
+from . import widgets
 
 
 class UnitItem(GObject.Object):
@@ -83,12 +84,12 @@ class UnitList(Gtk.ScrolledWindow):
         self.view.set_model(self.selection)
         self.view.connect("activate", self._on_activate)
 
-        name_col = self._add_column(_("Unit"), "name", self._setup_label, self._render_name, expand=True)
+        name_col = self._add_column(_("Unit"), "name", self._setup_name, self._render_name, expand=True)
         self._add_column(_("Description"), "description", self._setup_label, self._render_description, expand=True)
         self._add_column(_("Active (Sub)"), "state", self._setup_label, self._render_state)
         # Enable / unit-file state is only in the details dialog (list-unit-files is slow).
         self._add_column(_("Memory"), "memory", self._setup_number, self._render_memory, numeric=True)
-        self._add_column(_("PID"), "pid", self._setup_number, self._render_pid, numeric=True)
+        self._add_column(_("PID"), "pid", self._setup_pid, self._render_pid, numeric=True)
         self.view.sort_by_column(name_col, Gtk.SortType.ASCENDING)
 
         self._menu = Gtk.PopoverMenu.new_from_model(context_menu)
@@ -227,13 +228,37 @@ class UnitList(Gtk.ScrolledWindow):
         self._menu.popup()
         return True
 
-    def _setup_label(self, _factory, list_item, xalign=0):
-        label = Gtk.Label(xalign=xalign, ellipsize=Pango.EllipsizeMode.END, margin_top=6, margin_bottom=6)
+    def _setup_name(self, _factory, list_item):
+        box = Gtk.Box(
+            spacing=10,
+            margin_top=10,
+            margin_bottom=10,
+            margin_start=12,
+            margin_end=8,
+            valign=Gtk.Align.CENTER,
+        )
+        box.append(widgets.dot("dead"))
+        box.append(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True))
+        list_item.set_child(box)
+        self._add_context_gestures(box, list_item)
+
+    def _setup_label(self, _factory, list_item, xalign=0, *, end=False):
+        label = Gtk.Label(
+            xalign=xalign,
+            ellipsize=Pango.EllipsizeMode.END,
+            margin_top=10,
+            margin_bottom=10,
+            margin_start=8,
+            margin_end=12 if end else 8,
+        )
         list_item.set_child(label)
         self._add_context_gestures(label, list_item)
 
     def _setup_number(self, factory, list_item):
         self._setup_label(factory, list_item, xalign=1)
+
+    def _setup_pid(self, factory, list_item):
+        self._setup_label(factory, list_item, xalign=1, end=True)
 
     @staticmethod
     def _set(list_item, text, *css):
@@ -244,7 +269,12 @@ class UnitList(Gtk.ScrolledWindow):
 
     def _render_name(self, list_item):
         item = list_item.get_item()
-        self._set(list_item, item.unit.name, "monospace").set_tooltip_text(item.unit.name)
+        box = list_item.get_child()
+        status_dot, label = box.get_first_child(), box.get_last_child()
+        widgets.set_dot(status_dot, item.unit.kind)
+        label.set_label(item.unit.name)
+        label.set_css_classes(["monospace"])
+        label.set_tooltip_text(item.unit.name)
 
     def _render_description(self, list_item):
         item = list_item.get_item()
