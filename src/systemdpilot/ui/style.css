@@ -150,7 +150,21 @@ listview.services-list > row:focus-visible > .service-row {
   outline: 2px solid alpha(@accent_color, 0.5);
   outline-offset: -2px;
 }
-.identity-card { padding: 14px 16px 14px 18px; }
+/* The service at the top of its details, tinted by its state. */
+.unit-icon {
+  min-width: 100px;
+  min-height: 100px;
+  border-radius: 24px;
+  color: alpha(currentColor, 0.55);
+  background-color: alpha(currentColor, 0.08);
+}
+.unit-icon.success { color: @success_color; background-color: alpha(@success_color, 0.15); }
+.unit-icon.error { color: @error_color; background-color: alpha(@error_color, 0.15); }
+.unit-icon.warning { color: @warning_color; background-color: alpha(@warning_color, 0.15); }
+.unit-icon.accent { color: @accent_color; background-color: alpha(@accent_bg_color, 0.15); }
+button.hero-action { min-height: 40px; padding: 0 20px; border-radius: 9999px; font-weight: bold; }
+button.hero-action.destructive-action { background-color: @destructive_bg_color; color: @destructive_fg_color; }
+button.hero-action.destructive-action:hover { background-image: image(alpha(currentColor, 0.1)); }
 
 .command-row .subtitle { font-family: monospace; }
 

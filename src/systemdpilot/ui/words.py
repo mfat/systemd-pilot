@@ -49,6 +49,18 @@ def state_word(unit: Unit) -> str:
     }[unit.kind]
 
 
+def active_word(unit: Unit) -> str:
+    """systemd's own word for the state, beside the plain one."""
+    return {
+        "active": _("Active"),
+        "inactive": _("Inactive"),
+        "failed": _("Failed"),
+        "activating": _("Activating"),
+        "deactivating": _("Deactivating"),
+        "reloading": _("Reloading"),
+    }.get(unit.active_state, unit.active_state.capitalize())
+
+
 def state_css(unit: Unit) -> str:
     """Text color class for the state."""
     if unit.active_state in ("activating", "deactivating", "reloading"):
@@ -111,7 +123,7 @@ def state_sentence(unit: Unit, now: datetime | None = None) -> str:
     kind = unit.kind
     clock = now or datetime.now()
     if kind == "running" and unit.since:
-        return _("started {ago} ({date})").format(
+        return _("started {ago} · {date}").format(
             ago=ago(unit.since, clock), date=unit.since.strftime("%a, %b %-d at %H:%M")
         )
     if kind == "running":

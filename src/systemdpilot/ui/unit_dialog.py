@@ -45,6 +45,7 @@ class UnitPanel(Adw.BreakpointBin):
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     header_bar: Adw.HeaderBar = Gtk.Template.Child()
+    icon_tile: Gtk.Box = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
     action_box: Gtk.FlowBox = Gtk.Template.Child()
@@ -127,6 +128,7 @@ class UnitPanel(Adw.BreakpointBin):
         self.name_label.set_label(description)
         self.name_label.set_visible(bool(description))
         self.name_label.set_tooltip_text(description or None)
+        self.icon_tile.set_css_classes(["unit-icon", words.state_css(unit)])
         self._show_actions(unit)
 
     def _show_actions(self, unit: Unit):
@@ -140,7 +142,10 @@ class UnitPanel(Adw.BreakpointBin):
             label = _("_Try Again") if unit.is_failed else _("_Start")
             buttons = [(UnitAction.START, label, "media-playback-start-symbolic", "suggested-action")]
         for action, label, icon, css in buttons:
-            button = Gtk.Button(child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True))
+            button = Gtk.Button(
+                child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True),
+                css_classes=["hero-action"],
+            )
             if css:
                 button.add_css_class(css)
             button.connect("clicked", lambda _b, a=action: self._run_action(a))
@@ -483,10 +488,11 @@ class UnitPanel(Adw.BreakpointBin):
     @staticmethod
     def _state_row(unit: Unit) -> Adw.ActionRow:
         sentence = words.state_sentence(unit)
-        row = Adw.ActionRow(title=words.state_word(unit), subtitle=sentence[:1].upper() + sentence[1:])
-        dot = Gtk.Box(valign=Gtk.Align.CENTER)
-        widgets.set_dot(dot, unit.kind)
-        row.add_prefix(dot)
+        row = Adw.ActionRow(title=words.active_word(unit), subtitle=sentence[:1].upper() + sentence[1:])
+        state = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
+        state.append(widgets.dot(unit.kind))
+        state.append(widgets.label(words.state_word(unit), "heading", words.state_css(unit)))
+        row.add_suffix(state)
         return row
 
     @staticmethod
@@ -529,6 +535,10 @@ class UnitPanel(Adw.BreakpointBin):
         box.append(message)
         box.append(widgets.label(words.ago(entry.timestamp), "dim-label", "caption", valign=Gtk.Align.START))
         return Gtk.ListBoxRow(child=box, activatable=False)
+
+    @Gtk.Template.Callback()
+    def on_refresh_clicked(self, _button):
+        self.load()
 
     def _on_startup_toggled(self, row, _pspec):
         if row.get_active() == words.starts_at_boot(self.unit):

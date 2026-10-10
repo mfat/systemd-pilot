@@ -12,5 +12,6 @@
     <!-- Icons only the app uses; not installed into the system theme. -->
     <file alias="icons/scalable/actions/cogged-wheel-symbolic.svg">../data/icons/actions/cogged-wheel-symbolic.svg</file>
     <file alias="icons/scalable/actions/bell-symbolic.svg">../data/icons/actions/bell-symbolic.svg</file>
+    <file alias="icons/scalable/actions/pegged-wheels-symbolic.svg">../data/icons/actions/pegged-wheels-symbolic.svg</file>
   </gresource>
 </gresources>

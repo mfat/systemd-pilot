@@ -12,23 +12,10 @@
       </object>
     </child>
     <child>
-      <!-- Too narrow for the name and the actions on one line: actions go below. -->
-      <object class="AdwBreakpoint">
-        <condition>max-width: 480sp</condition>
-        <setter object="switcher" property="policy">narrow</setter>
-        <setter object="identity_card" property="orientation">vertical</setter>
-        <setter object="identity_card" property="spacing">12</setter>
-        <setter object="action_box" property="halign">start</setter>
-      </object>
-    </child>
-    <child>
       <object class="AdwBreakpoint">
         <condition>max-width: 400sp</condition>
         <setter object="switcher_bar" property="reveal">True</setter>
         <setter object="switcher" property="visible">False</setter>
-        <setter object="identity_card" property="orientation">vertical</setter>
-        <setter object="identity_card" property="spacing">12</setter>
-        <setter object="action_box" property="halign">start</setter>
       </object>
     </child>
     <property name="child">
@@ -37,63 +24,19 @@
           <object class="AdwToolbarView">
             <child type="top">
               <object class="AdwHeaderBar" id="header_bar">
+                <child type="start">
+                  <object class="GtkButton" id="refresh_button">
+                    <property name="icon-name">view-refresh-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Refresh</property>
+                    <signal name="clicked" handler="on_refresh_clicked"/>
+                  </object>
+                </child>
                 <property name="title-widget">
                   <object class="AdwViewSwitcher" id="switcher">
                     <property name="stack">stack</property>
                     <property name="policy">wide</property>
                   </object>
                 </property>
-              </object>
-            </child>
-            <child type="top">
-              <!-- Name, description and actions share one card; the state is in the Status group. -->
-              <object class="GtkBox" id="identity_card">
-                <property name="spacing">16</property>
-                <property name="margin-start">24</property>
-                <property name="margin-end">24</property>
-                <property name="margin-top">6</property>
-                <style>
-                  <class name="card"/>
-                  <class name="identity-card"/>
-                </style>
-                <child>
-                  <object class="GtkBox">
-                    <property name="orientation">vertical</property>
-                    <property name="hexpand">True</property>
-                    <property name="valign">center</property>
-                    <child>
-                      <object class="GtkLabel" id="title_label">
-                        <property name="xalign">0</property>
-                        <property name="selectable">True</property>
-                        <property name="ellipsize">end</property>
-                        <style>
-                          <class name="title-2"/>
-                        </style>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkLabel" id="name_label">
-                        <property name="xalign">0</property>
-                        <property name="ellipsize">end</property>
-                        <style>
-                          <class name="caption"/>
-                          <class name="dim-label"/>
-                        </style>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkFlowBox" id="action_box">
-                    <property name="selection-mode">none</property>
-                    <property name="homogeneous">False</property>
-                    <property name="valign">center</property>
-                    <property name="max-children-per-line">5</property>
-                    <property name="min-children-per-line">1</property>
-                    <property name="column-spacing">8</property>
-                    <property name="row-spacing">8</property>
-                  </object>
-                </child>
               </object>
             </child>
             <property name="content">
@@ -131,13 +74,80 @@
                       <object class="GtkScrolledWindow">
                         <property name="hscrollbar-policy">never</property>
                         <property name="child">
-                          <object class="GtkBox" id="overview_box">
+                          <object class="GtkBox">
                             <property name="orientation">vertical</property>
                             <property name="spacing">22</property>
                             <property name="margin-start">24</property>
                             <property name="margin-end">24</property>
-                            <property name="margin-top">18</property>
+                            <property name="margin-top">24</property>
                             <property name="margin-bottom">28</property>
+                            <child>
+                              <!-- The service at a glance: its state's color, name and actions. -->
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkBox" id="icon_tile">
+                                    <property name="halign">center</property>
+                                    <!-- Only the icon inside expands, to sit in the middle. -->
+                                    <property name="hexpand">False</property>
+                                    <property name="vexpand">False</property>
+                                    <property name="margin-bottom">14</property>
+                                    <style>
+                                      <class name="unit-icon"/>
+                                    </style>
+                                    <child>
+                                      <object class="GtkImage">
+                                        <property name="icon-name">pegged-wheels-symbolic</property>
+                                        <property name="pixel-size">48</property>
+                                        <property name="halign">center</property>
+                                        <property name="valign">center</property>
+                                        <property name="hexpand">True</property>
+                                        <property name="vexpand">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="title_label">
+                                    <property name="selectable">True</property>
+                                    <property name="wrap">True</property>
+                                    <property name="wrap-mode">word-char</property>
+                                    <property name="justify">center</property>
+                                    <style>
+                                      <class name="title-1"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="name_label">
+                                    <property name="wrap">True</property>
+                                    <property name="justify">center</property>
+                                    <style>
+                                      <class name="dim-label"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkFlowBox" id="action_box">
+                                    <property name="selection-mode">none</property>
+                                    <property name="homogeneous">False</property>
+                                    <property name="halign">center</property>
+                                    <property name="margin-top">14</property>
+                                    <property name="max-children-per-line">5</property>
+                                    <property name="min-children-per-line">1</property>
+                                    <property name="column-spacing">10</property>
+                                    <property name="row-spacing">10</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="overview_box">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">22</property>
+                              </object>
+                            </child>
                           </object>
                         </property>
                       </object>
