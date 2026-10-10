@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -24,6 +25,9 @@ _ADVANCED_PAGES = ("status", "logs", "file", "properties")
 # The matching page when switching between simple and advanced.
 _COUNTERPART = {"activity": "logs", "logs": "activity"}
 _ACTIVITY_LIMIT = 300
+_ACTIVITY_CHUNK = 25
+# Just after GTK redraws (GDK_PRIORITY_REDRAW), ahead of text view validation.
+_AFTER_REDRAW = GLib.PRIORITY_HIGH_IDLE + 21
 
 _EXEC_PATH_RE = re.compile(r"path=(\S+)")
 _EXEC_ARGV_RE = re.compile(r"argv\[\]=(.*?) ; ignore_errors=")
@@ -95,6 +99,8 @@ class UnitPanel(Adw.BreakpointBin):
         self._action_message = action_message
         self._properties: dict[str, str] = {}
         self._details: _Details | None = None
+        self._pending_activity: _Details | None = None  # loaded, its rows not built yet
+        self._activity_gen = 0
         self._closed = False
         # On remote hosts, logs the SSH user may not read can be read through sudo.
         self._remote = isinstance(manager.runner, SSHRunner)
@@ -110,6 +116,10 @@ class UnitPanel(Adw.BreakpointBin):
         self.mode_switch.set_active(self._advanced)
         self.mode_switch.connect("notify::active", self._on_switch)
         self._apply_mode(initial=True)
+        self.stack.connect(
+            "notify::visible-child-name",
+            lambda stack, _p: stack.get_visible_child_name() == "activity" and self._build_pending_activity(),
+        )
 
         self._show_unit(unit)
 
@@ -317,15 +327,27 @@ class UnitPanel(Adw.BreakpointBin):
         self.logs_banner.set_revealed(bool(details.logs.warning))
         GLib.idle_add(self._scroll_logs_to_end)
         self._build_overview(details)
-        # Ahead of GTK's own idle work: text views validating hundreds of log lines
-        # would otherwise hold the spinner up for seconds.
-        GLib.idle_add(self._build_activity_idle, details, priority=GLib.PRIORITY_HIGH_IDLE)
+        # Hundreds of activity rows take a while to build: the pages show first,
+        # and the rows follow once they are on screen (at once if they are wanted).
+        self._pending_activity = details
+        if self.stack.get_visible_child_name() == "activity":
+            self._build_pending_activity()
+        self._show_pages()
+        clock = self.get_frame_clock()
+        if clock is None:
+            self._queue_activity()
+        else:
+            handler = clock.connect("after-paint", lambda c: (c.disconnect(handler), self._queue_activity()))
 
-    def _build_activity_idle(self, details: _Details):
-        if not self._closed:
+    def _queue_activity(self) -> None:
+        # Ahead of GTK's own idle work: text views validating hundreds of log
+        # lines would otherwise hold it up for seconds.
+        GLib.idle_add(lambda: self._build_pending_activity() and False, priority=GLib.PRIORITY_HIGH_IDLE)
+
+    def _build_pending_activity(self) -> None:
+        details, self._pending_activity = self._pending_activity, None
+        if details and not self._closed:
             self._build_activity(details)
-            self._show_pages()
-        return GLib.SOURCE_REMOVE
 
     def _scroll_logs_to_end(self):
         adj = self.logs_scroll.get_vadjustment()
@@ -487,11 +509,25 @@ class UnitPanel(Adw.BreakpointBin):
             box.append(notice)
         entries = list(reversed(details.logs.entries))[:_ACTIVITY_LIMIT]
         section = widgets.Section(_("Activity"), _("Newest first"))
-        for entry in entries:
-            section.list.append(widgets.log_row(entry, show_source=False))
         if not entries:
             section.list.append(widgets.placeholder_row(_("No log entries.")))
         box.append(section.box)
+        # A screenful at once, the rest in batches between frames: building
+        # hundreds of rows in one go froze the window for half a second.
+        self._activity_gen += 1
+        gen = self._activity_gen
+        rows = iter(entries)
+
+        def add_rows() -> bool:
+            if gen != self._activity_gen or self._closed:
+                return GLib.SOURCE_REMOVE
+            batch = list(itertools.islice(rows, _ACTIVITY_CHUNK))
+            for entry in batch:
+                section.list.append(widgets.log_row(entry, show_source=False))
+            return GLib.SOURCE_CONTINUE if len(batch) == _ACTIVITY_CHUNK else GLib.SOURCE_REMOVE
+
+        if add_rows():
+            GLib.idle_add(add_rows, priority=_AFTER_REDRAW)
 
     def _logs_warning(self, details: _Details) -> str:
         if self._remote:
