@@ -160,11 +160,6 @@ button.hero-action.destructive-action:hover { background-image: image(alpha(curr
 .command-row .subtitle { font-family: monospace; }
 
 /* Journal. */
-.journal-footer {
-  border-top: 1px solid alpha(currentColor, 0.1);
-  background-color: @headerbar_bg_color;
-  font-size: 13px;
-}
 menubutton.picker > button {
   min-height: 28px;
   padding: 0 8px 0 10px;

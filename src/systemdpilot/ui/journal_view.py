@@ -291,7 +291,7 @@ class JournalView(Gtk.Box):
         self._actions = actions
         self.insert_action_group("journal", actions)
 
-        # The filters, presets and range live in the window sidebar. Presets are filters
+        # The filters and presets live in the window sidebar. Presets are filters
         # too, in the same list: choosing one shows the entries it finds.
         self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_bottom=12)
         self.sidebar.insert_action_group("journal", actions)
@@ -336,11 +336,28 @@ class JournalView(Gtk.Box):
             [(None, [Option(v, label, help, "-k" if kernel else "") for v, label, help, _t, kernel in SOURCES])],
             css=("picker",),
         )
-        pickers = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        for button in (self._since, self._boot, self._source):
-            button.set_hexpand(True)
+        # Pinned over the list, as it decides what every filter finds; wraps when the column is narrow.
+        pickers = Gtk.FlowBox(
+            selection_mode=Gtk.SelectionMode.NONE,
+            max_children_per_line=3,
+            column_spacing=6,
+            row_spacing=6,
+            halign=Gtk.Align.START,
+            margin_top=12,
+            margin_bottom=4,
+            margin_start=24,
+            margin_end=24,
+        )
+        for button, tooltip in (
+            (self._since, _("Time")),
+            (self._boot, _("Startup")),
+            (self._source, _("Source")),
+        ):
+            button.set_tooltip_text(tooltip)
+            button.set_halign(Gtk.Align.START)
             pickers.append(button)
-        self.sidebar.append(self._sidebar_group(_("Range"), pickers))
+            button.get_parent().set_focusable(False)  # the button inside takes focus
+        self.append(pickers)
 
         self._banner = Adw.Banner()
         self._banner.connect("button-clicked", lambda *_: self._banner_action and self._banner_action())
@@ -495,12 +512,6 @@ class JournalView(Gtk.Box):
         return self._boot_id
 
     # -- internals --------------------------------------------------------
-
-    def _sidebar_group(self, heading: str, child: Gtk.Widget) -> Gtk.Widget:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=12, margin_start=12, margin_end=12)
-        box.append(widgets.label(heading, "dim-label", "caption-heading", margin_start=6))
-        box.append(child)
-        return box
 
     def _filter_header(self, row, before):
         first_preset = row.value.startswith(PRESET_ROW) and not before.value.startswith(PRESET_ROW)
