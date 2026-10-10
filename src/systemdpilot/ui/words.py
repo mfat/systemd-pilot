@@ -1,4 +1,4 @@
-"""Plain-language words for systemd states, shared by the simple views."""
+"""Plain-language words for systemd states, shared by the views."""
 
 from __future__ import annotations
 

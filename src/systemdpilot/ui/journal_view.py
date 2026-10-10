@@ -11,9 +11,8 @@ from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
 from ..core.models import LogEntry, LogResult
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
-from . import prompts, text, widgets, words
+from . import prompts, widgets, words
 from .operations import Operations, describe
-from .services_view import mode_switch
 from .tasks import run_in_thread
 from .widgets import Chip, Option, OptionButton
 
@@ -69,7 +68,6 @@ PRESET_TEXT = {
     "boot": (_("Boot Problems"), _("Services that failed or timed out during this boot")),
     "packages": (_("Package Updates"), _("Installs, upgrades and failed transactions")),
 }
-PRIORITY_FLAGS = {"problems": "-p warning", "errors": "-p err", "warnings": "-p warning..warning", "all": ""}
 
 _FILTER_MATCH: dict[str, Callable[[int, LogEntry, dict], bool]] = {
     "problems": lambda i, _e, flagged: i in flagged,
@@ -224,7 +222,6 @@ class JournalView(Gtk.Box):
         self._result: LogResult | None = None
         self._boot_id = ""
         self._query = ""
-        self._mode = "simple"
         self._known_units: set[str] = set()
         self._shown = PAGE
         self.issues: list[Issue] = []
@@ -288,10 +285,6 @@ class JournalView(Gtk.Box):
         preset_box.append(self._presets)
         preset_box.append(self._clear_preset)
         bar.append(preset_box)
-        bar.append(Gtk.Box(hexpand=True))
-        switch = mode_switch()
-        switch.set_valign(Gtk.Align.START)
-        bar.append(switch)
         self.append(widgets.scroller(bar))
 
         self._banner = Adw.Banner()
@@ -315,23 +308,6 @@ class JournalView(Gtk.Box):
         )
         self._simple_scroll = Gtk.ScrolledWindow(child=self._simple, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.stack.add_named(self._simple_scroll, "simple")
-
-        self._command = widgets.label(
-            "", "monospace", "caption", "dim-label", "command-line", selectable=True, wrap=True
-        )
-        self._text = Gtk.TextView(
-            editable=False, monospace=True, wrap_mode=Gtk.WrapMode.WORD_CHAR, css_classes=["output"]
-        )
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["card", "table-card"])
-        card.append(self._command)
-        card.append(Gtk.Separator())
-        card.append(Gtk.ScrolledWindow(child=self._text, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER))
-        card.set_margin_top(8)
-        card.set_margin_bottom(24)
-        card.set_margin_start(24)
-        card.set_margin_end(24)
-        card.set_hexpand(True)
-        self.stack.add_named(card, "advanced")
 
         self._status = Adw.StatusPage()
         self.stack.add_named(self._status, "status")
@@ -488,21 +464,6 @@ class JournalView(Gtk.Box):
         self._shown = PAGE
         self._refresh()
 
-    def set_mode(self, mode: str) -> None:
-        if mode == self._mode:
-            return
-        self._mode = mode
-        if self.loaded and self._page_visible():
-            self._refresh()
-        else:
-            self._needs_render = True
-
-    def _page_visible(self) -> bool:
-        """True when the journal stack page is the one on screen."""
-        parent = self.get_parent()
-        stack = parent.get_parent() if parent is not None else None
-        return isinstance(stack, Gtk.Stack) and stack.get_visible_child() is parent
-
     def set_known_units(self, names: set[str]) -> None:
         self._known_units = names
 
@@ -535,7 +496,7 @@ class JournalView(Gtk.Box):
         query = self._query
         preset_id = self._state("preset")
         preset = PRESETS_BY_ID.get(preset_id)
-        # Searching, changing preset, or a new fetch: re-scan. Filter/mode changes reuse this.
+        # Searching, changing preset, or a new fetch: re-scan. Filter changes reuse this.
         analysis_key = (id(self._result), query, preset_id, self._boot_id)
         if analysis_key != self._analysis_key:
             self._analysis_key = analysis_key
@@ -588,10 +549,7 @@ class JournalView(Gtk.Box):
 
         flt = self._state("filter")
         shown = [(i, e) for i, e in enumerate(entries) if _FILTER_MATCH[flt](i, e, flagged)]
-        if self._mode == "advanced":
-            self._render_advanced(shown, flagged, preset)
-        else:
-            self._render_simple(shown, flagged, flt)
+        self._render_simple(shown, flagged, flt)
         self._needs_render = False
         self.emit("changed")
 
@@ -728,19 +686,3 @@ class JournalView(Gtk.Box):
         current = boot_id == self._boot_id
         box.append(widgets.label(_("This boot") if current else _("Earlier boot · {id}").format(id=boot_id[:8])))
         return Gtk.ListBoxRow(child=box, activatable=False)
-
-    def _render_advanced(self, shown, flagged, preset) -> None:
-        flt = self._state("filter")
-        boot = _pick(BOOTS, self._state("boot"))[4]
-        since = _pick(SINCE, self._state("since"))[3]
-        flags = [
-            "-b" if boot == 0 else (f"-b {boot}" if boot is not None else ""),
-            "-k" if self._state("source") == "kernel" else "",
-            f'--since "{since}"' if since else "",
-            PRIORITY_FLAGS[flt],
-            preset.command if preset else "",
-        ]
-        self._command.set_label("$ journalctl -r " + " ".join(f for f in flags if f))
-        notes = {pos: issue_text(flagged[i])[0] for pos, (i, _e) in enumerate(shown) if i in flagged}
-        text.set_journal(self._text.get_buffer(), [e for _i, e in shown], notes, self._boot_id)
-        self.stack.set_visible_child_name("advanced")

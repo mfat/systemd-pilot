@@ -24,15 +24,6 @@
       <default>"default"</default>
       <summary>Color scheme</summary>
     </key>
-    <key name="view-mode" type="s">
-      <choices>
-        <choice value="simple"/>
-        <choice value="advanced"/>
-      </choices>
-      <default>"simple"</default>
-      <summary>Detail level</summary>
-      <description>Simple shows services and the journal in plain words; advanced shows raw systemd output.</description>
-    </key>
     <key name="unit-label-order" type="s">
       <choices>
         <choice value="description-name"/>
@@ -40,7 +31,7 @@
       </choices>
       <default>"name-description"</default>
       <summary>Service label order</summary>
-      <description>Whether the simple service list shows description then name, or name then description.</description>
+      <description>Whether the service list shows description then name, or name then description.</description>
     </key>
   </schema>
 </schemalist>

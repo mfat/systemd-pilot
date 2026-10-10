@@ -6,26 +6,27 @@ from systemdpilot.core.paths import app_config_dir
 from systemdpilot.ui.settings import Settings
 
 
-def test_view_mode_survives_restart_when_schema_lacks_key(tmp_path):
+def test_label_order_survives_restart_when_schema_lacks_key(tmp_path):
     path = tmp_path / "settings.json"
     settings = Settings(path)
-    if settings._stored("view-mode"):
-        pytest.skip("installed schema already includes view-mode")
+    if settings._stored("unit-label-order"):
+        pytest.skip("installed schema already includes unit-label-order")
 
-    settings.set_string("view-mode", "advanced")
-    assert json.loads(path.read_text())["view-mode"] == "advanced"
-    assert Settings(path).get_string("view-mode") == "advanced"
+    settings.set_string("unit-label-order", "description-name")
+    assert json.loads(path.read_text())["unit-label-order"] == "description-name"
+    assert Settings(path).get_string("unit-label-order") == "description-name"
 
 
-def test_file_overrides_ignored_defaults(tmp_path):
+def test_file_overrides_defaults_and_drops_unknown_keys(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"view-mode": "advanced", "unit-label-order": "description-name"}))
     settings = Settings(path)
-    if settings._stored("view-mode"):
-        pytest.skip("installed schema already includes view-mode")
+    if settings._stored("unit-label-order"):
+        pytest.skip("installed schema already includes unit-label-order")
 
-    assert settings.get_string("view-mode") == "advanced"
     assert settings.get_string("unit-label-order") == "description-name"
+    # The Simple/Advanced setting is gone: an old file forgets it.
+    assert "view-mode" not in json.loads(path.read_text())
 
 
 def test_default_settings_path_is_under_xdg_config(monkeypatch, tmp_path):

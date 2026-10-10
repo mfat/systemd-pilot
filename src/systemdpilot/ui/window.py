@@ -92,7 +92,6 @@ class Window(Adw.ApplicationWindow):
     disconnected_page: Adw.StatusPage = Gtk.Template.Child()
     error_page: Adw.StatusPage = Gtk.Template.Child()
     error_edit_button: Gtk.Button = Gtk.Template.Child()
-    unit_menu: Gio.MenuModel = Gtk.Template.Child()
 
     def __init__(self, *, application: Adw.Application, sessions: Sessions, settings: Settings):
         super().__init__(application=application)
@@ -100,7 +99,6 @@ class Window(Adw.ApplicationWindow):
         self.settings = settings
         self.machine_id = LOCAL_ID
         self._generation = 0
-        self._runtime_loaded = False
         # (generation, task) -> quiet: fetches still running; quiet ones don't show the spinner.
         self._pending: dict[tuple[int, str], bool] = {}
         self._journal_badge_source = 0
@@ -112,7 +110,7 @@ class Window(Adw.ApplicationWindow):
         if settings.get_boolean("window-maximized"):
             self.maximize()
 
-        self.services = ServicesView(self.unit_menu)
+        self.services = ServicesView()
         self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_badges())
@@ -121,14 +119,10 @@ class Window(Adw.ApplicationWindow):
         self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
         self._details_placeholder = self._build_details_placeholder()
         self.details_bin.set_child(self._details_placeholder)
-        self.details_split.connect("notify::show-sidebar", lambda *_: self._fit_table())
         self.details_split.connect("notify::collapsed", self._on_details_collapsed)
         # With the machine list hidden, details take a bigger share of the window.
         for prop in ("notify::show-sidebar", "notify::collapsed"):
             self.split_view.connect(prop, lambda *_: self._fit_details(self.get_width()))
-        # The advanced table; its selection drives the "unit" actions and context menu.
-        self.unit_list = self.services.unit_list
-        self.unit_list.connect("selection-changed", lambda *_: self._update_actions())
         # The journal is a page pushed over the services; its prompts belong to it.
         journal_operations = Operations(self, self.toast)
         self.journal = JournalView(journal_operations)
@@ -143,7 +137,6 @@ class Window(Adw.ApplicationWindow):
         self._setup_actions()
         self._sync_details_shown()
         self.services.set_empty_hint(self._empty_hint())
-        self._apply_mode()
         self._rebuild_machine_list()
         self.machine_list.select_row(self.machine_list.get_row_at_index(0))
         # As wide as the selector it opens from; the ellipsized names don't ask for any width.
@@ -179,13 +172,6 @@ class Window(Adw.ApplicationWindow):
 
         add("journal", self.show_journal)
 
-        mode = self.settings.get_string("view-mode")
-        mode = Gio.SimpleAction.new_stateful(
-            "mode", GLib.VariantType.new("s"), GLib.Variant("s", mode if mode == "advanced" else "simple")
-        )
-        mode.connect("change-state", self._on_mode_changed)
-        self.add_action(mode)
-
         order = self.settings.get_string("unit-label-order")
         if order not in ("description-name", "name-description"):
             order = "name-description"
@@ -196,15 +182,8 @@ class Window(Adw.ApplicationWindow):
         self.add_action(label_order)
         self.services.set_label_order(order)
 
-        self.unit_actions = Gio.SimpleActionGroup()
-        for action in UnitAction:
-            if action is not UnitAction.RELOAD:
-                add(action.value, lambda a=action: self.control_selected(a), self.unit_actions)
-        add("details", lambda: self.show_unit(self.unit_list.selected_unit), self.unit_actions)
-        self.insert_action_group("unit", self.unit_actions)
-
-    def _enable(self, name, enabled, group=None):
-        (group or self).lookup_action(name).set_enabled(enabled)
+    def _enable(self, name, enabled):
+        self.lookup_action(name).set_enabled(enabled)
 
     def _update_actions(self):
         remote = self.machine_id != LOCAL_ID
@@ -217,9 +196,6 @@ class Window(Adw.ApplicationWindow):
         for name in ("refresh", "daemon-reload", "create-unit", "show-inactive", "journal"):
             self._enable(name, connected)
         self._enable("refresh", connected or (remote and not connecting))
-        has_unit = connected and self.unit_list.selected_unit is not None
-        for name in self.unit_actions.list_actions():
-            self._enable(name, has_unit, self.unit_actions)
         self.host_menu_button.set_visible(remote)
 
     def _on_show_inactive_changed(self, action, value):
@@ -248,28 +224,11 @@ class Window(Adw.ApplicationWindow):
         if self.journal_shown:
             self.nav_view.pop()
 
-    def _on_mode_changed(self, action, value):
-        action.set_state(value)
-        self.settings.set_string("view-mode", value.get_string())
-        self._apply_mode()
-
     def _on_unit_label_order_changed(self, action, value):
         action.set_state(value)
         order = value.get_string()
         self.settings.set_string("unit-label-order", order)
         self.services.set_label_order(order)
-
-    @property
-    def mode(self) -> str:
-        return self.lookup_action("mode").get_state().get_string()
-
-    def _apply_mode(self):
-        self.services.set_mode(self.mode)
-        self.journal.set_mode(self.mode)
-        if self._details:
-            self._details.set_advanced(self.mode == "advanced")
-        if self.mode == "advanced":
-            self._load_runtime()
 
     def _update_badges(self):
         """The count of journal problems on the Journal buttons."""
@@ -560,7 +519,6 @@ class Window(Adw.ApplicationWindow):
             manager.invalidate_unit_files()
         self._generation += 1
         generation = self._generation
-        self._runtime_loaded = False
         machine_id, include_inactive = self.machine_id, self.show_inactive
         # A first load: the list shows as soon as it arrives, and the rest fills in
         # quietly, without the spinner above it.
@@ -578,7 +536,7 @@ class Window(Adw.ApplicationWindow):
 
         # list-units is fast. Enable/disabled state is not shown in the list (details
         # dialog loads it). list-unit-files is only needed to add unloaded units when
-        # “Show Inactive” is on. Advanced mode then fills PID/memory.
+        # “Show Inactive” is on.
         def done(units):
             if generation != self._generation:
                 return
@@ -593,16 +551,12 @@ class Window(Adw.ApplicationWindow):
                     on_done=inactive_done,
                     on_error=incomplete,
                 )
-            elif self.mode == "advanced":
-                self._load_runtime(units, generation, quiet)
 
         def inactive_done(units):
             if generation != self._generation:
                 return
             self._set_pending(generation, "inactive", False)
             self._on_units_loaded(units)
-            if self.mode == "advanced":
-                self._load_runtime(units, generation, quiet)
 
         def incomplete(error):
             if generation == self._generation:
@@ -643,7 +597,7 @@ class Window(Adw.ApplicationWindow):
             self._journal_badge_source = 0
         if self.journal.loaded:
             return
-        # Brief pause so list paint (and advanced/inactive follow-ups that call
+        # Brief pause so list paint (and inactive follow-ups that call
         # here again) finish first. Each reschedule resets the delay, so the
         # badge fetch starts after unit work settles — still off the UI thread.
         self._journal_badge_source = GLib.timeout_add(1500, self._load_journal_badge)
@@ -653,33 +607,6 @@ class Window(Adw.ApplicationWindow):
         if self.sessions.is_connected(self.machine_id) and not self.journal_shown and not self.journal.loaded:
             self.journal.ensure_loaded()
         return GLib.SOURCE_REMOVE
-
-    def _load_runtime(
-        self, units: list[Unit] | None = None, generation: int | None = None, quiet: bool = False
-    ) -> None:
-        """PID/memory for the advanced table and unit dialog; skipped in simple mode."""
-        if self._runtime_loaded:
-            return
-        manager = self.sessions.get(self.machine_id)
-        if manager is None:
-            return
-        if generation is None:
-            generation = self._generation
-        payload = units if units is not None else self.services.units
-
-        def runtime_done(completed: list[Unit]):
-            if generation == self._generation:
-                self._set_pending(generation, "runtime", False)
-                self._runtime_loaded = True
-                self._on_units_loaded(completed)
-
-        def runtime_failed(error):
-            if generation == self._generation:
-                self._set_pending(generation, "runtime", False)
-                self.toast(_("Could not load service details: {error}").format(error=describe(error)))
-
-        self._set_pending(generation, "runtime", True, quiet)
-        run_in_thread(manager.add_runtime, payload, on_done=runtime_done, on_error=runtime_failed)
 
     def _set_pending(self, generation: int, task: str, running: bool, quiet: bool = False) -> None:
         """The spinner above the services list shows while any of them is still fetching."""
@@ -714,9 +641,6 @@ class Window(Adw.ApplicationWindow):
     def _on_search_mode(self, bar, _pspec):
         if not bar.get_search_mode():
             self.search_entry.set_text("")
-
-    def control_selected(self, action: UnitAction):
-        self.control_unit(self.unit_list.selected_unit, action)
 
     def control_unit(self, unit: Unit | None, action: UnitAction):
         manager = self.sessions.get(self.machine_id)
@@ -769,7 +693,6 @@ class Window(Adw.ApplicationWindow):
             return
         host = self._current_host()
         options = dict(
-            advanced=self.mode == "advanced",
             machine_label=host.name if host else _("This Computer"),
             on_changed=self.reload,
             action_message=self._action_message,
@@ -777,7 +700,7 @@ class Window(Adw.ApplicationWindow):
         if not self.details_split.get_collapsed():
             if self._details:
                 self._details.discard()
-            panel = UnitPanel(manager, unit, unit.scope, self.operations, in_pane=True, **options)
+            panel = UnitPanel(manager, unit, unit.scope, self.operations, **options)
             button, panel.journal_badge = self._journal_button()
             panel.add_header_end(button)
             self._update_badges()
@@ -846,9 +769,6 @@ class Window(Adw.ApplicationWindow):
         fraction = max(details / available, 0)
         if abs(fraction - self.details_split.get_sidebar_width_fraction()) > 0.001:
             self.details_split.set_sidebar_width_fraction(fraction)
-
-    def _fit_table(self):
-        self.unit_list.set_compact(self.details_split.get_show_sidebar())
 
     def _open_unit_by_name(self, name: str):
         """From the journal: back to the services, with that one open."""

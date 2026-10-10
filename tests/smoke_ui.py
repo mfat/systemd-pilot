@@ -62,14 +62,18 @@ def run_steps(window):
         lambda: same_name_in_both_scopes(window),
         lambda: window.activate_action("win.show-inactive", None),
         lambda: window.activate_action("win.search", None),
-        # The redesign: filters, both detail levels, the journal and its problems.
+        # The redesign: filters, the journal and its problems.
         # One step, so a service list loading in the background can't replace the units in between.
         lambda: filter_failed(window),
         lambda: window.services.activate_action("services.filter", GLib.Variant("s", "all")),
-        lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
         lambda: window.show_unit(unit),
-        lambda: window.activate_action("win.mode", GLib.Variant("s", "simple")),
         lambda: check(window._details.stack.get_visible_child_name() == "overview", "no overview page"),
+        # Activity shows the log as rows, or raw as journalctl prints it.
+        lambda: window._details.stack.set_visible_child_name("activity"),
+        lambda: window._details.raw_switch.set_active(True),
+        lambda: check(window._details.activity_stack.get_visible_child_name() == "raw", "no raw log"),
+        lambda: window._details.raw_switch.set_active(False),
+        lambda: check(window._details.activity_stack.get_visible_child_name() == "list", "no activity list"),
         lambda: window._close_details(),
         lambda: check(window._details is None, "details panel not closed"),
         # The journal is pushed over the whole window.
@@ -77,8 +81,6 @@ def run_steps(window):
         lambda: check(window.journal_shown, "journal page not shown"),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "ssh")),
         lambda: window.journal.activate_action("journal.filter", GLib.Variant("s", "all")),
-        lambda: window.activate_action("win.mode", GLib.Variant("s", "advanced")),
-        lambda: window.activate_action("win.mode", GLib.Variant("s", "simple")),
         lambda: window.journal.activate_action("journal.preset", GLib.Variant("s", "")),
         # Hidden entries: the banner offers access, which asks first.
         lambda: show_hidden_entries(window),
@@ -86,10 +88,6 @@ def run_steps(window):
         lambda: answer(window.get_visible_dialog(), "cancel"),
         lambda: window.nav_view.pop(),
         lambda: check(not window.journal_shown, "journal page not closed"),
-        # Context menu from the keyboard (Menu / Shift+F10).
-        # One step, so a service list loading in the background can't replace the row in between.
-        lambda: open_context_menu_from_keyboard(window, unit),
-        lambda: window.unit_list._menu.popdown(),
         # Enable/disable is only in the details dialog now.
         lambda: check_no_enable_switch(window),
         # Remove a host from its edit dialog: confirm first, then the dialog closes.
@@ -106,11 +104,6 @@ def run_steps(window):
     def check(condition, message):
         if not condition:
             raise AssertionError(message)
-
-    def open_context_menu_from_keyboard(window, unit):
-        window.unit_list.set_units([unit])  # a known row, whatever services the machine has
-        window.unit_list.select_name(unit.name)
-        check(window.unit_list._popup_for_focus(), "keyboard context menu did not open")
 
     def simple_units(window):
         from systemdpilot.ui.services_view import ServiceItem

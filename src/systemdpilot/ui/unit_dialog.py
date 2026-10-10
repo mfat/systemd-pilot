@@ -20,10 +20,6 @@ from .operations import Operations, describe
 from .resources import template
 from .tasks import run_in_thread
 
-_SIMPLE_PAGES = ("overview", "activity")
-_ADVANCED_PAGES = ("status", "logs", "file", "properties")
-# The matching page when switching between simple and advanced.
-_COUNTERPART = {"activity": "logs", "logs": "activity"}
 _ACTIVITY_LIMIT = 300
 _ACTIVITY_CHUNK = 25
 # Just after GTK redraws (GDK_PRIORITY_REDRAW), ahead of text view validation.
@@ -36,7 +32,6 @@ _EXEC_ARGV_RE = re.compile(r"argv\[\]=(.*?) ; ignore_errors=")
 @dataclass
 class _Details:
     unit: Unit
-    status: str
     properties: dict[str, str]
     unit_file: str
     logs: LogResult
@@ -50,8 +45,6 @@ class UnitPanel(Adw.BreakpointBin):
 
     toast_overlay: Adw.ToastOverlay = Gtk.Template.Child()
     header_bar: Adw.HeaderBar = Gtk.Template.Child()
-    mode_box: Gtk.Box = Gtk.Template.Child()
-    mode_switch: Gtk.Switch = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
     action_box: Gtk.FlowBox = Gtk.Template.Child()
@@ -60,20 +53,13 @@ class UnitPanel(Adw.BreakpointBin):
     pages_spinner: Gtk.Spinner = Gtk.Template.Child()
     overview_page: Adw.ViewStackPage = Gtk.Template.Child()
     activity_page: Adw.ViewStackPage = Gtk.Template.Child()
-    status_page: Adw.ViewStackPage = Gtk.Template.Child()
-    logs_page: Adw.ViewStackPage = Gtk.Template.Child()
-    file_page: Adw.ViewStackPage = Gtk.Template.Child()
-    properties_page: Adw.ViewStackPage = Gtk.Template.Child()
     overview_box: Gtk.Box = Gtk.Template.Child()
+    raw_switch: Gtk.Switch = Gtk.Template.Child()
+    activity_stack: Gtk.Stack = Gtk.Template.Child()
     activity_box: Gtk.Box = Gtk.Template.Child()
-    status_view: Gtk.TextView = Gtk.Template.Child()
     logs_banner: Adw.Banner = Gtk.Template.Child()
     logs_view: Gtk.TextView = Gtk.Template.Child()
     logs_scroll: Gtk.ScrolledWindow = Gtk.Template.Child()
-    file_view: Gtk.TextView = Gtk.Template.Child()
-    edit_file_button: Gtk.Button = Gtk.Template.Child()
-    props_view: Gtk.TextView = Gtk.Template.Child()
-    props_search: Gtk.SearchEntry = Gtk.Template.Child()
 
     def __init__(
         self,
@@ -82,22 +68,18 @@ class UnitPanel(Adw.BreakpointBin):
         scope: Scope,
         operations: Operations,
         *,
-        advanced: bool = False,
         machine_label: str = "",
         on_changed: Callable[[], None],
         action_message: Callable[[Unit, UnitAction], str],
-        in_pane: bool = False,
     ):
         super().__init__()
         self.manager = manager
         self.unit = unit
         self.scope = scope
         self.operations = operations
-        self._advanced = advanced
         self._machine_label = machine_label or _("This Computer")
         self._on_changed = on_changed
         self._action_message = action_message
-        self._properties: dict[str, str] = {}
         self._details: _Details | None = None
         self._pending_activity: _Details | None = None  # loaded, its rows not built yet
         self._activity_gen = 0
@@ -109,13 +91,7 @@ class UnitPanel(Adw.BreakpointBin):
         self._details_load: int | None = None  # the load the shown details came from
         self.journal_badge: Gtk.Label | None = None  # on the window's Journal button, beside the list
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
-
-        # Beside the list the window's Simple/Advanced switch applies.
-        self.mode_box.set_visible(not in_pane)
-
-        self.mode_switch.set_active(self._advanced)
-        self.mode_switch.connect("notify::active", self._on_switch)
-        self._apply_mode(initial=True)
+        self.raw_switch.connect("notify::active", self._on_raw_toggled)
         self.stack.connect(
             "notify::visible-child-name",
             lambda stack, _p: stack.get_visible_child_name() == "activity" and self._build_pending_activity(),
@@ -127,10 +103,6 @@ class UnitPanel(Adw.BreakpointBin):
         """Fetch fresh data in the background (call after :meth:`present`)."""
         self.load()
 
-    @property
-    def advanced(self) -> bool:
-        return self._advanced
-
     def discard(self) -> None:
         """No longer shown: results still on their way are dropped."""
         self._closed = True
@@ -139,27 +111,11 @@ class UnitPanel(Adw.BreakpointBin):
         """A button of the window's, placed before the close button."""
         self.header_bar.pack_end(widget)
 
-    def set_advanced(self, advanced: bool) -> None:
-        if advanced != self._advanced:
-            self._advanced = advanced
-            self._apply_mode()
-
-    def _on_switch(self, switch, _pspec):
-        self.set_advanced(switch.get_active())
-
-    def _apply_mode(self, initial: bool = False):
-        advanced = self.advanced
-        if self.mode_switch.get_active() != advanced:
-            self.mode_switch.set_active(advanced)
-        current = self.stack.get_visible_child_name()
-        for name in _SIMPLE_PAGES:
-            getattr(self, f"{name}_page").set_visible(not advanced)
-        for name in _ADVANCED_PAGES:
-            getattr(self, f"{name}_page").set_visible(advanced)
-        if initial or current not in (_ADVANCED_PAGES if advanced else _SIMPLE_PAGES):
-            fallback = "status" if advanced else "overview"
-            self.stack.set_visible_child_name(_COUNTERPART.get(current, fallback) if not initial else fallback)
-        self._show_actions(self.unit)
+    def _on_raw_toggled(self, switch, _pspec):
+        raw = switch.get_active()
+        self.activity_stack.set_visible_child_name("raw" if raw else "list")
+        if raw:
+            GLib.idle_add(self._scroll_logs_to_end)
 
     # -- header -----------------------------------------------------------
 
@@ -183,11 +139,6 @@ class UnitPanel(Adw.BreakpointBin):
         else:
             label = _("_Try Again") if unit.is_failed else _("_Start")
             buttons = [(UnitAction.START, label, "media-playback-start-symbolic", "suggested-action")]
-        if self.advanced and words.can_toggle_startup(unit):
-            if words.starts_at_boot(unit):
-                buttons.append((UnitAction.DISABLE, _("_Disable"), "window-close-symbolic", None))
-            else:
-                buttons.append((UnitAction.ENABLE, _("_Enable"), "emblem-ok-symbolic", None))
         for action, label, icon, css in buttons:
             button = Gtk.Button(child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True))
             if css:
@@ -245,21 +196,14 @@ class UnitPanel(Adw.BreakpointBin):
     def _load_heavy(self, props: dict[str, str], unit: Unit, load: int) -> None:
         manager, name, scope, elevated = self.manager, self.unit.name, self.scope, self._elevated
 
-        def fetch_heavy() -> tuple[str, str, LogResult]:
-            return (
-                manager.status_text(name, scope),
-                manager.unit_file(name, scope),
-                manager.logs(name, scope, privileged=elevated),
-            )
+        def fetch_heavy() -> tuple[str, LogResult]:
+            return manager.unit_file(name, scope), manager.logs(name, scope, privileged=elevated)
 
-        def heavy_done(result: tuple[str, str, LogResult]):
+        def heavy_done(result: tuple[str, LogResult]):
             if self._closed or load != self._loads:
                 return
-            status, unit_file, logs = result
-            self._on_loaded(
-                _Details(unit=unit, status=status, properties=props, unit_file=unit_file, logs=logs),
-                load,
-            )
+            unit_file, logs = result
+            self._on_loaded(_Details(unit=unit, properties=props, unit_file=unit_file, logs=logs), load)
 
         def heavy_failed(error):
             if self._closed or load != self._loads:
@@ -285,7 +229,6 @@ class UnitPanel(Adw.BreakpointBin):
             unit = manager.add_runtime([unit])[0]
             return _Details(
                 unit=unit,
-                status=manager.status_text(name, scope),
                 properties=props,
                 unit_file=manager.unit_file(name, scope),
                 logs=manager.logs(name, scope, privileged=True),
@@ -314,11 +257,6 @@ class UnitPanel(Adw.BreakpointBin):
         self._details_load = load
         self._details = details
         self._show_unit(details.unit)
-        self.status_view.get_buffer().set_text(details.status)
-        self.file_view.get_buffer().set_text(details.unit_file or _("No unit file found."))
-        self.edit_file_button.set_sensitive(bool(unit_file_body(details.unit_file)))
-        self._properties = details.properties
-        text.set_properties(self.props_view.get_buffer(), self._properties, self.props_search.get_text())
         text.set_logs(self.logs_view.get_buffer(), details.logs.entries)
         if not details.logs.entries:
             self.logs_view.get_buffer().set_text(_("No log entries."))
@@ -358,7 +296,6 @@ class UnitPanel(Adw.BreakpointBin):
         if self._closed:
             return
         message = describe(error)
-        self.status_view.get_buffer().set_text(message)
         widgets.clear(self.overview_box)
         self.overview_box.append(
             Adw.StatusPage(
@@ -370,7 +307,7 @@ class UnitPanel(Adw.BreakpointBin):
         self.toast_overlay.add_toast(Adw.Toast(title=_("Could not load details"), timeout=3))
         self._show_pages()
 
-    # -- simple pages -----------------------------------------------------
+    # -- pages ------------------------------------------------------------
 
     def _build_overview(self, details: _Details):
         unit, props = details.unit, details.properties
@@ -467,19 +404,18 @@ class UnitPanel(Adw.BreakpointBin):
             where.add(command_row)
         box.append(where)
 
-        if details.logs.entries or details.status:
-            recent = [e for e in reversed(details.logs.entries[-3:])]
-            activity = Adw.PreferencesGroup(title=_("Recent activity"))
-            more = Gtk.Button(label=_("All Activity"), css_classes=["flat"], valign=Gtk.Align.CENTER)
-            more.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
-            activity.set_header_suffix(more)
-            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
-            for entry in recent:
-                listbox.append(self._recent_row(entry))
-            if not recent:
-                listbox.append(widgets.placeholder_row(_("Nothing logged yet")))
-            activity.add(listbox)
-            box.append(activity)
+        recent = [e for e in reversed(details.logs.entries[-3:])]
+        activity = Adw.PreferencesGroup(title=_("Recent activity"))
+        more = Gtk.Button(label=_("All Activity"), css_classes=["flat"], valign=Gtk.Align.CENTER)
+        more.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
+        activity.set_header_suffix(more)
+        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
+        for entry in recent:
+            listbox.append(self._recent_row(entry))
+        if not recent:
+            listbox.append(widgets.placeholder_row(_("Nothing logged yet")))
+        activity.add(listbox)
+        box.append(activity)
 
     def _error_banner(self, details: _Details) -> Gtk.Widget:
         banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
@@ -598,14 +534,6 @@ class UnitPanel(Adw.BreakpointBin):
         if row.get_active() == words.starts_at_boot(self.unit):
             return
         self._run_action(UnitAction.ENABLE if row.get_active() else UnitAction.DISABLE)
-
-    @Gtk.Template.Callback()
-    def on_edit_file_clicked(self, _button):
-        self._edit_unit_file()
-
-    @Gtk.Template.Callback()
-    def on_props_search_changed(self, entry):
-        text.set_properties(self.props_view.get_buffer(), self._properties, entry.get_text())
 
     # -- actions ----------------------------------------------------------
 

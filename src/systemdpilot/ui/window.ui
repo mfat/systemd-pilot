@@ -426,36 +426,4 @@
       </item>
     </section>
   </menu>
-  <menu id="unit_menu">
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">_Start</attribute>
-        <attribute name="action">unit.start</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">S_top</attribute>
-        <attribute name="action">unit.stop</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Restart</attribute>
-        <attribute name="action">unit.restart</attribute>
-      </item>
-    </section>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">_Enable</attribute>
-        <attribute name="action">unit.enable</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Disable</attribute>
-        <attribute name="action">unit.disable</attribute>
-      </item>
-    </section>
-    <section>
-      <item>
-        <attribute name="label" translatable="yes">_Details and Logs</attribute>
-        <attribute name="action">unit.details</attribute>
-      </item>
-    </section>
-  </menu>
 </interface>

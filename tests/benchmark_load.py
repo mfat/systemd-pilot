@@ -133,8 +133,8 @@ def main() -> int:
     print("\nNotes:")
     print("  • Default load is list-units only (~15ms); enable state is only in the details dialog.")
     print("  • list-unit-files runs only with “Show Inactive” (to list unloaded units).")
-    print("  • add_runtime is skipped in Simple mode until you open Advanced.")
-    print("  • Simple rows are built in idle chunks; Journal badge is deferred ~1.5s after units settle.")
+    print("  • add_runtime runs only for the service whose details are open.")
+    print("  • List rows are built in idle chunks; Journal badge is deferred ~1.5s after units settle.")
     return 0
 
 

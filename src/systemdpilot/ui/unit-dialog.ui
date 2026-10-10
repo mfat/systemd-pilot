@@ -43,25 +43,6 @@
                     <property name="policy">wide</property>
                   </object>
                 </property>
-                <child type="end">
-                  <object class="GtkBox" id="mode_box">
-                    <property name="spacing">8</property>
-                    <property name="margin-end">6</property>
-                    <property name="tooltip-text" translatable="yes">Show raw systemd output</property>
-                    <child>
-                      <object class="GtkLabel">
-                        <property name="label" translatable="yes">_Advanced</property>
-                        <property name="use-underline">True</property>
-                        <property name="mnemonic-widget">mode_switch</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkSwitch" id="mode_switch">
-                        <property name="valign">center</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
               </object>
             </child>
             <child type="top">
@@ -169,162 +150,85 @@
                     <property name="title" translatable="yes">Activity</property>
                     <property name="icon-name">text-x-generic-symbolic</property>
                     <property name="child">
-                      <object class="GtkScrolledWindow">
-                        <property name="hscrollbar-policy">never</property>
-                        <property name="child">
-                          <object class="GtkBox" id="activity_box">
-                            <property name="orientation">vertical</property>
-                            <property name="spacing">8</property>
-                            <property name="margin-start">24</property>
-                            <property name="margin-end">24</property>
-                            <property name="margin-top">18</property>
-                            <property name="margin-bottom">28</property>
-                          </object>
-                        </property>
-                      </object>
-                    </property>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwViewStackPage" id="status_page">
-                    <property name="name">status</property>
-                    <property name="title" translatable="yes">Status</property>
-                    <property name="icon-name">dialog-information-symbolic</property>
-                    <property name="child">
-                      <object class="GtkScrolledWindow">
-                        <property name="child">
-                          <object class="GtkTextView" id="status_view">
-                            <property name="editable">False</property>
-                            <property name="monospace">True</property>
-                            <property name="wrap-mode">word-char</property>
-                            <style>
-                              <class name="output"/>
-                            </style>
-                          </object>
-                        </property>
-                      </object>
-                    </property>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwViewStackPage" id="logs_page">
-                    <property name="name">logs</property>
-                    <property name="title" translatable="yes">Logs</property>
-                    <property name="icon-name">text-x-generic-symbolic</property>
-                    <property name="child">
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="AdwBanner" id="logs_banner"/>
-                        </child>
-                        <child>
-                          <object class="GtkScrolledWindow" id="logs_scroll">
-                            <property name="vexpand">True</property>
-                            <property name="child">
-                              <object class="GtkTextView" id="logs_view">
-                                <property name="editable">False</property>
-                                <property name="monospace">True</property>
-                                <property name="wrap-mode">word-char</property>
-                                <style>
-                                  <class name="output"/>
-                                </style>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-                      </object>
-                    </property>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwViewStackPage" id="file_page">
-                    <property name="name">file</property>
-                    <property name="title" translatable="yes">Unit File</property>
-                    <property name="icon-name">text-x-script-symbolic</property>
-                    <property name="child">
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>
                         <child>
                           <object class="GtkBox">
                             <property name="spacing">8</property>
-                            <property name="margin-start">12</property>
-                            <property name="margin-end">12</property>
-                            <property name="margin-top">8</property>
-                            <property name="margin-bottom">8</property>
+                            <property name="halign">end</property>
+                            <property name="margin-start">24</property>
+                            <property name="margin-end">24</property>
+                            <property name="margin-top">12</property>
+                            <property name="tooltip-text" translatable="yes">Show the log as journalctl prints it</property>
                             <child>
                               <object class="GtkLabel">
-                                <property name="label" translatable="yes">Edit to change this service’s configuration</property>
-                                <property name="xalign">0</property>
-                                <property name="hexpand">True</property>
-                                <property name="wrap">True</property>
-                                <style>
-                                  <class name="dim-label"/>
-                                  <class name="caption"/>
-                                </style>
+                                <property name="label" translatable="yes">_Raw Log</property>
+                                <property name="use-underline">True</property>
+                                <property name="mnemonic-widget">raw_switch</property>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkButton" id="edit_file_button">
-                                <property name="label" translatable="yes">_Edit</property>
-                                <property name="use-underline">True</property>
+                              <object class="GtkSwitch" id="raw_switch">
                                 <property name="valign">center</property>
-                                <property name="sensitive">False</property>
-                                <signal name="clicked" handler="on_edit_file_clicked"/>
-                                <style>
-                                  <class name="small-pill"/>
-                                </style>
                               </object>
                             </child>
                           </object>
                         </child>
                         <child>
-                          <object class="GtkScrolledWindow">
+                          <object class="GtkStack" id="activity_stack">
                             <property name="vexpand">True</property>
-                            <property name="child">
-                              <object class="GtkTextView" id="file_view">
-                                <property name="editable">False</property>
-                                <property name="monospace">True</property>
-                                <style>
-                                  <class name="output"/>
-                                </style>
+                            <property name="transition-type">crossfade</property>
+                            <property name="hhomogeneous">False</property>
+                            <property name="vhomogeneous">False</property>
+                            <child>
+                              <object class="GtkStackPage">
+                                <property name="name">list</property>
+                                <property name="child">
+                                  <object class="GtkScrolledWindow">
+                                    <property name="hscrollbar-policy">never</property>
+                                    <property name="child">
+                                      <object class="GtkBox" id="activity_box">
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">8</property>
+                                        <property name="margin-start">24</property>
+                                        <property name="margin-end">24</property>
+                                        <property name="margin-top">6</property>
+                                        <property name="margin-bottom">28</property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
                               </object>
-                            </property>
-                          </object>
-                        </child>
-                      </object>
-                    </property>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwViewStackPage" id="properties_page">
-                    <property name="name">properties</property>
-                    <property name="title" translatable="yes">Properties</property>
-                    <property name="icon-name">view-list-symbolic</property>
-                    <property name="child">
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="GtkSearchEntry" id="props_search">
-                            <property name="placeholder-text" translatable="yes">Filter properties</property>
-                            <property name="margin-start">12</property>
-                            <property name="margin-end">12</property>
-                            <property name="margin-bottom">6</property>
-                            <signal name="search-changed" handler="on_props_search_changed"/>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkScrolledWindow">
-                            <property name="vexpand">True</property>
-                            <property name="child">
-                              <object class="GtkTextView" id="props_view">
-                                <property name="editable">False</property>
-                                <property name="monospace">True</property>
-                                <property name="wrap-mode">word-char</property>
-                                <style>
-                                  <class name="output"/>
-                                </style>
+                            </child>
+                            <child>
+                              <object class="GtkStackPage">
+                                <property name="name">raw</property>
+                                <property name="child">
+                                  <object class="GtkBox">
+                                    <property name="orientation">vertical</property>
+                                    <property name="margin-top">6</property>
+                                    <child>
+                                      <object class="AdwBanner" id="logs_banner"/>
+                                    </child>
+                                    <child>
+                                      <object class="GtkScrolledWindow" id="logs_scroll">
+                                        <property name="vexpand">True</property>
+                                        <property name="child">
+                                          <object class="GtkTextView" id="logs_view">
+                                            <property name="editable">False</property>
+                                            <property name="monospace">True</property>
+                                            <property name="wrap-mode">word-char</property>
+                                            <style>
+                                              <class name="output"/>
+                                            </style>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </property>
                               </object>
-                            </property>
+                            </child>
                           </object>
                         </child>
                       </object>

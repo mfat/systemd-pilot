@@ -86,8 +86,6 @@ button.preset-active {
 .linked > menubutton.chip:not(:last-child) > button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 button.preset-clear { min-width: 30px; padding: 0 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
-.mode-switch > button { min-height: 30px; padding: 0 14px; font-size: 13px; font-weight: bold; }
-
 /* Option lists in popovers. */
 popover.options > contents { padding: 6px; }
 button.option { padding: 8px 10px; border-radius: 6px; font-weight: normal; }
@@ -154,9 +152,6 @@ listview.services-list > row:focus-visible > .service-row {
 }
 .identity-card { padding: 14px 16px 14px 18px; }
 
-.table-card { padding: 0; }
-.table-card > scrolledwindow, .table-card columnview { border-radius: 12px; background: none; }
-.command-line { padding: 8px 14px; }
 .command-row .subtitle { font-family: monospace; }
 
 /* Journal. */

@@ -13,7 +13,6 @@ src/systemdpilot/ui/prompts.py
 src/systemdpilot/ui/services_view.py
 src/systemdpilot/ui/unit-dialog.ui
 src/systemdpilot/ui/unit_dialog.py
-src/systemdpilot/ui/unit_list.py
 src/systemdpilot/ui/widgets.py
 src/systemdpilot/ui/window.py
 src/systemdpilot/ui/window.ui

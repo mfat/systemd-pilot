@@ -24,7 +24,7 @@ class Preset:
     id: str
     group: str  # id of the group it is listed under
     matches: Callable[[LogEntry, str], bool]  # (entry, this boot's id)
-    command: str  # roughly equivalent journalctl matches, shown in the advanced view
+    command: str  # roughly equivalent journalctl matches
 
 
 def _any(pattern: str) -> Callable[[str], bool]:

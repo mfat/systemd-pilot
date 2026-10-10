@@ -1,7 +1,7 @@
-"""Fill text buffers with highlighted logs and properties.
+"""Fill text buffers with highlighted logs.
 
 Text goes in through :class:`Gtk.TextTag`s rather than Pango markup, so
-nothing in a log line or property value can be interpreted as markup.
+nothing in a log line can be interpreted as markup.
 """
 
 from __future__ import annotations
@@ -82,39 +82,3 @@ def set_logs(buffer: Gtk.TextBuffer, entries: list[LogEntry]) -> None:
     for entry in entries:
         _insert_entry(buffer, end, entry)
         buffer.insert(end, "\n")
-
-
-def set_journal(buffer: Gtk.TextBuffer, entries: list[LogEntry], notes: dict[int, str], boot_id: str = "") -> None:
-    """Entries as journalctl prints them, with "-- Boot … --" separators.
-
-    ``notes`` maps an entry's position to a remark shown after it, such as
-    the problem it was flagged for.
-    """
-    buffer.set_text("")
-    _ensure_tags(buffer)
-    end = buffer.get_end_iter()
-    last_boot = None
-    for position, entry in enumerate(entries):
-        if entry.boot_id and entry.boot_id != last_boot:
-            current = " (this boot)" if entry.boot_id == boot_id else ""
-            buffer.insert_with_tags_by_name(end, f"-- Boot {entry.boot_id}{current} --\n", "dim")
-            last_boot = entry.boot_id
-        _insert_entry(buffer, end, entry)
-        note = notes.get(position)
-        if note:
-            buffer.insert_with_tags_by_name(end, f"  ← {note}", "key")
-        buffer.insert(end, "\n")
-
-
-def set_properties(buffer: Gtk.TextBuffer, properties: dict[str, str], query: str = "") -> None:
-    buffer.set_text("")
-    _ensure_tags(buffer)
-    end = buffer.get_end_iter()
-    query = query.strip().lower()
-    for key in sorted(properties):
-        value = properties[key]
-        if query and query not in key.lower() and query not in value.lower():
-            continue
-        buffer.insert_with_tags_by_name(end, key, "key")
-        buffer.insert_with_tags_by_name(end, "=", "dim")
-        buffer.insert(end, value + "\n")

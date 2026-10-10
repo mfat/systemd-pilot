@@ -1,4 +1,4 @@
-"""The services page: filters, then services grouped by state or as a table."""
+"""The services page: filters, then services grouped by state."""
 
 from __future__ import annotations
 
@@ -7,17 +7,15 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 from ..core.models import Unit, UnitAction
 from ..i18n import _
 from . import widgets, words
-from .unit_list import UnitList, matches_filter
 
 
-def mode_switch() -> Gtk.Widget:
-    """Simple / Advanced, bound to ``win.mode``."""
-    box = Gtk.Box(
-        css_classes=["linked", "mode-switch"], valign=Gtk.Align.CENTER, tooltip_text=_("How much detail to show")
-    )
-    for value, text in (("simple", _("Simple")), ("advanced", _("Advanced"))):
-        box.append(Gtk.ToggleButton(label=text, action_name="win.mode", action_target=GLib.Variant("s", value)))
-    return box
+def matches_filter(unit: Unit, value: str) -> bool:
+    """Whether the sidebar filter ``value`` ("all", "user" or a :attr:`Unit.kind`) shows ``unit``."""
+    if value == "all":
+        return True
+    if value == "user":
+        return unit.is_user
+    return unit.kind == value
 
 
 def user_tag() -> Gtk.Widget:
@@ -314,11 +312,10 @@ class ServicesView(Gtk.Box):
         ("dead", _("Stopped"), _("Not running"), None),
     )
 
-    def __init__(self, unit_menu: Gio.MenuModel):
+    def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self._units: list[Unit] = []
         self._query = ""
-        self._mode = "simple"
         self._label_order = "name-description"
         self._empty_hint = ""
 
@@ -335,10 +332,6 @@ class ServicesView(Gtk.Box):
         self._busy.append(self._busy_spinner)
         self._busy.append(widgets.label(_("Loading…"), "dim-label", "caption"))
         bar.append(self._busy)
-        bar.append(Gtk.Box(hexpand=True))
-        switch = mode_switch()
-        switch.set_valign(Gtk.Align.START)
-        bar.append(switch)
         self.append(widgets.scroller(bar))
 
         # The state filters live in the window sidebar.
@@ -375,20 +368,6 @@ class ServicesView(Gtk.Box):
         self._simple_scroll = Gtk.ScrolledWindow(child=self.simple_list, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.stack.add_named(self._simple_scroll, "simple")
 
-        self.unit_list = UnitList(unit_menu)
-        self.unit_list.connect("unit-activated", lambda _l, unit: self.emit("unit-activated", unit))
-        card = Gtk.Box(
-            css_classes=["card", "table-card"],
-            margin_top=8,
-            margin_bottom=24,
-            margin_start=24,
-            margin_end=24,
-            hexpand=True,
-        )
-        card.append(self.unit_list)
-        self.unit_list.set_hexpand(True)
-        self.stack.add_named(card, "advanced")
-
         self.empty_page = Adw.StatusPage(icon_name="edit-find-symbolic")
         self.stack.add_named(self.empty_page, "empty")
         self.append(self.stack)
@@ -397,8 +376,6 @@ class ServicesView(Gtk.Box):
 
     def set_units(self, units: list[Unit]) -> None:
         self._units = units
-        if self._mode == "advanced":
-            self.unit_list.set_units(units)
         self._refresh()
 
     def set_busy(self, busy: bool) -> None:
@@ -407,7 +384,6 @@ class ServicesView(Gtk.Box):
 
     def clear(self) -> None:
         self._units = []
-        self.unit_list.clear()
         if self._fill_source:
             GLib.source_remove(self._fill_source)
             self._fill_source = 0
@@ -427,15 +403,6 @@ class ServicesView(Gtk.Box):
 
     def set_query(self, query: str) -> None:
         self._query = query.strip().lower()
-        self.unit_list.set_query(query)
-        self._refresh()
-
-    def set_mode(self, mode: str) -> None:
-        if mode == self._mode:
-            return
-        self._mode = mode
-        if mode == "advanced":
-            self.unit_list.set_units(self._units)
         self._refresh()
 
     @property
@@ -464,7 +431,6 @@ class ServicesView(Gtk.Box):
     def _on_filter(self, action, value):
         action.set_state(value)
         self.filter_list.select_row(self._filter_rows[value.get_string()])
-        self.unit_list.set_kind(value.get_string())
         self._refresh()
         if self.model.get_n_items():
             self.simple_list.scroll_to(0, Gtk.ListScrollFlags.NONE, None)
@@ -486,8 +452,6 @@ class ServicesView(Gtk.Box):
         visible = self._visible()
         if not visible:
             self._show_empty()
-        elif self._mode == "advanced":
-            self.stack.set_visible_child_name("advanced")
         else:
             self._update_simple(visible)
             self.stack.set_visible_child_name("simple")
