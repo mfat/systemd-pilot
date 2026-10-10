@@ -28,7 +28,7 @@ def unit_description(unit: Unit) -> str:
     return description
 
 
-def unit_title(unit: Unit, order: str = "description-name") -> str:
+def unit_title(unit: Unit, order: str = "name-description") -> str:
     """Primary label in the services list."""
     if order == "name-description":
         return unit.short_name
@@ -100,7 +100,7 @@ def ago(when: datetime | None, now: datetime | None = None) -> str:
     return _("{time} ago").format(time=duration(when, clock))
 
 
-def unit_subtitle(unit: Unit, order: str = "description-name") -> str:
+def unit_subtitle(unit: Unit, order: str = "name-description") -> str:
     """Status line under the title in the services list (no uptime — that was costly)."""
     kind = unit.kind
     if unit.active_state == "activating":

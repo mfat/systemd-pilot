@@ -165,7 +165,7 @@ class Window(Adw.ApplicationWindow):
 
         order = self.settings.get_string("unit-label-order")
         if order not in ("description-name", "name-description"):
-            order = "description-name"
+            order = "name-description"
         label_order = Gio.SimpleAction.new_stateful(
             "unit-label-order", GLib.VariantType.new("s"), GLib.Variant("s", order)
         )

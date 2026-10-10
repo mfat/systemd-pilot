@@ -38,7 +38,7 @@
         <choice value="description-name"/>
         <choice value="name-description"/>
       </choices>
-      <default>"description-name"</default>
+      <default>"name-description"</default>
       <summary>Service label order</summary>
       <description>Whether the simple service list shows description then name, or name then description.</description>
     </key>

@@ -163,7 +163,7 @@ class ServicesView(Gtk.Box):
         self._units: list[Unit] = []
         self._query = ""
         self._mode = "simple"
-        self._label_order = "description-name"
+        self._label_order = "name-description"
         self._structure: tuple | None = None  # (kind, unit names…) of the built simple list
         self._build_gen = 0
         self._empty_hint = ""

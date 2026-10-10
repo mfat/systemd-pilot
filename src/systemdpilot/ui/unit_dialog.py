@@ -96,7 +96,6 @@ class UnitDialog(Adw.Dialog):
         self.connect("closed", self._on_closed)
 
         self.set_title(unit.short_name)
-        self.name_label.set_label(unit.name)
 
         self.mode_switch.set_active(self._advanced)
         self.mode_switch.connect("notify::active", self._on_switch)
@@ -141,8 +140,12 @@ class UnitDialog(Adw.Dialog):
 
     def _show_unit(self, unit: Unit):
         self.unit = unit
-        self.title_label.set_label(words.unit_title(unit))
-        self.title_label.set_tooltip_text(unit.description or None)
+        self.title_label.set_label(unit.short_name)
+        self.title_label.set_tooltip_text(unit.name)
+        description = words.unit_description(unit)
+        self.name_label.set_label(description)
+        self.name_label.set_visible(bool(description))
+        self.name_label.set_tooltip_text(description or None)
         widgets.set_dot(self.state_dot, unit.kind)
         self.state_dot.add_css_class("large")
         word = GLib.markup_escape_text(words.state_word(unit))

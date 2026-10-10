@@ -81,6 +81,7 @@
                         <child>
                           <object class="GtkLabel" id="title_label">
                             <property name="xalign">0</property>
+                            <property name="selectable">True</property>
                             <property name="ellipsize">end</property>
                             <style>
                               <class name="title-2"/>
@@ -90,10 +91,9 @@
                         <child>
                           <object class="GtkLabel" id="name_label">
                             <property name="xalign">0</property>
-                            <property name="selectable">True</property>
                             <property name="ellipsize">end</property>
                             <style>
-                              <class name="monospace"/>
+                              <class name="caption"/>
                               <class name="dim-label"/>
                             </style>
                           </object>
