@@ -688,12 +688,32 @@ class JournalView(Gtk.Box):
         GLib.idle_add(add_chunk)
 
     def _scroll_to(self, widget: Gtk.Widget, gen: int) -> None:
-        """Scroll the timeline's heading to the top once the new widgets are laid out.
+        """Scroll the timeline's heading to the top, without first painting the top of the page.
 
-        Rows are painted in chunks, so the page may be too short to reach it at
-        first; keep going until it gets there, for a few seconds at most. ``widget``
-        is made at least a page tall, or a short list would stop at the bottom.
+        ``widget`` is made at least a page tall, or a short list would stop at
+        the bottom. Its place is measured before the first layout, since the new
+        page would otherwise show its first frame scrolled to the top. Then, as
+        a fallback, keep correcting until it gets there, for a few seconds at most.
         """
+        adjustment = self._simple_scroll.get_vadjustment()
+        page = adjustment.get_page_size()
+        width = self._simple.get_width()
+        if page and width:
+            widget.set_size_request(-1, int(page))
+            above = 0
+            child = self._simple.get_first_child()
+            while child is not widget:
+                above += child.measure(Gtk.Orientation.VERTICAL, width)[1] + self._simple.get_spacing()
+                child = child.get_next_sibling()
+            # The page keeps this once laid out, as the timeline is now tall enough to allow it.
+            adjustment.configure(
+                above,
+                adjustment.get_lower(),
+                max(adjustment.get_upper(), above + page),
+                adjustment.get_step_increment(),
+                adjustment.get_page_increment(),
+                page,
+            )
         deadline = {}
 
         def tick(_scroll, clock):
@@ -705,7 +725,6 @@ class JournalView(Gtk.Box):
             ok, point = widget.compute_point(self._simple, Graphene.Point())
             if not ok:
                 return GLib.SOURCE_REMOVE
-            adjustment = self._simple_scroll.get_vadjustment()
             page = int(adjustment.get_page_size())
             if widget.get_height() < page:
                 widget.set_size_request(-1, page)
