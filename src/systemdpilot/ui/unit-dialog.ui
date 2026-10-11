@@ -122,8 +122,9 @@
                                         </property>
                                         <property name="end-widget">
                                           <object class="GtkButton" id="info_button">
-                                            <property name="icon-name">info-outline-symbolic</property>
-                                            <property name="valign">center</property>
+                                            <property name="label">🛈</property>
+                                            <!-- On the name's baseline, so it sits with the letters. -->
+                                            <property name="valign">baseline-center</property>
                                             <property name="margin-start">6</property>
                                             <property name="visible">False</property>
                                             <style>
