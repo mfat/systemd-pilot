@@ -158,6 +158,8 @@ button.hero-action.destructive-action:hover { background-image: image(alpha(curr
   border-radius: 8px;
   background-color: alpha(currentColor, 0.05);
 }
+/* Selectable labels can't be edited: clicking one shouldn't leave a text cursor in it. */
+label { caret-color: transparent; }
 /* The 🛈 after a unit's name: a link in the name's own text, dimmed like a caption. */
 label.unit-title > link { color: alpha(@window_fg_color, 0.45); font-weight: normal; text-decoration: none; }
 label.unit-title > link:hover { color: alpha(@window_fg_color, 0.8); }
