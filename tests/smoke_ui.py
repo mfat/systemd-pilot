@@ -239,6 +239,7 @@ def run_steps(window):
         dialog.create_button.emit("clicked")
         alert = window.get_visible_dialog()
         check(isinstance(alert, Adw.AlertDialog) and "backup.timer" in alert.get_body(), "no replace question")
+        check("backup.service, backup.timer" in alert.get_body(), "replace question does not say what is overwritten")
         check(not created, "reported as created though nothing was written")
         answer(alert, "confirm")
         check(runner.calls[-1]["argv"][5] == "1", "replacing did not overwrite")

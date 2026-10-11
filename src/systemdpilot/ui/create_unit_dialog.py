@@ -310,10 +310,18 @@ class CreateUnitDialog(Adw.Dialog):
 
         def on_error(error):
             if isinstance(error, UnitExists):
+                if len(names) > 1:
+                    # Replacing overwrites every file of the template, not only the one found first.
+                    body = _(
+                        "{path} already exists. Replacing writes {units}, over any that exist. This cannot be undone."
+                    )
+                    body = body.format(path=error.path, units=", ".join(names))
+                else:
+                    body = _("{path} already exists. Replacing it cannot be undone.").format(path=error.path)
                 prompts.confirm(
                     self,
-                    _("Replace Existing Unit?"),
-                    _("{path} already exists. Replacing it cannot be undone.").format(path=error.path),
+                    _("Replace Existing Units?") if len(names) > 1 else _("Replace Existing Unit?"),
+                    body,
                     _("_Replace"),
                     lambda: self.on_create_clicked(None, overwrite=True),
                     destructive=True,
