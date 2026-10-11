@@ -632,7 +632,7 @@ class UnitPanel(Adw.BreakpointBin):
     @staticmethod
     def _state_row(unit: Unit) -> Adw.ActionRow:
         sentence = words.state_sentence(unit)
-        row = Adw.ActionRow(title="Active", subtitle=sentence)
+        row = Adw.ActionRow(title="Active State", subtitle=sentence)
         state = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
         state.append(widgets.dot(unit.kind))
         state.append(widgets.label(unit.state_label, "heading", words.state_css(unit)))
