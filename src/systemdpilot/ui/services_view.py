@@ -308,13 +308,14 @@ class ServicesView(Gtk.Box):
         "filter-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
-    # Scope and state are independent. Scope defaults to both (no button active).
+    # Scope and state are independent; "all" in each means no filtering.
     SCOPE_FILTERS = (
-        ("system", "system", "systemctl --system"),
-        ("user", "user", "systemctl --user"),
+        ("all", "All", "systemctl --system + --user"),
+        ("system", "System", "systemctl --system"),
+        ("user", "User", "systemctl --user"),
     )
     KIND_FILTERS = (
-        ("all", "All", None, "all states"),
+        ("all", "any", None, "any state"),
         ("failed", "failed", "failed", "failed"),
         ("running", "running", "running", "active (running)"),
         ("exited", "exited", "exited", "active (exited)"),
@@ -362,6 +363,8 @@ class ServicesView(Gtk.Box):
 
         # Scope switcher above the state filters in the window sidebar.
         self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_bottom=12)
+        # The sidebar sits in the window, outside this view: give it the actions too.
+        self.sidebar.insert_action_group("services", actions)
         switcher = self._build_scope_switcher()
         switcher.set_margin_start(6)
         switcher.set_margin_end(6)
@@ -490,15 +493,16 @@ class ServicesView(Gtk.Box):
     # -- internals --------------------------------------------------------
 
     def _build_scope_switcher(self) -> Gtk.Widget:
-        """Linked system / user toggles; neither active means both scopes (default)."""
+        """Linked All / System / User toggles; the scope action keeps one of them active."""
         box = Gtk.Box(css_classes=["linked"], valign=Gtk.Align.CENTER, homogeneous=True)
-        self._scope_buttons: dict[str, Gtk.ToggleButton] = {}
-        self._syncing_scope = False
         for value, text, tip in self.SCOPE_FILTERS:
-            # Not a radio group: both off = all scopes; click the active one again to clear.
-            button = Gtk.ToggleButton(label=text, tooltip_text=tip, hexpand=True)
-            button.connect("toggled", self._on_scope_button, value)
-            self._scope_buttons[value] = button
+            button = Gtk.ToggleButton(
+                label=text,
+                tooltip_text=tip,
+                hexpand=True,
+                action_name="services.scope",
+                action_target=GLib.Variant("s", value),
+            )
             box.append(button)
         return box
 
@@ -515,30 +519,14 @@ class ServicesView(Gtk.Box):
         listbox.connect("row-selected", on_selected)
         return listbox
 
-    def _on_scope_button(self, button: Gtk.ToggleButton, value: str) -> None:
-        if self._syncing_scope:
-            return
-        if button.get_active():
-            scope = value
-        else:
-            # Cleared the active scope → show system + user again.
-            scope = "all"
-        if scope != self.scope_filter:
-            self._scope.change_state(GLib.Variant("s", scope))
-
     def _on_filter_row_selected(self, _listbox, row):
         if row is not None and row.value != self.kind_filter:
             self._filter.change_state(GLib.Variant("s", row.value))
 
     def _on_scope(self, action, value):
+        if value.get_string() == self.scope_filter:
+            return
         action.set_state(value)
-        scope = value.get_string()
-        self._syncing_scope = True
-        try:
-            for name, button in self._scope_buttons.items():
-                button.set_active(name == scope)
-        finally:
-            self._syncing_scope = False
         self._apply_filters()
 
     def _on_filter(self, action, value):
