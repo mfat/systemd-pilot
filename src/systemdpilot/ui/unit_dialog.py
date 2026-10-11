@@ -388,7 +388,7 @@ class UnitPanel(Adw.BreakpointBin):
         status = Adw.PreferencesGroup(title=_("Status"))
         status.add(self._state_row(unit))
         load = props.get("LoadState") or unit.load_state or "—"
-        status.add(self._row("LoadState", load))
+        status.add(self._row("Load State", load))
         if unit.kind == "running" and unit.main_pid:
             program = (props.get("ExecMainPath") or self._program(props)).rsplit("/", 1)[-1] or unit.short_name
             pid_row = self._row(_("Main PID"), f"{unit.main_pid} ({program})")
