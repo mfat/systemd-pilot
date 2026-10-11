@@ -35,6 +35,10 @@ LOCAL_LIMIT = 5000
 REMOTE_LIMIT = 1500
 PAGE = 300  # rows shown in the simple timeline before “Show More”
 CHUNK = 40  # timeline rows created per idle tick so the first open stays responsive
+# The shortest line a wrapped card label takes. Without one, widgets.label's WORD_CHAR
+# wrapping lets GTK measure each message one character per line, which GTK 4.14 (the
+# one the AppImage bundles) does slowly enough to stall opening the journal for seconds.
+CARD_MIN_CHARS = 20
 # Following: how often to look for new entries (ms), and the most read at a time. A
 # full read means more are waiting, so the journal is read again instead.
 FOLLOW_INTERVAL, REMOTE_FOLLOW_INTERVAL = 1500, 3000
@@ -119,6 +123,10 @@ def _pick(table, value):
     return next((row for row in table if row[0] == value), table[0])
 
 
+def card_label(text: str, *css: str, **props) -> Gtk.Label:
+    return widgets.label(text, *css, wrap=True, width_chars=CARD_MIN_CHARS, **props)
+
+
 def issue_text(issue: Issue) -> tuple[str, str]:
     """(title, explanation) for a problem."""
     names = ", ".join(issue.names[:3])
@@ -197,15 +205,15 @@ class IssueRow(Gtk.ListBoxRow):
 
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
         heading = Gtk.Box(spacing=8)
-        heading.append(widgets.label(title, "unit-title", wrap=True, hexpand=True))
+        heading.append(card_label(title, "unit-title", hexpand=True))
         badge = Gtk.Label(label=_("Error") if error else _("Warning"), valign=Gtk.Align.CENTER)
         badge.set_css_classes(["badge", "error" if error else "warning"])
         heading.append(badge)
         texts.append(heading)
         if explanation:
             explanation = explanation.partition("\n")[0]
-            texts.append(widgets.label(explanation, "issue-explanation", wrap=True))
-        texts.append(widgets.label(issue_meta(issue), "dim-label", "caption", wrap=True))
+            texts.append(card_label(explanation, "issue-explanation"))
+        texts.append(card_label(issue_meta(issue), "dim-label", "caption"))
         box.append(texts)
 
         box.append(
@@ -229,7 +237,7 @@ class EntryRow(Gtk.ListBoxRow):
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
         heading = Gtk.Box(spacing=8)
         source = entry.identifier or entry.unit or _("Unknown source")
-        heading.append(widgets.label(source, "unit-title", wrap=True, hexpand=True))
+        heading.append(card_label(source, "unit-title", hexpand=True))
         if issue:
             badge = widgets.label(
                 issue_badge(issue),
@@ -241,10 +249,10 @@ class EntryRow(Gtk.ListBoxRow):
             heading.append(badge)
         texts.append(heading)
         first, _sep, rest = entry.message.partition("\n")
-        texts.append(widgets.label(first + (" …" if rest.strip() else ""), "issue-explanation", wrap=True))
+        texts.append(card_label(first + (" …" if rest.strip() else ""), "issue-explanation"))
         when = entry.timestamp.strftime("%b %d, %H:%M:%S") if entry.timestamp else ""
         meta = " · ".join(part for part in (when, f"PID {entry.pid}" if entry.pid else "", level_word) if part)
-        texts.append(widgets.label(meta, "dim-label", "caption", wrap=True))
+        texts.append(card_label(meta, "dim-label", "caption"))
         box.append(texts)
         box.append(
             Gtk.Image(icon_name="systemdpilot-go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER)
