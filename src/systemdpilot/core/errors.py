@@ -83,3 +83,15 @@ class UnitExists(PilotError):
     def __init__(self, path: str):
         super().__init__(f"{path} already exists")
         self.path = path
+
+
+class UnitActivationFailed(PilotError):
+    """Unit files were installed, but enabling or starting the unit failed."""
+
+    def __init__(self, paths: Sequence[str], unit: str, action: str, stderr: str):
+        detail = stderr.strip() or "systemctl failed"
+        super().__init__(f"{unit} was created, but could not be {action}: {detail}")
+        self.paths = list(paths)
+        self.unit = unit
+        self.action = action
+        self.stderr = stderr

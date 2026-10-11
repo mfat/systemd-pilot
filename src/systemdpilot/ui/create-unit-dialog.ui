@@ -79,6 +79,21 @@
                       </object>
                     </child>
                     <child>
+                      <object class="AdwActionRow" id="program_row">
+                        <property name="title" translatable="yes">Program</property>
+                        <property name="subtitle" translatable="yes">The executable the service runs</property>
+                        <property name="activatable-widget">program_button</property>
+                        <child type="suffix">
+                          <object class="GtkButton" id="program_button">
+                            <property name="label" translatable="yes">_Choose…</property>
+                            <property name="use-underline">True</property>
+                            <property name="valign">center</property>
+                            <signal name="clicked" handler="on_choose_program_clicked"/>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwSwitchRow" id="enable_row">
                         <property name="title" translatable="yes">Start at Boot</property>
                       </object>
@@ -91,11 +106,16 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkStackSwitcher" id="editor_switcher">
+                    <property name="stack">editor_stack</property>
+                    <property name="halign">center</property>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkFrame">
                     <property name="child">
-                      <object class="GtkScrolledWindow" id="editor_scroll">
+                      <object class="GtkStack" id="editor_stack">
                         <property name="vexpand">True</property>
-                        <property name="min-content-height">240</property>
                       </object>
                     </property>
                   </object>

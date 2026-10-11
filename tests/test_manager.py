@@ -219,7 +219,7 @@ def test_create_user_unit_end_to_end(runner, tmp_path, monkeypatch):
     path = SystemdManager(runner).create_unit("demo.service", content, Scope.USER)
     call = runner.calls[0]
     assert not call["privileged"]
-    assert "demo.service" not in call["argv"][3]  # the name is an argument, not script text
+    assert "demo.service" not in call["argv"][2]  # the name is an argument, not script text
 
     proc = _run_install_script(call, tmp_path, monkeypatch)
     assert proc.returncode == 0, proc.stderr
@@ -235,11 +235,11 @@ def test_create_user_unit_end_to_end(runner, tmp_path, monkeypatch):
 
 
 def test_create_system_unit_is_privileged(runner):
-    runner.reply("env", returncode=17, stderr="exists")
+    runner.reply("sh", returncode=17, stderr="/etc/systemd/system/demo.service\n")
     with pytest.raises(UnitExists):
         SystemdManager(runner).create_unit("demo.service", "[Unit]\n")
     assert runner.calls[0]["privileged"]
-    assert runner.calls[0]["argv"][-1] == "--system"
+    assert runner.calls[0]["argv"][4] == "--system"
 
 
 def test_create_user_unit_overwrite(runner, tmp_path, monkeypatch):

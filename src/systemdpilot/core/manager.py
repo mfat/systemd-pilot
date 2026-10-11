@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import dataclasses
 import re
+from collections.abc import Sequence
 
-from .errors import CommandError, InvalidUnitName, PilotError, UnitExists
+from .errors import CommandError, InvalidUnitName, PilotError, UnitActivationFailed, UnitExists
 from .models import LogResult, Scope, Unit, UnitAction
 from .parsers import (
     merge_units,
@@ -46,6 +48,48 @@ trap - EXIT
 rm -f -- "$tmp"
 systemctl "$@" daemon-reload
 """
+
+# Installs new unit files together, reloads systemd, then enables and starts
+# one of them, all in one privileged call (so one password prompt). Run by sh
+# with "$dir" set by a prefix, the systemctl scope flag, the overwrite, enable
+# and start switches, the unit to enable and start, and the file names as
+# positional parameters. Each file's content is one base64 line on stdin, in
+# the same order. A file that already exists stops it before systemd is told
+# about anything, and the files it had already put in place are taken back.
+# The temporary files start with "." (hidden from systemd) and are gone before
+# the reload.
+_CREATE_SCRIPT = r"""
+set -eu
+flag=$1; overwrite=$2; enable=$3; start=$4; activate=$5; shift 5
+mkdir -p -- "$dir"
+pairs=; linked=
+trap 'for p in $pairs; do rm -f -- "$dir/${p%%/*}"; done' EXIT
+for name do
+    IFS= read -r data
+    tmp=$(mktemp "$dir/.$name.XXXXXX")
+    pairs="$pairs ${tmp##*/}/$name"
+    printf '%s' "$data" | base64 -d > "$tmp"
+    chmod 644 -- "$tmp"
+done
+for p in $pairs; do
+    tmp=${p%%/*}; name=${p#*/}
+    if [ "$overwrite" = 1 ]; then
+        mv -f -- "$dir/$tmp" "$dir/$name"
+    elif ln -- "$dir/$tmp" "$dir/$name" 2>/dev/null; then
+        linked="$linked $name"
+    else
+        for n in $linked; do rm -f -- "$dir/$n"; done
+        printf '%s\n' "$dir/$name" >&2
+        exit 17
+    fi
+done
+for p in $pairs; do rm -f -- "$dir/${p%%/*}"; done
+pairs=
+systemctl "$flag" daemon-reload
+if [ "$enable" = 1 ]; then systemctl "$flag" enable -- "$activate" || exit 18; fi
+if [ "$start" = 1 ]; then systemctl "$flag" start -- "$activate" || exit 19; fi
+"""
+_EXISTS, _ENABLE_FAILED, _START_FAILED = 17, 18, 19
 
 # Removes a drop-in, and its directory if nothing else is left in it.
 _REMOVE_SCRIPT = r"""
@@ -407,6 +451,15 @@ class SystemdManager:
         self.daemon_reload(Scope.SYSTEM)
         self.runner.run(self._systemctl(Scope.USER, "daemon-reload"))
 
+    def known_unit_file(self, name: str, scope: Scope) -> bool | None:
+        """Whether systemd listed a unit file of this name, or None if the list was not fetched.
+
+        From the last listing, so it may be out of date; creating a unit checks
+        for itself.
+        """
+        files = self._unit_files.get(scope)
+        return None if files is None else name in files
+
     def unit_path(self, name: str, scope: Scope) -> str:
         return f"{SYSTEM_UNIT_DIR if scope is Scope.SYSTEM else USER_UNIT_DIR}/{validate_unit_name(name)}"
 
@@ -431,26 +484,82 @@ class SystemdManager:
         self.runner.run(argv, input=content if settings else None, privileged=self._privileged(scope)).check()
         return self.override_path(name, scope)
 
-    def create_unit(self, name: str, content: str, scope: Scope = Scope.SYSTEM, *, overwrite: bool = False) -> str:
+    def create_unit(
+        self,
+        name: str,
+        content: str,
+        scope: Scope = Scope.SYSTEM,
+        *,
+        overwrite: bool = False,
+        enable: bool = False,
+        start: bool = False,
+    ) -> str:
         """Install a unit file and reload systemd. Returns the file's path."""
-        validate_unit_name(name)
-        if not content.strip():
-            raise PilotError("The unit file is empty")
-        if not content.endswith("\n"):
-            content += "\n"
+        activate = name if enable or start else None
+        return self.create_units(
+            [(name, content)], scope, overwrite=overwrite, enable=enable, start=start, activate=activate
+        )[0]
+
+    def create_units(
+        self,
+        files: Sequence[tuple[str, str]],
+        scope: Scope = Scope.SYSTEM,
+        *,
+        overwrite: bool = False,
+        enable: bool = False,
+        start: bool = False,
+        activate: str | None = None,
+    ) -> list[str]:
+        """Install unit files together, reload systemd, then enable and start ``activate``.
+
+        Without ``overwrite`` no file is replaced: if one exists, none are
+        installed and :class:`UnitExists` is raised. If the files are
+        installed but enabling or starting fails, :class:`UnitActivationFailed`
+        is raised. Returns the files' paths.
+        """
+        if not files:
+            raise PilotError("No unit file to create")
+        names = [validate_unit_name(name) for name, _content in files]
+        if len(set(names)) != len(names):
+            raise PilotError("The same unit file is given twice")
+        if (enable or start) and activate not in names:
+            raise PilotError("Only a unit that is being created can be enabled or started")
+        lines = []
+        for name, content in files:
+            if not content.strip():
+                raise PilotError(f"The unit file {name} is empty")
+            if not content.endswith("\n"):
+                content += "\n"
+            lines.append(base64.b64encode(content.encode()).decode() + "\n")
 
         unit_dir = SYSTEM_UNIT_DIR if scope is Scope.SYSTEM else USER_UNIT_DIR
         # The user directory contains shell variables, so it is expanded by sh
         # itself; only the fixed script text goes through "-c".
-        script = f'set -- "{unit_dir}/$1" "{unit_dir}" "$2"\n' + _INSTALL_SCRIPT
-        env = ["env", f"PILOT_OVERWRITE={int(overwrite)}"]
-        argv = [*env, "sh", "-c", script, "sh", name, "--user" if scope is Scope.USER else "--system"]
+        script = f'dir="{unit_dir}"\n' + _CREATE_SCRIPT
+        flag = "--user" if scope is Scope.USER else "--system"
+        argv = [
+            "sh",
+            "-c",
+            script,
+            "sh",
+            flag,
+            str(int(overwrite)),
+            str(int(enable)),
+            str(int(start)),
+            activate or "",
+            *names,
+        ]
 
-        result = self.runner.run(argv, input=content, privileged=self._privileged(scope))
-        if result.returncode == 17:
-            raise UnitExists(self.unit_path(name, scope))
+        result = self.runner.run(argv, input="".join(lines), privileged=self._privileged(scope))
+        paths = [self.unit_path(name, scope) for name in names]
+        if result.returncode == _EXISTS:
+            lines = result.stderr.strip().splitlines()
+            raise UnitExists(lines[-1] if lines else paths[0])
+        if result.returncode in (_ENABLE_FAILED, _START_FAILED):
+            action = "enabled" if result.returncode == _ENABLE_FAILED else "started"
+            raise UnitActivationFailed(paths, activate or "", action, result.stderr)
         result.check()
-        return self.unit_path(name, scope)
+        return paths
 
 
 # A user's systemd shows the machine's devices, mounts and swap too, read-only.

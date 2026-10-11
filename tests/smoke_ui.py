@@ -49,6 +49,9 @@ def run_steps(window):
     steps = [
         window.create_unit,
         lambda: window.get_visible_dialog().close(),
+        lambda: check_create_dialog(window),
+        lambda: check_create_conflicts(window),
+        lambda: check_edit_dialogs(window),
         window.add_host,
         lambda: window.get_visible_dialog().close(),
         # The services view always has a details column; a service opens there and has no close button.
@@ -123,6 +126,163 @@ def run_steps(window):
     def check(condition, message):
         if not condition:
             raise AssertionError(message)
+
+    def create_dialog(window, runner, **kwargs):
+        """A create dialog that writes through ``runner``, without a background thread."""
+        from systemdpilot.core.manager import SystemdManager
+        from systemdpilot.ui.create_unit_dialog import CreateUnitDialog
+
+        class Operations:
+            def run(self, manager, func, *, on_success=None, on_error=None, on_finish=None, error_heading=""):
+                try:
+                    result = func()
+                except Exception as error:  # noqa: BLE001 - as Operations does
+                    if not (on_error and on_error(error)):
+                        raise
+                else:
+                    if on_success:
+                        on_success(result)
+                if on_finish:
+                    on_finish()
+
+        created = []
+        scope = kwargs.pop("scope", None)
+        manager = SystemdManager(runner)
+        manager._unit_files = {Scope.SYSTEM: {"taken.timer": "enabled"}}
+        dialog = CreateUnitDialog(manager, scope, "test", Operations(), on_created=created.append, **kwargs)
+        dialog.present(window)
+        return dialog, created
+
+    def fake_runner(*codes):
+        """Answers each command with the next exit status (0 once they run out), recording calls."""
+        from systemdpilot.core.runner import CommandResult, CommandRunner
+
+        class Runner(CommandRunner):
+            label = "fake"
+            calls = []
+
+            def run(self, argv, *, input=None, privileged=False, timeout=60):
+                self.calls.append({"argv": list(argv), "input": input, "privileged": privileged})
+                code = codes[len(self.calls) - 1] if len(self.calls) <= len(codes) else 0
+                stderr = {17: "/etc/systemd/system/backup.timer\n", 18: "Access denied\n"}.get(code, "")
+                return CommandResult(tuple(argv), code, "", stderr)
+
+        return Runner()
+
+    def editor_titles(dialog):
+        return [page.get_title() for _type, _buffer, page in dialog._editors]
+
+    def editor_text(dialog, unit_type):
+        buffer = next(b for t, b, _p in dialog._editors if t == unit_type)
+        return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True)
+
+    def select_template(dialog, template_id):
+        from systemdpilot.core.templates import TEMPLATES
+
+        dialog.template_row.set_selected(next(i for i, t in enumerate(TEMPLATES) if t.id == template_id))
+
+    def check_create_dialog(window):
+        runner = fake_runner()
+        dialog, created = create_dialog(window, runner)
+        check(not dialog.program_row.get_visible(), "program picker offered for a machine that is not this one")
+        check(not dialog.create_button.get_sensitive(), "create allowed without a name")
+        check(not dialog.editor_switcher.get_visible(), "file tabs shown for a single file")
+
+        select_template(dialog, "timer")
+        check(len(dialog._editors) == 2 and dialog.editor_switcher.get_visible(), "timer template has no two files")
+        dialog.name_row.set_text("backup")
+        check(editor_titles(dialog) == ["backup.service", "backup.timer"], f"tabs named {editor_titles(dialog)}")
+        check(dialog.create_button.get_sensitive(), "a good name is refused")
+        dialog.name_row.set_text("backup.socket")
+        check(dialog.name_row.has_css_class("error"), "another unit type is not flagged")
+        check(not dialog.create_button.get_sensitive(), "create allowed for another unit type")
+        dialog.name_row.set_text("taken")
+        check(dialog.name_row.has_css_class("warning"), "an existing unit is not flagged")
+        check("taken.timer" in dialog.name_row.get_title(), "the existing unit is not named")
+        check(dialog.create_button.get_sensitive(), "create refused for an existing unit; it should ask instead")
+        dialog.name_row.set_text("backup.timer")
+        check(not dialog.name_row.has_css_class("warning"), "warning left after renaming")
+
+        dialog.set_program("/opt/My App/run")
+        check('ExecStart="/opt/My App/run"\n' in editor_text(dialog, "service"), "program not set")
+        check(dialog.editor_stack.get_visible_child() is dialog._editors[0][2].get_child(), "service tab not shown")
+
+        # The files were edited, so switching template asks first; cancelling keeps everything.
+        select_template(dialog, "simple")
+        alert = window.get_visible_dialog()
+        check(isinstance(alert, Adw.AlertDialog), "template replaced without asking")
+        answer(alert, "cancel")
+        check(dialog.template_row.get_selected() == 2, "template choice not put back after cancelling")
+        check(len(dialog._editors) == 2, "files replaced after cancelling")
+        check("/opt/My App/run" in editor_text(dialog, "service"), "edits lost after cancelling")
+
+        dialog.enable_row.set_active(True)
+        dialog.start_row.set_active(True)
+        dialog.create_button.emit("clicked")
+        call = runner.calls[-1]
+        check(call["privileged"], "a system unit was written unprivileged")
+        check(
+            call["argv"][4:] == ["--system", "0", "1", "1", "backup.timer", "backup.service", "backup.timer"],
+            f"unexpected install arguments {call['argv'][4:]}",
+        )
+        check(len(call["input"].splitlines()) == 2, "not both files were sent")
+        check(len(runner.calls) == 1, "more than one privileged command")
+        check(created == ["backup.timer"], f"created reported as {created}")
+        check(window.get_visible_dialog() is None, "dialog left open after creating")
+
+    def check_create_conflicts(window):
+        # An existing file: asks, then replaces.
+        runner = fake_runner(17)
+        dialog, created = create_dialog(window, runner)
+        select_template(dialog, "timer")
+        dialog.name_row.set_text("backup")
+        dialog.create_button.emit("clicked")
+        alert = window.get_visible_dialog()
+        check(isinstance(alert, Adw.AlertDialog) and "backup.timer" in alert.get_body(), "no replace question")
+        check(not created, "reported as created though nothing was written")
+        answer(alert, "confirm")
+        check(runner.calls[-1]["argv"][5] == "1", "replacing did not overwrite")
+        check(created == ["backup.timer"], "replaced unit not reported")
+
+        # Created, but enabling failed: the dialog closes and the error says what happened.
+        runner = fake_runner(18)
+        dialog, created = create_dialog(window, runner, scope=Scope.USER)
+        dialog.name_row.set_text("web")
+        dialog.enable_row.set_active(True)
+        dialog.create_button.emit("clicked")
+        check(created == ["web.service"], "a unit that was written is not reported")
+        check(not runner.calls[-1]["privileged"], "a user unit was written privileged")
+        alert = window.get_visible_dialog()
+        check(isinstance(alert, Adw.Dialog) and "Enable" in alert.get_title(), "enable failure not shown")
+        alert.close()
+        check(window.get_visible_dialog() is None, f"left open: {window.get_visible_dialog()}")
+
+    def check_edit_dialogs(window):
+        runner = fake_runner()
+        dialog, created = create_dialog(
+            window, runner, scope=Scope.USER, edit_name="demo.timer", edit_content="[Timer]\nOnCalendar=daily\n"
+        )
+        hidden = (dialog.scope_row, dialog.template_row, dialog.program_row, dialog.enable_row, dialog.start_row)
+        check(not any(row.get_visible() for row in hidden), "editing shows choices for new units")
+        check(len(dialog._editors) == 1 and not dialog.editor_switcher.get_visible(), "editing shows several files")
+        check(dialog.create_button.get_sensitive(), "save not allowed")
+        dialog.create_button.emit("clicked")
+        argv = runner.calls[-1]["argv"]
+        check(argv[4:] == ["--user", "1", "0", "0", "", "demo.timer"], f"unexpected save arguments {argv[4:]}")
+        check(created == ["demo.timer"], "save not reported")
+
+        runner = fake_runner()
+        dialog, created = create_dialog(
+            window,
+            runner,
+            scope=Scope.SYSTEM,
+            edit_name="demo.service",
+            edit_content="[Service]\nNice=5\n",
+            override=True,
+        )
+        dialog.create_button.emit("clicked")
+        check(any("override.conf" in arg for arg in runner.calls[-1]["argv"]), "override not written as a drop-in")
+        check(created == ["demo.service"], "override save not reported")
 
     def simple_units(window):
         from systemdpilot.ui.services_view import ServiceItem
