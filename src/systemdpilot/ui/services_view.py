@@ -242,16 +242,16 @@ class ServicesView(Gtk.Box):
         ("exited", "exited", "exited", "active (exited)"),
         ("dead", "dead", "dead", "inactive (dead)"),
     )
-    # value, label, icon, tooltip; in the same list as the states.
+    # value, label, dot, tooltip; in the same list as the states.
     PRESET_FILTERS = (
-        ("auto-restart", "auto-restart", "view-refresh-symbolic", "activating (auto-restart): crashed, restarting"),
-        ("enabled-dead", "enabled, inactive", "media-playback-stop-symbolic", "UnitFileState=enabled, inactive (dead)"),
-        ("active-disabled", "active, disabled", "system-reboot-symbolic", "UnitFileState=disabled: stops after reboot"),
-        ("masked", "masked", "action-unavailable-symbolic", "UnitFileState=masked → /dev/null"),
-        ("load-error", "load error", "dialog-warning-symbolic", "LoadState=not-found, bad-setting or error"),
+        ("auto-restart", "auto-restart", "warning", "activating (auto-restart): crashed, restarting"),
+        ("enabled-dead", "enabled, inactive", "ring-warning", "UnitFileState=enabled, inactive (dead)"),
+        ("active-disabled", "active, disabled", "ring-running", "UnitFileState=disabled: stops after reboot"),
+        ("masked", "masked", "info", "UnitFileState=masked → /dev/null"),
+        ("load-error", "load error", "ring-failed", "LoadState=not-found, bad-setting or error"),
     )
     # Last in the status list, as "all types" is in the type list.
-    ANY_FILTER = ("all", "any", "", "any state")
+    ANY_FILTER = ("all", "any", "any", "any state")
     # value, label, icon, tooltip
     TYPE_FILTERS = (
         ("service", "service", words.TYPE_ICONS["service"], "systemd.service(5): processes"),
@@ -463,12 +463,8 @@ class ServicesView(Gtk.Box):
 
     def _filter_list(self, filters, rows: dict, on_selected) -> Gtk.ListBox:
         listbox = Gtk.ListBox(css_classes=["navigation-sidebar"])
-        for value, text, dot_kind, tip in filters:
+        for value, text, dot_kind, tip in (*filters, *self.PRESET_FILTERS, self.ANY_FILTER):
             row = FilterRow(value, text, dot_kind, tooltip_text=tip)
-            rows[value] = row
-            listbox.append(row)
-        for value, text, icon, tip in (*self.PRESET_FILTERS, self.ANY_FILTER):
-            row = FilterRow(value, text, icon_name=icon, tooltip_text=tip)
             rows[value] = row
             listbox.append(row)
         listbox.set_header_func(_list_heading(_("Status"), first=True))
