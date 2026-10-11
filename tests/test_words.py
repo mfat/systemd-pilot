@@ -130,16 +130,17 @@ def test_control_actions_follow_systemd():
     assert words.control_actions(Unit("-.mount", active_state="active", sub_state="mounted")) == ()
 
 
-def test_reload_shown_for_running_services_and_units_that_can():
+def test_reload_shown_only_when_supported():
     running = Unit("a.service", active_state="active", sub_state="running")
-    assert words.detail_actions(running) == (UnitAction.RESTART, UnitAction.RELOAD, UnitAction.STOP)
-    assert words.control_actions(running) == (UnitAction.RESTART, UnitAction.STOP)  # not in the list rows
-    assert not words.can_reload({"CanReload": "no"})
-    assert words.can_reload({"CanReload": "yes"})
-    assert words.detail_actions(Unit("a.service")) == (UnitAction.START,)
-    socket = Unit("a.socket", active_state="active", sub_state="listening")
-    assert UnitAction.RELOAD not in words.detail_actions(socket, {"CanReload": "no"})
-    assert UnitAction.RELOAD in words.detail_actions(socket, {"CanReload": "yes"})
+    assert words.detail_actions(running, {"CanReload": "yes"}) == (
+        UnitAction.RESTART,
+        UnitAction.RELOAD,
+        UnitAction.STOP,
+    )
+    assert words.detail_actions(running, {"CanReload": "no"}) == (UnitAction.RESTART, UnitAction.STOP)
+    assert words.detail_actions(running) == (UnitAction.RESTART, UnitAction.STOP)  # until the details load
+    assert words.control_actions(running, {"CanReload": "yes"}) == (UnitAction.RESTART, UnitAction.STOP)
+    assert words.detail_actions(Unit("a.service"), {"CanReload": "yes"}) == (UnitAction.START,)
 
 
 def test_more_actions_need_processes_and_a_unit_file():

@@ -56,12 +56,9 @@ def control_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[Un
 
 
 def detail_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[UnitAction, ...]:
-    """:func:`control_actions`, with Reload after Restart for a running unit that can restart.
-
-    A service always shows it, for :func:`can_reload` to allow; other types only when they can.
-    """
+    """:func:`control_actions`, with Reload after Restart for a running unit that can reload."""
     actions = control_actions(unit, props)
-    if UnitAction.RESTART in actions and (unit.type == "service" or can_reload(props)):
+    if UnitAction.RESTART in actions and can_reload(props):
         i = actions.index(UnitAction.RESTART) + 1
         return (*actions[:i], UnitAction.RELOAD, *actions[i:])
     return actions
