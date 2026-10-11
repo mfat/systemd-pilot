@@ -158,6 +158,11 @@ button.hero-action.destructive-action:hover { background-image: image(alpha(curr
   border-radius: 8px;
   background-color: alpha(currentColor, 0.05);
 }
+.signal-menu { padding: 4px; min-width: 220px; }
+.signal-menu-title { font-size: 13px; padding: 6px 10px 4px; }
+.signal-menu button.signal-item { padding: 8px 10px; font-weight: normal; }
+.signal-menu .signal-name { font-family: monospace; font-size: 13px; }
+.signal-menu button.signal-item.error .signal-name { color: inherit; opacity: 0.8; }
 button.small-pill { min-height: 30px; padding: 0 12px; font-size: 13px; font-weight: bold; }
 .ok-banner, .error-banner {
   padding: 14px 16px;

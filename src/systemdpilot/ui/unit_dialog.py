@@ -42,11 +42,11 @@ _RESOURCE_TYPES = ("service", "slice", "scope")
 _NO_STARTUP_TYPES = ("device", "scope")
 # Unit names listed in a row before "…and N more".
 _UNIT_LIST_LIMIT = 8
-# Buttons that signal a unit's processes: label, signal, and whether it is destructive.
-_SIGNAL_BUTTONS = (
+# The signal menu's items: label, signal, and whether it is destructive.
+_SIGNAL_ITEMS = (
     (_("Terminate"), "SIGTERM", False),
     (_("Hang Up"), "SIGHUP", False),
-    (_("Kill"), "SIGKILL", True),
+    (_("Kill…"), "SIGKILL", True),
 )
 
 
@@ -196,15 +196,14 @@ class UnitPanel(Adw.BreakpointBin):
             )
             if css:
                 button.add_css_class(css)
-            if action is UnitAction.RELOAD and not words.can_reload(props):
-                # Until the details load, and for good if the unit has no ExecReload=.
-                button.set_sensitive(False)
-                if props:
-                    button.set_tooltip_text(_("This unit cannot reload its configuration. Restart it instead."))
             button.connect("clicked", lambda _b, a=action: self._on_control_clicked(a))
             controls.append(button)
-        if controls.get_first_child():
-            self.action_box.append(controls)
+        # The signal menu sits at the row's end, the controls stay centered.
+        row = Gtk.CenterBox(center_widget=controls)
+        if props and words.can_signal(unit, props):
+            row.set_end_widget(self._signal_button())
+        if controls.get_first_child() or row.get_end_widget():
+            self.action_box.append(row)
         if props and (extra := self._extra_actions(unit, props)).get_first_child():
             self.action_box.append(extra)
 
@@ -225,11 +224,28 @@ class UnitPanel(Adw.BreakpointBin):
                 add(label, lambda n=name: self._run_action(UnitAction.START, n))
         if unit.is_failed:
             add(_("Clear Failed State"), lambda: self._run_action(UnitAction.RESET_FAILED))
-        if words.can_signal(unit, props):
-            for label, signal, destructive in _SIGNAL_BUTTONS:
-                tooltip = _("Send {signal} to its processes").format(signal=signal)
-                add(label, lambda s=signal: self._on_signal(s), tooltip, destructive)
         return box
+
+    def _signal_button(self) -> Gtk.MenuButton:
+        """⋯ with a menu that sends a signal to the unit's processes."""
+        items = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["signal-menu"])
+        items.append(widgets.label(_("Send signal"), "heading", "dim-label", "signal-menu-title"))
+        popover = Gtk.Popover(child=items, has_arrow=False, halign=Gtk.Align.END)
+        for label, signal, destructive in _SIGNAL_ITEMS:
+            line = Gtk.Box(spacing=32)
+            line.append(widgets.label(label, hexpand=True))
+            line.append(widgets.label(signal, "signal-name", "dim-label"))
+            item = Gtk.Button(child=line, css_classes=["flat", "signal-item"])
+            if destructive:
+                item.add_css_class("error")
+            item.connect("clicked", lambda _b, s=signal: (popover.popdown(), self._on_signal(s)))
+            items.append(item)
+        return Gtk.MenuButton(
+            icon_name="view-more-horizontal-symbolic",
+            popover=popover,
+            valign=Gtk.Align.CENTER,
+            tooltip_text=_("Send Signal"),
+        )
 
     def _on_control_clicked(self, action: UnitAction):
         if question := words.confirm_control(self.unit, action):
