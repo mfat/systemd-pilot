@@ -32,6 +32,11 @@ PRESET_MATCH = {
 }
 
 
+def is_inactive_unit(unit: Unit) -> bool:
+    """Units ``list-units`` hides without ``--all`` (inactive / not loaded)."""
+    return unit.kind == "dead"
+
+
 def matches_kind(unit: Unit, kind: str) -> bool:
     """Whether ``unit`` matches a state filter: ``all``, a :attr:`Unit.kind` or a preset."""
     if kind in PRESET_MATCH:
@@ -39,9 +44,17 @@ def matches_kind(unit: Unit, kind: str) -> bool:
     return kind == "all" or unit.kind == kind
 
 
-def matches_filter(unit: Unit, scope: str, kind: str) -> bool:
-    """Whether ``unit`` matches both the scope and state sidebar filters."""
-    return matches_scope(unit, scope) and matches_kind(unit, kind)
+def matches_filter(unit: Unit, scope: str, kind: str, *, show_inactive: bool = True) -> bool:
+    """Whether ``unit`` matches both the scope and state sidebar filters.
+
+    When ``show_inactive`` is false, inactive units stay out of the main list, but
+    the ``dead`` filter and presets that look for idle/broken units still see them.
+    """
+    if not (matches_scope(unit, scope) and matches_kind(unit, kind)):
+        return False
+    if show_inactive or kind == "dead" or kind in PRESET_MATCH:
+        return True
+    return not is_inactive_unit(unit)
 
 
 def user_tag() -> Gtk.Widget:
@@ -342,6 +355,7 @@ class ServicesView(Gtk.Box):
         self._query = ""
         self._label_order = "name-description"
         self._empty_hint = ""
+        self._show_inactive = False
 
         actions = Gio.SimpleActionGroup()
         self._scope = Gio.SimpleAction.new_stateful("scope", GLib.VariantType.new("s"), GLib.Variant("s", "all"))
@@ -482,6 +496,12 @@ class ServicesView(Gtk.Box):
     def set_empty_hint(self, hint: str) -> None:
         self._empty_hint = hint
 
+    def set_show_inactive(self, show: bool) -> None:
+        if show == self._show_inactive:
+            return
+        self._show_inactive = show
+        self._refresh()
+
     @property
     def scope_filter(self) -> str:
         return self._scope.get_state().get_string()
@@ -546,13 +566,14 @@ class ServicesView(Gtk.Box):
 
     def _visible(self) -> list[Unit]:
         scope, kind = self.scope_filter, self.kind_filter
-        return [u for u in self._matching() if matches_filter(u, scope, kind)]
+        return [u for u in self._matching() if matches_filter(u, scope, kind, show_inactive=self._show_inactive)]
 
     def _refresh(self) -> None:
         matching = self._matching()
         scope = self.scope_filter
+        show_inactive = self._show_inactive
         for value, row in self._kind_rows.items():
-            row.set_count(sum(1 for u in matching if matches_filter(u, scope, value)))
+            row.set_count(sum(1 for u in matching if matches_filter(u, scope, value, show_inactive=show_inactive)))
 
         visible = self._visible()
         if not visible:
@@ -567,7 +588,9 @@ class ServicesView(Gtk.Box):
             self.empty_page.set_description(GLib.markup_escape_text(widgets.no_results(self._query)))
         else:
             self.empty_page.set_title(_("No Services Found"))
-            self.empty_page.set_description(GLib.markup_escape_text(self._empty_hint))
+            # Presets and “dead” already include stopped units; the menu hint is for “any”.
+            hint = "" if self.kind_filter == "dead" or self.kind_filter in PRESET_MATCH else self._empty_hint
+            self.empty_page.set_description(GLib.markup_escape_text(hint))
         self.stack.set_visible_child_name("empty")
 
     def _update_simple(self, visible: list[Unit]) -> None:

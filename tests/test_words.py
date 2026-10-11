@@ -63,6 +63,16 @@ def test_matches_filter_scope_and_kind():
     assert matches_filter(system, "system", "all") and not matches_filter(system, "all", "failed")
 
 
+def test_matches_filter_hides_inactive_unless_asked():
+    dead = Unit("b.service", active_state="inactive", sub_state="dead", file_state="enabled")
+    running = Unit("a.service", active_state="active", sub_state="running", file_state="enabled")
+    assert matches_filter(running, "all", "all", show_inactive=False)
+    assert not matches_filter(dead, "all", "all", show_inactive=False)
+    assert matches_filter(dead, "all", "all", show_inactive=True)
+    assert matches_filter(dead, "all", "dead", show_inactive=False)
+    assert matches_filter(dead, "all", "enabled-dead", show_inactive=False)
+
+
 def test_matches_filter_presets():
     looping = Unit("a.service", active_state="activating", sub_state="auto-restart", file_state="enabled")
     enabled_dead = Unit("b.service", active_state="inactive", sub_state="dead", file_state="enabled")

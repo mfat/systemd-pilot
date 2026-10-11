@@ -74,7 +74,7 @@ def backend_report(manager: SystemdManager, scope: Scope) -> None:
     manager.journal(since="24 hours ago", lines=1500)
     print(f"  {'journal 1500/24h':32s}  {time.perf_counter() - t0:.3f}s")
     print(f"  active services listed: {len(units)}")
-    print("  (attach_file_states only runs when “Show Inactive” is on)")
+    print("  (attach_file_states always runs so sidebar presets see unit-file states)")
 
 
 def ui_report() -> None:

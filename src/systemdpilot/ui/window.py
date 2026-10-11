@@ -118,6 +118,7 @@ class Window(Adw.ApplicationWindow):
             self.maximize()
 
         self.services = ServicesView()
+        self.services.set_show_inactive(self.settings.get_boolean("show-inactive"))
         self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
         self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_badges())
@@ -220,7 +221,8 @@ class Window(Adw.ApplicationWindow):
         action.set_state(value)
         self.settings.set_boolean("show-inactive", value.get_boolean())
         self.services.set_empty_hint(self._empty_hint())
-        self.reload()
+        # The full catalog is always loaded; this only changes what “any” shows.
+        self.services.set_show_inactive(self.show_inactive)
 
     def _empty_hint(self) -> str:
         if self.show_inactive:
@@ -570,7 +572,7 @@ class Window(Adw.ApplicationWindow):
             manager.invalidate_unit_files()
         self._generation += 1
         generation = self._generation
-        machine_id, include_inactive = self.machine_id, self.show_inactive
+        machine_id = self.machine_id
         # A first load: the list shows as soon as it arrives, and the rest fills in
         # quietly, without the spinner above it.
         quiet = show_spinner or not self.services.units
@@ -585,15 +587,16 @@ class Window(Adw.ApplicationWindow):
         else:
             self.journal.mark_stale()
 
-        # list-units is fast. list-unit-files follows: the sidebar's startup filters
-        # need the enabled/disabled states, and “Show Inactive” its unloaded units.
+        # Always list inactive units and unit-file states: sidebar presets (enabled
+        # but stopped, masked, …) need them. “Show Inactive” only changes whether
+        # the main “any” list includes stopped services.
         def done(units):
             if generation != self._generation:
                 return
             self._set_pending(generation, "list", False)
             self._on_units_loaded(units)
             self._inactive_job = lambda: self._start_inactive_load(
-                generation, manager, units, include_inactive, quiet, inactive_done, incomplete
+                generation, manager, units, True, quiet, inactive_done, incomplete
             )
             self._arm_inactive_load()
 
@@ -622,7 +625,7 @@ class Window(Adw.ApplicationWindow):
             else:
                 self._show_error(_("Could Not Load Services"), describe(error))
 
-        run_in_thread(manager.list_services, include_inactive, on_done=done, on_error=failed)
+        run_in_thread(manager.list_services, True, on_done=done, on_error=failed)
 
     def _arm_inactive_load(self) -> None:
         """Start the inactive-unit catalog once details are not using systemd.
