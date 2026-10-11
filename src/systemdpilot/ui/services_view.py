@@ -102,7 +102,6 @@ class ListRow(Adw.Bin):
         self.item = item
         is_service = isinstance(item, ServiceItem)
         self._list_item.set_activatable(is_service)
-        self._list_item.set_selectable(is_service)
         self._list_item.set_focusable(is_service)
         if is_service:
             if self.service is None:
@@ -161,6 +160,7 @@ class ServiceRow(Gtk.Box):
         self.item: ServiceItem | None = None
         self._changed_handler = 0
         self._actions_kind = ""
+        self._edges: list[str] = []  # "first" and "last" of its group
         # As in a boxed list: its rows add 2px around their content.
         box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=18, margin_end=18, hexpand=True)
         self._dot = widgets.dot("dead")
@@ -222,6 +222,7 @@ class ServiceRow(Gtk.Box):
         self._state.set_label(words.state_word(unit))
         self._state.set_css_classes(["state-word", words.state_css(unit)])
         self._action_box.set_size_request(ACTIONS_WIDTH[unit.kind == "running"], -1)
+        self.sync_classes()
         if self._actions.get_reveal_child():
             self._sync_actions()
 
@@ -232,7 +233,13 @@ class ServiceRow(Gtk.Box):
         self._list_item.set_accessible_label(f"{words.unit_title(unit, order)}, {words.state_word(unit)}")
 
     def set_edges(self, first: bool, last: bool) -> None:
-        self.set_css_classes(["service-row"] + (["first"] if first else []) + (["last"] if last else []))
+        self._edges = (["first"] if first else []) + (["last"] if last else [])
+        self.sync_classes()
+
+    def sync_classes(self) -> None:
+        """Its place in the group, and whether it is the service open in details."""
+        is_open = self.item is not None and self._view.is_open(self.item.unit)
+        self.set_css_classes(["service-row", *self._edges] + (["open"] if is_open else []))
 
     def _sync_actions(self) -> None:
         kind = self.item.unit.kind if self.item else ""
@@ -331,8 +338,10 @@ class ServicesView(Gtk.Box):
         self._store = Gio.ListStore(item_type=GObject.Object)
         order = Gtk.CustomSorter.new(lambda a, b, _d: _compare(_sort_key(a), _sort_key(b)))
         self.model = Gtk.SortListModel(model=self._store, sorter=order)
-        self._selection = Gtk.SingleSelection(model=self.model, autoselect=False, can_unselect=True)
-        self._selected_unit: Unit | None = None  # open in the details panel; kept highlighted
+        # Not GTK's selection: single-click-activate selects on hover, and arrow keys
+        # select without opening. The open service is highlighted by the rows themselves.
+        self._selection = Gtk.NoSelection(model=self.model)
+        self._selected_unit: Unit | None = None  # open in details; its row is highlighted
         self._fill_source = 0  # adds the next new services to the list
         factory = Gtk.SignalListItemFactory()
         factory.connect("setup", lambda _f, list_item: list_item.set_child(ListRow(self, list_item)))
@@ -374,7 +383,10 @@ class ServicesView(Gtk.Box):
     def select_unit(self, unit: Unit | None) -> None:
         """Keep ``unit`` highlighted, or clear the highlight when details close."""
         self._selected_unit = unit
-        self._apply_selection()
+        self._sync_open()
+
+    def is_open(self, unit: Unit) -> bool:
+        return self._selected_unit is not None and unit.key == self._selected_unit.key
 
     @property
     def units(self) -> list[Unit]:
@@ -496,7 +508,7 @@ class ServicesView(Gtk.Box):
             # Rows whose neighbours changed, e.g. a group's new last service.
             for row in self._bound_rows():
                 row.sync()
-        self._apply_selection()
+        self._sync_open()
 
     def _fill_more(self) -> bool:
         self._fill_source = 0
@@ -517,19 +529,18 @@ class ServicesView(Gtk.Box):
             self._selected_unit = item.unit
             self.emit("unit-activated", item.unit)
 
-    def _apply_selection(self) -> None:
-        """Select the open service in the list model, if it is still shown."""
-        target = Gtk.INVALID_LIST_POSITION
+    def _sync_open(self) -> None:
+        """Highlight the open service's row, if it is shown."""
         unit = self._selected_unit
         if unit is not None:
-            for position in range(self.model.get_n_items()):
-                item = self.model.get_item(position)
+            for position in range(self._store.get_n_items()):
+                item = self._store.get_item(position)
                 if isinstance(item, ServiceItem) and item.unit.key == unit.key:
-                    target = position
                     self._selected_unit = item.unit  # the list's current object
                     break
-        if self._selection.get_selected() != target:
-            self._selection.set_selected(target)
+        for row in self._bound_rows():
+            if isinstance(row.item, ServiceItem):
+                row.service.sync_classes()
 
     def _refresh_row_labels(self) -> None:
         for row in self._bound_rows():

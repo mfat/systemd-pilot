@@ -100,13 +100,13 @@ listview.services-list > header { padding: 0; background: none; border: none; }
 /* .service-row sits in an Adw.Bin under the list row, not as its direct child. */
 listview.services-list > row:hover .service-row { background-image: image(alpha(currentColor, 0.03)); }
 listview.services-list > row:active .service-row { background-image: image(alpha(currentColor, 0.08)); }
-listview.services-list > row:selected .service-row {
+listview.services-list > row .service-row.open {
   background-image: image(alpha(@accent_bg_color, 0.25));
 }
-listview.services-list > row:selected:hover .service-row {
+listview.services-list > row:hover .service-row.open {
   background-image: image(alpha(@accent_bg_color, 0.32));
 }
-listview.services-list > row:selected:active .service-row {
+listview.services-list > row:active .service-row.open {
   background-image: image(alpha(@accent_bg_color, 0.39));
 }
 listview.services-list > row:focus-visible .service-row {

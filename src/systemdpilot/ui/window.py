@@ -791,6 +791,7 @@ class Window(Adw.ApplicationWindow):
             panel.start_loading()
             return
         dialog = UnitDialog(manager, unit, unit.scope, self.operations, **options)
+        dialog.connect("closed", lambda *_: self._details is None and self.services.select_unit(None))
         dialog.present(self)
         GLib.idle_add(lambda: (dialog.start_loading(), False)[-1])
 
