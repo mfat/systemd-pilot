@@ -13,5 +13,6 @@
     <file alias="icons/scalable/actions/cogged-wheel-symbolic.svg">../data/icons/actions/cogged-wheel-symbolic.svg</file>
     <file alias="icons/scalable/actions/bell-symbolic.svg">../data/icons/actions/bell-symbolic.svg</file>
     <file alias="icons/scalable/actions/pegged-wheels-symbolic.svg">../data/icons/actions/pegged-wheels-symbolic.svg</file>
+    <file alias="icons/scalable/actions/arrows-circle-rotated-symbolic.svg">../data/icons/actions/arrows-circle-rotated-symbolic.svg</file>
   </gresource>
 </gresources>

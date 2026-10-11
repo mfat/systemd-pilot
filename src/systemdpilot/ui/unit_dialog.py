@@ -198,7 +198,7 @@ class UnitPanel(Adw.BreakpointBin):
         widgets.clear(self.action_box)
         buttons = {
             UnitAction.START: (_("_Start"), "media-playback-start-symbolic", "suggested-action"),
-            UnitAction.RELOAD: (_("Re_load"), "emblem-synchronizing-symbolic", None),
+            UnitAction.RELOAD: (_("Re_load"), "arrows-circle-rotated-symbolic", None),
             UnitAction.RESTART: (_("_Restart"), "view-refresh-symbolic", None),
             UnitAction.STOP: (_("S_top"), "media-playback-stop-symbolic", "destructive-action"),
         }
