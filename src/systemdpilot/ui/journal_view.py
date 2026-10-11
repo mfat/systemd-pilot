@@ -35,6 +35,10 @@ LOCAL_LIMIT = 5000
 REMOTE_LIMIT = 1500
 PAGE = 300  # rows shown in the simple timeline before “Show More”
 CHUNK = 40  # timeline rows created per idle tick so the first open stays responsive
+# Following: how often to look for new entries (ms), and the most read at a time. A
+# full read means more are waiting, so the journal is read again instead.
+FOLLOW_INTERVAL, REMOTE_FOLLOW_INTERVAL = 1500, 3000
+FOLLOW_LINES = 200
 
 # The range pickers share one row over the list, so their buttons say it short.
 # value, option label, button text, journalctl --since
@@ -296,6 +300,11 @@ class JournalView(Gtk.Box):
         self._render_gen = 0  # cancels in-flight chunked timeline paints
         self._jump_to_timeline = False  # a filter was chosen: bring its entries into view
         self._custom: tuple[datetime, datetime | None] | None = None  # the custom range: start, and end or now
+        self._limit = LOCAL_LIMIT  # newest entries fetched by the last load
+        self._cursor = ""  # following: new entries are those after this one
+        self._follow_source = 0
+        self._polling = False  # a fetch of new entries is under way
+        self._timeline: Gtk.ListBox | None = None  # the timeline's list, while it shows entries
         self.selected: Issue | LogEntry | None = None  # shown in the details column
         # Cached filter work: recomputed when the entry set, query or preset changes.
         self._analysis_key: tuple | None = None
@@ -355,6 +364,10 @@ class JournalView(Gtk.Box):
         pickers.append(self._since)
         pickers.append(self._boot)
         pickers.append(self._source)
+        self._follow = Gtk.ToggleButton(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER)
+        self._follow.connect("toggled", self._on_follow_toggled)
+        self.connect("destroy", lambda *_: self._stop_follow())
+        pickers.append(self._follow)
         for name, dropdown, tooltip in (
             ("since", self._since, _("Time")),
             ("boot", self._boot, _("Startup")),
@@ -402,6 +415,9 @@ class JournalView(Gtk.Box):
         self._manager = manager
         self._generation += 1
         self._result = None
+        self._cursor = ""
+        if self._follow_source:
+            self._start_follow()  # at the new machine's pace
         self._boot_id = ""
         self._access = ""
         self._elevated = False
@@ -452,6 +468,7 @@ class JournalView(Gtk.Box):
         need_boot_id = not self._boot_id
         elevated = self._elevated
         limit = REMOTE_LIMIT if isinstance(manager.runner, SSHRunner) else LOCAL_LIMIT
+        self._limit = limit
 
         def fetch():
             boot_id = manager.boot_id() if need_boot_id else None
@@ -467,13 +484,17 @@ class JournalView(Gtk.Box):
                     older_from, capped = cutoff, len(older.entries) >= limit
             # Hidden entries: say why, and whether the user can do something about it.
             access = manager.journal_access() if result.warning else ""
-            return result, older_from, capped, boot_id, access
+            # Following starts after the newest entry; with none in range, after the newest of all.
+            cursor = next((e.cursor for e in result.entries if e.cursor), "")
+            if not cursor and not until:
+                cursor = manager.journal_cursor(privileged=elevated)
+            return result, older_from, capped, boot_id, access, cursor
 
         def done(result):
             if generation != self._generation:
                 return
             self._loading = False
-            self._result, self._older_from, self._capped, boot_id, self._access = result
+            self._result, self._older_from, self._capped, boot_id, self._access, self._cursor = result
             if boot_id is not None:
                 self._boot_id = boot_id
             self.loaded = True
@@ -605,6 +626,13 @@ class JournalView(Gtk.Box):
         custom = self._state("since") == "custom" and self._custom is not None
         self._since.set_button_text("custom", short_range_text(*self._custom) if self._custom else "")
         self._since.set_tooltip_text(range_text(*self._custom) if custom else _("Time"))
+        can_follow = self._can_follow()
+        self._follow.set_sensitive(can_follow)
+        if not can_follow:
+            self._follow.set_active(False)
+        self._follow.set_tooltip_text(
+            _("Show New Entries as They Are Logged") if can_follow else _("This range has no new entries")
+        )
 
     def _ask_range(self) -> None:
         """Pick the custom range; cancelled, the time picker goes back to what it showed."""
@@ -624,8 +652,31 @@ class JournalView(Gtk.Box):
     def _refresh(self, *, ui: bool = True) -> None:
         if self._result is None:
             return
-        query = self._query
+        self._analyse()
+
+        if not ui:
+            # Badge path: issues only — skip chip/preset counts and widget builds.
+            self.emit("changed")
+            return
+
+        self._update_counts()
+        self._update_banner()
+        flt = self._state("filter")
         preset = PRESETS_BY_ID.get(self._state("preset"))
+        shown = [(i, e) for i, e in enumerate(self._ranged) if self._shows(i, e)]
+        self._render_simple(shown, self._flagged, flt, PRESET_TEXT[preset.id][0] if preset else "")
+        self._needs_render = False
+        self.emit("changed")
+
+    def _shows(self, index: int, entry: LogEntry) -> bool:
+        """Whether the timeline lists ``entry``, the ``index``-th of the entries in range."""
+        preset = PRESETS_BY_ID.get(self._state("preset"))
+        if preset:
+            return preset.matches(entry, self._boot_id)
+        return _FILTER_MATCH[self._state("filter")](index, entry, self._flagged)
+
+    def _analyse(self) -> None:
+        query = self._query
         # Searching or a new fetch: re-scan. Filter and preset changes reuse this, so
         # the problems, and every count in the sidebar, are of the whole range.
         analysis_key = (id(self._result), query, self._boot_id)
@@ -638,11 +689,7 @@ class JournalView(Gtk.Box):
             self._counts_ready = False
             self._needs_render = True
 
-        if not ui:
-            # Badge path: issues only — skip chip/preset counts and widget builds.
-            self.emit("changed")
-            return
-
+    def _update_counts(self) -> None:
         if not self._counts_ready:
             flagged = self._flagged
             self._filter_counts = {
@@ -660,20 +707,122 @@ class JournalView(Gtk.Box):
                 self._filter_counts[PRESET_ROW + p.id] = preset_counts[p.id]
             self._counts_ready = True
 
-        flagged = self._flagged
         for value, row in self._filter_rows.items():
             row.set_count(self._filter_counts.get(value, 0))
 
-        self._update_banner()
+    # -- following --------------------------------------------------------
 
-        flt = self._state("filter")
-        if preset:
-            shown = [(i, e) for i, e in enumerate(self._ranged) if preset.matches(e, self._boot_id)]
+    def _can_follow(self) -> bool:
+        """Whether entries logged from now on can be in range: not if it ends, or is of an earlier boot."""
+        if self._state("since") == "custom" and self._custom and self._custom[1]:
+            return False
+        boot = _pick(BOOTS, self._state("boot"))[4]
+        return boot is None or boot == 0
+
+    def _on_follow_toggled(self, button: Gtk.ToggleButton) -> None:
+        if button.get_active():
+            self._start_follow()
         else:
-            shown = [(i, e) for i, e in enumerate(self._ranged) if _FILTER_MATCH[flt](i, e, flagged)]
-        self._render_simple(shown, flagged, flt, PRESET_TEXT[preset.id][0] if preset else "")
+            self._stop_follow()
+
+    def _start_follow(self) -> None:
+        self._stop_follow()
+        remote = self._manager is not None and isinstance(self._manager.runner, SSHRunner)
+        self._follow_source = GLib.timeout_add(REMOTE_FOLLOW_INTERVAL if remote else FOLLOW_INTERVAL, self._follow_tick)
+
+    def _stop_follow(self) -> None:
+        if self._follow_source:
+            GLib.source_remove(self._follow_source)
+            self._follow_source = 0
+
+    def _follow_tick(self) -> bool:
+        manager = self._manager
+        # Only while the page is in view, and has a list that the new entries go on top of.
+        if (
+            manager is None
+            or self._polling
+            or self._loading
+            or self._result is None
+            or self._needs_render
+            or not self.get_mapped()
+            or not self._can_follow()
+        ):
+            return GLib.SOURCE_CONTINUE
+        generation, cursor, elevated = self._generation, self._cursor, self._elevated
+        boot = _pick(BOOTS, self._state("boot"))[4]
+        kernel = _pick(SOURCES, self._state("source"))[4]
+        self._polling = True
+
+        def fetch():
+            if not cursor:  # the journal was empty
+                return manager.journal_cursor(privileged=elevated), None
+            new = manager.journal_after(cursor, boot=boot, kernel=kernel, lines=FOLLOW_LINES, privileged=elevated)
+            return cursor, new
+
+        def done(result):
+            self._polling = False
+            if generation != self._generation:
+                return
+            self._cursor, new = result
+            if new is None or not new.entries:
+                return
+            self._cursor = new.entries[0].cursor or cursor
+            # More are waiting, or the list has grown well past a load: load the range again.
+            if len(new.entries) >= FOLLOW_LINES or len(self._result.entries) + len(new.entries) > 2 * self._limit:
+                self.reload()
+            else:
+                self._add_new(new.entries)
+
+        def failed(error):
+            self._polling = False
+            if generation != self._generation:
+                return
+            self._follow.set_active(False)
+            self.operations.toast(_("Stopped showing new entries: {error}").format(error=describe(error)))
+
+        run_in_thread(fetch, on_done=done, on_error=failed)
+        return GLib.SOURCE_CONTINUE
+
+    def _add_new(self, entries: list[LogEntry]) -> None:
+        """Put ``entries`` (newest first), logged after all the others, on top of the page."""
+        self._result = LogResult(entries + self._result.entries, self._result.warning)
+        self._analyse()
+        added = sum(1 for e in entries if matches_query(e, self._query))
+        flt, timeline = self._state("filter"), self._timeline
+        first = timeline.get_row_at_index(0) if timeline is not None else None
+        top_boot = getattr(first, "boot_id", "")
+        if added and (
+            (flt != "all" and any(i in self._flagged for i in range(added)))  # the problem cards change
+            or (timeline is None and flt != "problems")  # the timeline said there are no entries
+            or (timeline is not None and any(e.boot_id != top_boot for e in entries))  # a new boot
+        ):
+            self._refresh()
+            return
+
+        self._update_counts()
         self._needs_render = False
         self.emit("changed")
+        if timeline is None:
+            return
+        rows = []
+        for index, entry in enumerate(self._ranged[:added]):
+            if self._shows(index, entry):
+                row = EntryRow(entry, self._flagged.get(index))
+                timeline.insert(row, len(rows) + (1 if top_boot else 0))
+                rows.append(row)
+        adjustment = self._simple_scroll.get_vadjustment()
+        if not rows or adjustment.get_value() <= 0:
+            return  # at the top, the new entries show there
+        # Scrolled down: keep what is in view where it is.
+        height = sum(r.measure(Gtk.Orientation.VERTICAL, timeline.get_width())[1] for r in rows)
+        adjustment.configure(
+            adjustment.get_value() + height,
+            adjustment.get_lower(),
+            adjustment.get_upper() + height,
+            adjustment.get_step_increment(),
+            adjustment.get_page_increment(),
+            adjustment.get_page_size(),
+        )
 
     # -- hidden entries ---------------------------------------------------
 
@@ -733,6 +882,7 @@ class JournalView(Gtk.Box):
         self._render_gen += 1
         gen = self._render_gen
         widgets.clear(self._simple)
+        self._timeline = None
         # Needs attention lists the problems, All entries the timeline; Errors and Warnings both, of their level.
         show_cards, show_timeline = flt != "all", flt != "problems"
         if not show_timeline:
@@ -792,6 +942,7 @@ class JournalView(Gtk.Box):
             message = widgets.no_results(self._query) if self._query else _("No entries")
             timeline.list.append(widgets.placeholder_row(message))
             return
+        self._timeline = timeline.list
 
         # Paint the timeline in chunks so switching to Journal does not stall.
         state = {"pos": 0, "target": min(len(shown), self._shown), "last_boot": None, "older": False}
@@ -901,4 +1052,6 @@ class JournalView(Gtk.Box):
         box.append(Gtk.Image(icon_name="computer-symbolic"))
         current = boot_id == self._boot_id
         box.append(widgets.label(_("This boot") if current else _("Earlier boot · {id}").format(id=boot_id[:8])))
-        return Gtk.ListBoxRow(child=box, activatable=False, selectable=False)
+        row = Gtk.ListBoxRow(child=box, activatable=False, selectable=False)
+        row.boot_id = boot_id  # new entries of this boot go below it when following
+        return row

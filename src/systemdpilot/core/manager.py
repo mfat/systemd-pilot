@@ -367,25 +367,58 @@ class SystemdManager:
         ``lines`` counts only those: 4 is warnings and worse.
         ``privileged`` reads it as root, so nothing is hidden.
         """
-        argv = [
-            "journalctl",
-            "--no-pager",
-            "--output=json",
-            f"--output-fields={_JOURNAL_FIELDS}",
-            "--all",  # long messages, such as crash reports, are otherwise left out
-            "--reverse",
-            f"--lines={int(lines)}",
-        ]
-        if boot is not None:
-            argv.append(f"--boot={int(boot)}")
+        argv = self._journal_argv(boot=boot, kernel=kernel, priority=priority)
+        argv += ["--reverse", f"--lines={int(lines)}"]
         if since:
             argv.append(f"--since={since}")
         if until:
             argv.append(f"--until={until}")
+        return self._read_journal(argv, privileged)
+
+    def journal_after(
+        self,
+        cursor: str,
+        *,
+        boot: int | None = None,
+        kernel: bool = False,
+        lines: int = 200,
+        privileged: bool = False,
+    ) -> LogResult:
+        """Up to ``lines`` entries logged after ``cursor``, newest first.
+
+        These are the *oldest* ``lines`` after it: a result that long may have
+        more after it. An entry's cursor marks a place in the whole journal, so
+        ``cursor`` need not be of an entry that ``kernel`` keeps.
+        """
+        argv = self._journal_argv(boot=boot, kernel=kernel)
+        argv += [f"--after-cursor={cursor}", f"--lines={int(lines)}"]
+        result = self._read_journal(argv, privileged)
+        return LogResult(result.entries[::-1], result.warning)
+
+    def journal_cursor(self, *, privileged: bool = False) -> str:
+        """The cursor of the newest journal entry, or "" when there are none."""
+        argv = ["journalctl", "--no-pager", "--output=json", "--output-fields=_BOOT_ID", "--lines=1"]
+        entries = parse_journal(self.runner.run(argv, privileged=privileged).stdout)
+        return entries[-1].cursor if entries else ""
+
+    @staticmethod
+    def _journal_argv(*, boot: int | None, kernel: bool, priority: int | None = None) -> list[str]:
+        argv = [
+            "journalctl",
+            "--no-pager",
+            "--output=json",
+            f"--output-fields={_JOURNAL_FIELDS}",  # __CURSOR and the timestamps come anyway
+            "--all",  # long messages, such as crash reports, are otherwise left out
+        ]
+        if boot is not None:
+            argv.append(f"--boot={int(boot)}")
         if kernel:
             argv.append("--dmesg")
         if priority is not None:
             argv.append(f"--priority={int(priority)}")
+        return argv
+
+    def _read_journal(self, argv: list[str], privileged: bool) -> LogResult:
         result = self.runner.run(argv, privileged=privileged)
         entries = parse_journal(result.stdout)
         stderr = strip_ansi(result.stderr).strip()

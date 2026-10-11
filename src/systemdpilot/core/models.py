@@ -147,6 +147,7 @@ class LogEntry:
     boot_id: str = ""
     kernel: bool = False
     user_unit: bool = False  # ``unit`` is run by the user's systemd
+    cursor: str = ""  # where the entry is in the journal, for reading what came after it
 
 
 @dataclass(frozen=True)

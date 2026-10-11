@@ -120,6 +120,7 @@ def test_parse_journal():
             "SYSLOG_IDENTIFIER": "sshd",
             "_PID": "42",
             "MESSAGE": "boom",
+            "__CURSOR": "s=ab;i=1",
         },
         {"__REALTIME_TIMESTAMP": "x", "MESSAGE": [104, 105]},
         "not json",
@@ -128,8 +129,9 @@ def test_parse_journal():
     entries = parse_journal(text)
     assert len(entries) == 2
     assert entries[0].priority == 3 and entries[0].identifier == "sshd" and entries[0].pid == "42"
-    assert entries[0].timestamp is not None
+    assert entries[0].timestamp is not None and entries[0].cursor == "s=ab;i=1"
     assert entries[1].message == "hi" and entries[1].timestamp is None and entries[1].priority == 6
+    assert entries[1].cursor == ""
 
 
 def test_parse_show_units_splits_blocks():

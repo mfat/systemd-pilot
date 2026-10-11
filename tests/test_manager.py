@@ -475,3 +475,20 @@ def test_override_written_and_removed_end_to_end(runner, tmp_path, monkeypatch):
     assert proc.returncode == 0, proc.stderr
     assert not override.parent.exists()
     assert (tmp_path / "reload").read_text().strip() == "--user daemon-reload"
+
+
+def test_journal_after_reads_on_from_the_cursor(runner):
+    lines = [{"MESSAGE": m, "__CURSOR": f"c{m}"} for m in ("old", "new")]
+    runner.reply("journalctl", stdout="\n".join(json.dumps(x) for x in lines))
+    result = SystemdManager(runner).journal_after("s=1;i=2", boot=0, kernel=True, lines=50, privileged=True)
+    argv = runner.calls[0]["argv"]
+    assert {"--after-cursor=s=1;i=2", "--lines=50", "--boot=0", "--dmesg"} <= set(argv)
+    assert "--reverse" not in argv and runner.calls[0]["privileged"]
+    assert [(e.message, e.cursor) for e in result.entries] == [("new", "cnew"), ("old", "cold")]
+
+
+def test_journal_cursor(runner):
+    assert SystemdManager(runner).journal_cursor() == ""
+    runner.reply("journalctl", stdout=json.dumps({"MESSAGE": "x", "__CURSOR": "s=1;i=9"}))
+    assert SystemdManager(runner).journal_cursor() == "s=1;i=9"
+    assert "--lines=1" in runner.calls[-1]["argv"]

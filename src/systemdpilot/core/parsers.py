@@ -279,6 +279,7 @@ def parse_journal(text: str) -> list[LogEntry]:
                 user_unit=user_unit,
                 boot_id=_journal_field(entry, "_BOOT_ID"),
                 kernel=_journal_field(entry, "_TRANSPORT") == "kernel",
+                cursor=_journal_field(entry, "__CURSOR"),
             )
         )
     return entries
