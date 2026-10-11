@@ -73,9 +73,9 @@ def run_steps(window):
         lambda: check(window._details.stack.get_visible_child_name() == "overview", "no overview page"),
         # Log shows its entries as rows, or raw as journalctl prints it.
         lambda: window._details.stack.set_visible_child_name("activity"),
-        lambda: window._details.raw_switch.set_active(True),
+        lambda: window._details.raw_button.set_active(True),
         lambda: check(window._details.activity_stack.get_visible_child_name() == "raw", "no raw log"),
-        lambda: window._details.raw_switch.set_active(False),
+        lambda: window._details.raw_button.set_active(False),
         lambda: check(window._details.activity_stack.get_visible_child_name() == "list", "no activity list"),
         lambda: window._close_details(),
         lambda: check(window._details is None, "details panel not closed"),

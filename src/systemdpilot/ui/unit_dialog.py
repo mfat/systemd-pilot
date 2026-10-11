@@ -77,7 +77,7 @@ class UnitPanel(Adw.BreakpointBin):
     activity_page: Adw.ViewStackPage = Gtk.Template.Child()
     overview_box: Gtk.Box = Gtk.Template.Child()
     log_search: Gtk.SearchEntry = Gtk.Template.Child()
-    raw_switch: Gtk.Switch = Gtk.Template.Child()
+    raw_button: Gtk.ToggleButton = Gtk.Template.Child()
     activity_stack: Gtk.Stack = Gtk.Template.Child()
     activity_box: Gtk.Box = Gtk.Template.Child()
     logs_banner: Adw.Banner = Gtk.Template.Child()
@@ -115,7 +115,7 @@ class UnitPanel(Adw.BreakpointBin):
         self._details_load: int | None = None  # the load the shown details came from
         self.journal_badge: Gtk.Label | None = None  # on the window's Journal button, beside the list
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
-        self.raw_switch.connect("notify::active", self._on_raw_toggled)
+        self.raw_button.connect("toggled", self._on_raw_toggled)
         self.log_search.connect("search-changed", self._on_log_search)
         self.stack.connect("notify::visible-child-name", lambda *_: self._on_page_changed())
         self.title_label.connect("activate-link", self._on_title_link)
@@ -138,8 +138,8 @@ class UnitPanel(Adw.BreakpointBin):
         """A button of the window's, placed before the close button."""
         self.header_bar.pack_end(widget)
 
-    def _on_raw_toggled(self, switch, _pspec):
-        raw = switch.get_active()
+    def _on_raw_toggled(self, button):
+        raw = button.get_active()
         self.activity_stack.set_visible_child_name("raw" if raw else "list")
         # The text view lays out every line. Filling it while it is hidden
         # keeps the main loop busy long after the overview is on screen.
@@ -149,7 +149,7 @@ class UnitPanel(Adw.BreakpointBin):
     def _on_log_search(self, entry):
         self._log_query = entry.get_text().strip().lower()
         if self._details is not None:
-            if self.raw_switch.get_active():
+            if self.raw_button.get_active():
                 self._show_raw_logs(self._details)
             if self._pending_activity is None:  # else it is built with the query when shown
                 self._build_activity(self._details)
@@ -404,7 +404,7 @@ class UnitPanel(Adw.BreakpointBin):
         self._details_load = load
         self._details = details
         self._show_unit(details.unit, details.properties)
-        if self.raw_switch.get_active():
+        if self.raw_button.get_active():
             self._show_raw_logs(details)
         self.logs_banner.set_title(GLib.markup_escape_text(self._logs_warning(details)))
         self.logs_banner.set_button_label(_("View as Administrator") if self._remote else None)

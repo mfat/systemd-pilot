@@ -170,21 +170,11 @@
                               </object>
                             </child>
                             <child>
-                              <object class="GtkBox">
-                                <property name="spacing">8</property>
+                              <object class="GtkToggleButton" id="raw_button">
+                                <property name="label" translatable="yes">_Raw Log</property>
+                                <property name="use-underline">True</property>
+                                <property name="valign">center</property>
                                 <property name="tooltip-text" translatable="yes">Show the log as journalctl prints it</property>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="label" translatable="yes">_Raw Log</property>
-                                    <property name="use-underline">True</property>
-                                    <property name="mnemonic-widget">raw_switch</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkSwitch" id="raw_switch">
-                                    <property name="valign">center</property>
-                                  </object>
-                                </child>
                               </object>
                             </child>
                           </object>
