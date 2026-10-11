@@ -135,7 +135,6 @@ listview.services-list > row:focus-visible .service-row {
 button.hero-action { min-height: 40px; padding: 0 20px; border-radius: 9999px; font-weight: bold; }
 button.hero-action.destructive-action { background-color: @destructive_bg_color; color: @destructive_fg_color; }
 button.hero-action.destructive-action:hover { background-image: image(alpha(currentColor, 0.1)); }
-menubutton.hero-action > button { min-height: 40px; min-width: 40px; padding: 0; border-radius: 9999px; }
 
 .command-row .subtitle { font-family: monospace; }
 
@@ -160,7 +159,7 @@ menubutton.hero-action > button { min-height: 40px; min-width: 40px; padding: 0;
   border-radius: 8px;
   background-color: alpha(currentColor, 0.05);
 }
-button.small-pill { min-height: 30px; padding: 0 12px; font-size: 13px; font-weight: bold; }
+button.small-pill, menubutton.small-pill > button { min-height: 30px; padding: 0 12px; font-size: 13px; font-weight: bold; }
 .ok-banner, .error-banner {
   padding: 14px 16px;
   border-radius: 12px;

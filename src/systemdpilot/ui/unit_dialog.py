@@ -126,19 +126,11 @@ class UnitPanel(Adw.BreakpointBin):
         self._show_unit(unit)
 
     def _install_actions(self) -> None:
-        """The More Actions menu's items, as actions of the "unit" group."""
+        """The Send Signal menu's items, as an action of the "unit" group."""
         group = Gio.SimpleActionGroup()
-        text_type = GLib.VariantType.new("s")
-        actions = [
-            ("reset-failed", None, lambda _a, _p: self._run_action(UnitAction.RESET_FAILED)),
-            ("run", text_type, lambda _a, name: self._run_action(UnitAction.START, name.get_string())),
-            ("signal", text_type, lambda _a, signal: self._on_signal(signal.get_string())),
-            ("edit-override", None, lambda *_: self._edit_override()),
-        ]
-        for name, parameter, callback in actions:
-            action = Gio.SimpleAction.new(name, parameter)
-            action.connect("activate", callback)
-            group.add_action(action)
+        action = Gio.SimpleAction.new("signal", GLib.VariantType.new("s"))
+        action.connect("activate", lambda _a, signal: self._on_signal(signal.get_string()))
+        group.add_action(action)
         self.insert_action_group("unit", group)
 
     def start_loading(self) -> None:
@@ -207,7 +199,8 @@ class UnitPanel(Adw.BreakpointBin):
             UnitAction.RESTART: (_("_Restart"), "view-refresh-symbolic", None),
             UnitAction.STOP: (_("S_top"), "media-playback-stop-symbolic", "destructive-action"),
         }
-        for action in words.control_actions(unit, props):
+        controls = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER)
+        for action in words.detail_actions(unit, props):
             label, icon, css = buttons[action]
             button = Gtk.Button(
                 child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True),
@@ -215,44 +208,41 @@ class UnitPanel(Adw.BreakpointBin):
             )
             if css:
                 button.add_css_class(css)
+            if action is UnitAction.RELOAD and not words.can_reload(props):
+                # Until the details load, and for good if the unit has no ExecReload=.
+                button.set_sensitive(False)
+                if props:
+                    button.set_tooltip_text(_("This unit cannot reload its configuration. Restart it instead."))
             button.connect("clicked", lambda _b, a=action: self._on_control_clicked(a))
-            self.action_box.append(button)
-        if props and (menu := self._more_menu(unit, props)).get_n_items():
-            self.action_box.append(
-                Gtk.MenuButton(
-                    icon_name="view-more-symbolic",
-                    menu_model=menu,
-                    tooltip_text=_("More Actions"),
-                    css_classes=["hero-action"],
-                )
-            )
+            controls.append(button)
+        if controls.get_first_child():
+            self.action_box.append(controls)
+        if props and (extra := self._extra_actions(unit, props)).get_first_child():
+            self.action_box.append(extra)
 
-    @staticmethod
-    def _more_menu(unit: Unit, props: dict[str, str]) -> Gio.Menu:
-        """What the unit allows beyond starting and stopping it."""
-        menu = Gio.Menu()
-        actions = Gio.Menu()
+    def _extra_actions(self, unit: Unit, props: dict[str, str]) -> Gtk.Box:
+        """What the unit allows beyond starting and stopping it, in a smaller row."""
+        box = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+
+        def add(label: str, callback: Callable[[], None]) -> None:
+            button = Gtk.Button(label=label, use_underline=True, css_classes=["small-pill"])
+            button.connect("clicked", lambda *_: callback())
+            box.append(button)
+
         if unit.type == "timer":
             for name in parse_unit_list(props.get("Triggers", "")):
-                item = Gio.MenuItem.new(_("Run {unit} Now").format(unit=short_unit_name(name)), None)
-                item.set_action_and_target_value("unit.run", GLib.Variant.new_string(name))
-                actions.append_item(item)
+                label = _("Run {unit} Now").format(unit=short_unit_name(name))
+                add(label, lambda n=name: self._run_action(UnitAction.START, n))
         if unit.is_failed:
-            actions.append(_("Clear Failed State"), "unit.reset-failed")
+            add(_("Clear Failed State"), lambda: self._run_action(UnitAction.RESET_FAILED))
         if words.can_signal(unit, props):
             signals = Gio.Menu()
             for signal in SIGNALS:
                 item = Gio.MenuItem.new(_SIGNAL_LABELS[signal], None)
                 item.set_action_and_target_value("unit.signal", GLib.Variant.new_string(signal))
                 signals.append_item(item)
-            actions.append_submenu(_("Send Signal"), signals)
-        if actions.get_n_items():
-            menu.append_section(None, actions)
-        if words.can_override(unit, props):
-            edit = Gio.Menu()
-            edit.append(_("Edit Override…"), "unit.edit-override")
-            menu.append_section(None, edit)
-        return menu
+            box.append(Gtk.MenuButton(label=_("Send Signal"), menu_model=signals, css_classes=["small-pill"]))
+        return box
 
     def _on_control_clicked(self, action: UnitAction):
         if question := words.confirm_control(self.unit, action):
@@ -513,11 +503,22 @@ class UnitPanel(Adw.BreakpointBin):
             where.add(self._row(_("Scope"), unit.scope.value, "systemctl --system"))
         path = props.get("FragmentPath") or ""
         file_row = self._row(_("Unit file"), path or "—", "FragmentPath" if path else "", mono=True)
+        if words.can_override(unit, props):
+            override = Gtk.Button(
+                label=_("_Override"),
+                use_underline=True,
+                valign=Gtk.Align.CENTER,
+                tooltip_text=_("Change some settings in a drop-in file, as systemctl edit does"),
+                css_classes=["small-pill"],
+            )
+            override.connect("clicked", lambda *_: self._edit_override())
+            file_row.add_suffix(override)
         if path and unit_file_body(details.unit_file):
             edit = Gtk.Button(
                 label=_("_Edit"),
                 use_underline=True,
                 valign=Gtk.Align.CENTER,
+                tooltip_text=_("Replace the whole unit file"),
                 css_classes=["small-pill"],
             )
             edit.connect("clicked", lambda *_: self._edit_unit_file())

@@ -130,14 +130,16 @@ def test_control_actions_follow_systemd():
     assert words.control_actions(Unit("-.mount", active_state="active", sub_state="mounted")) == ()
 
 
-def test_reload_offered_when_systemd_allows():
+def test_reload_shown_for_running_services_and_units_that_can():
     running = Unit("a.service", active_state="active", sub_state="running")
-    assert words.control_actions(running, {"CanReload": "yes"}) == (
-        UnitAction.RELOAD,
-        UnitAction.RESTART,
-        UnitAction.STOP,
-    )
-    assert words.control_actions(Unit("a.service"), {"CanReload": "yes"}) == (UnitAction.START,)
+    assert words.detail_actions(running) == (UnitAction.RELOAD, UnitAction.RESTART, UnitAction.STOP)
+    assert words.control_actions(running) == (UnitAction.RESTART, UnitAction.STOP)  # not in the list rows
+    assert not words.can_reload({"CanReload": "no"})
+    assert words.can_reload({"CanReload": "yes"})
+    assert words.detail_actions(Unit("a.service")) == (UnitAction.START,)
+    socket = Unit("a.socket", active_state="active", sub_state="listening")
+    assert UnitAction.RELOAD not in words.detail_actions(socket, {"CanReload": "no"})
+    assert UnitAction.RELOAD in words.detail_actions(socket, {"CanReload": "yes"})
 
 
 def test_more_actions_need_processes_and_a_unit_file():

@@ -34,12 +34,11 @@ _UNSTOPPABLE = frozenset({"-.mount", "-.slice", "init.scope"})
 
 
 def control_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[UnitAction, ...]:
-    """Start, or reload, restart and stop, as far as the unit allows.
+    """Start, or restart and stop, as far as the unit allows.
 
     Devices come and go with the hardware; scopes are made by the programs in
     them, so they can only be stopped. With the unit's ``props``, systemd's own
-    CanStart/CanStop and RefuseManualStart/RefuseManualStop decide too, and
-    CanReload offers reloading.
+    CanStart/CanStop and RefuseManualStart/RefuseManualStop decide too.
     """
     running = unit.kind == "running"
     if unit.type == "device" or unit.name in _UNSTOPPABLE:
@@ -53,9 +52,22 @@ def control_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[Un
         can_stop = props.get("CanStop") != "no" and props.get("RefuseManualStop") != "yes"
         allowed = {UnitAction.START: can_start, UnitAction.STOP: can_stop, UnitAction.RESTART: can_start and can_stop}
         actions = tuple(a for a in actions if allowed[a])
-        if running and unit.type != "scope" and props.get("CanReload") == "yes":
-            actions = (UnitAction.RELOAD, *actions)
     return actions
+
+
+def detail_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[UnitAction, ...]:
+    """:func:`control_actions`, with Reload before them for a running unit that can restart.
+
+    A service always shows it, for :func:`can_reload` to allow; other types only when they can.
+    """
+    actions = control_actions(unit, props)
+    if UnitAction.RESTART in actions and (unit.type == "service" or can_reload(props)):
+        return (UnitAction.RELOAD, *actions)
+    return actions
+
+
+def can_reload(props: dict[str, str] | None) -> bool:
+    return bool(props) and props.get("CanReload") == "yes"
 
 
 def confirm_control(unit: Unit, action: UnitAction) -> tuple[str, str, str] | None:
