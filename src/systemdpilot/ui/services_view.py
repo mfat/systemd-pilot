@@ -309,9 +309,8 @@ class ServicesView(Gtk.Box):
         ("user", "User", "systemctl --user"),
     )
     KIND_FILTERS = (
-        ("all", "any", None, "any state"),
-        ("failed", "failed", "failed", "failed"),
         ("running", "running", "running", "active (running)"),
+        ("failed", "failed", "failed", "failed"),
         ("exited", "exited", "exited", "active (exited)"),
         ("dead", "dead", "dead", "inactive (dead)"),
     )
@@ -323,6 +322,8 @@ class ServicesView(Gtk.Box):
         ("masked", "masked", "action-unavailable-symbolic", "UnitFileState=masked → /dev/null"),
         ("load-error", "load error", "dialog-warning-symbolic", "LoadState=not-found, bad-setting or error"),
     )
+    # Last in the status list, as "all types" is in the type list.
+    ANY_FILTER = ("all", "any", "", "any state")
     # value, label, icon, tooltip
     TYPE_FILTERS = (
         ("service", "service", words.TYPE_ICONS["service"], "systemd.service(5): processes"),
@@ -538,7 +539,7 @@ class ServicesView(Gtk.Box):
             row = FilterRow(value, text, dot_kind, tooltip_text=tip)
             rows[value] = row
             listbox.append(row)
-        for value, text, icon, tip in self.PRESET_FILTERS:
+        for value, text, icon, tip in (*self.PRESET_FILTERS, self.ANY_FILTER):
             row = FilterRow(value, text, icon_name=icon, tooltip_text=tip)
             rows[value] = row
             listbox.append(row)
