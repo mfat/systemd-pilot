@@ -1,4 +1,4 @@
-"""The units page: filters, then units grouped by state."""
+"""The units page: filters, then units by name."""
 
 from __future__ import annotations
 
@@ -91,7 +91,6 @@ def user_tag() -> Gtk.Widget:
     )
 
 
-GROUP_ORDER = {"failed": 0, "running": 1, "exited": 2, "dead": 3}
 # New services added to the simple list at a time, more than a screenful: each
 # row the list view makes for them takes a while.
 FILL_CHUNK = 40
@@ -113,39 +112,8 @@ class ServiceItem(GObject.Object):
         self.unit = unit
 
 
-class GroupItem(GObject.Object):
-    """The heading of a group in the simple list, sorted ahead of its services."""
-
-    __gtype_name__ = "SystemdPilotGroupItem"
-
-    def __init__(self, kind: str):
-        super().__init__()
-        self.kind = kind
-
-
-class SectionHeader(Gtk.Box):
-    """The heading and hint over a group of services."""
-
-    def __init__(self):
-        super().__init__(spacing=8, margin_start=28, margin_end=28, margin_bottom=8)
-        self._heading = widgets.label("", "heading")
-        self.append(self._heading)
-        self._hint = widgets.label("", "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END, valign=Gtk.Align.END)
-        self.append(self._hint)
-
-    def show(self, kind: str, first: bool, services_only: bool) -> None:
-        _kind, title, hint, css = ServicesView.GROUPS[GROUP_ORDER[kind]]
-        if kind == "running" and not services_only:
-            # Only services run; timers wait, mounts are mounted…
-            title, hint = "active", ""
-        self._heading.set_label(title)
-        self._heading.set_css_classes(["heading", css] if css else ["heading"])
-        self._hint.set_label(hint)
-        self.set_margin_top(8 if first else 22)
-
-
 class ListRow(Adw.Bin):
-    """One row of the simple list: a group heading or a service, whichever it is bound to.
+    """One row of the simple list, bound to a unit.
 
     The list only has rows for what is on screen, and reuses them while scrolling.
     """
@@ -154,8 +122,7 @@ class ListRow(Adw.Bin):
         super().__init__()
         self._view = view
         self._list_item = list_item
-        self.item: ServiceItem | GroupItem | None = None
-        self._header: SectionHeader | None = None
+        self.item: ServiceItem | None = None
         self.service: ServiceRow | None = None
         # The list's own row around this widget is what takes keyboard focus.
         self._focus = Gtk.EventControllerFocus()
@@ -165,41 +132,25 @@ class ListRow(Adw.Bin):
         self.connect("notify::parent", lambda *_: self._follow_parent())
         list_item.connect("notify::position", lambda *_: self.sync())
 
-    def bind(self, item: ServiceItem | GroupItem) -> None:
+    def bind(self, item: ServiceItem) -> None:
         self.item = item
-        is_service = isinstance(item, ServiceItem)
-        self._list_item.set_activatable(is_service)
-        self._list_item.set_focusable(is_service)
-        if is_service:
-            if self.service is None:
-                self.service = ServiceRow(self._view, self._list_item)
-            widgets.set_bin_child(self, self.service)
-            self.service.bind(item)
-        else:
-            if self._header is None:
-                self._header = SectionHeader()
-            widgets.set_bin_child(self, self._header)
-            self._list_item.set_accessible_label("")
+        if self.service is None:
+            self.service = ServiceRow(self._view, self._list_item)
+            self.set_child(self.service)
+        self.service.bind(item)
         self.sync()
 
     def unbind(self) -> None:
-        if isinstance(self.item, ServiceItem):
-            self.service.unbind()
+        self.service.unbind()
         self.item = None
 
     def sync(self) -> None:
-        """Follow the row's place: the first heading has less space above it, and a
-        group is drawn as one card with rounded corners on its first and last rows."""
+        """Follow the row's place: the list is drawn as one card with rounded corners
+        on its first and last rows."""
         position = self._list_item.get_position()
         if self.item is None or position == Gtk.INVALID_LIST_POSITION:
             return
-        if isinstance(self.item, GroupItem):
-            self._header.show(self.item.kind, first=position == 0, services_only=self._view.type_filter == "service")
-            return
-        model = self._view.model
-        before = model.get_item(position - 1) if position else None
-        after = model.get_item(position + 1)
-        self.service.set_edges(not isinstance(before, ServiceItem), not isinstance(after, ServiceItem))
+        self.service.set_edges(position == 0, position == self._view.model.get_n_items() - 1)
 
     def _follow_parent(self) -> None:
         if self._focus_target is not None:
@@ -227,7 +178,7 @@ class ServiceRow(Gtk.Box):
         self.item: ServiceItem | None = None
         self._changed_handler = 0
         self._made_actions: tuple[UnitAction, ...] | None = None
-        self._edges: list[str] = []  # "first" and "last" of its group
+        self._edges: list[str] = []  # "first" and "last" of the list
         # As in a boxed list: its rows add 2px around their content.
         box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=18, margin_end=18, hexpand=True)
         self._dot = widgets.dot("dead")
@@ -305,7 +256,7 @@ class ServiceRow(Gtk.Box):
         self.sync_classes()
 
     def sync_classes(self) -> None:
-        """Its place in the group, and whether it is the service open in details."""
+        """Its place in the list, and whether it is the service open in details."""
         is_open = self.item is not None and self._view.is_open(self.item.unit)
         self.set_css_classes(["service-row", *self._edges] + (["open"] if is_open else []))
 
@@ -387,12 +338,6 @@ class ServicesView(Gtk.Box):
         ("slice", "slice", words.TYPE_ICONS["slice"], "systemd.slice(5): resource groups"),
         ("scope", "scope", words.TYPE_ICONS["scope"], "systemd.scope(5): processes started elsewhere"),
     )
-    GROUPS = (
-        ("failed", "failed", "failed", "error"),
-        ("running", "running", "active (running)", None),
-        ("exited", "exited", "active (exited)", None),
-        ("dead", "dead", "inactive (dead)", None),
-    )
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
@@ -452,7 +397,7 @@ class ServicesView(Gtk.Box):
         self.filter_lists = (self.filter_list, self.type_list)
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
-        # Grouped by state, then by name, each group after its heading. A list view
+        # Sorted by name. A list view
         # only makes rows for what is on screen; a row for each of hundreds of
         # services took seconds to build.
         self._store = Gio.ListStore(item_type=GObject.Object)
@@ -516,12 +461,10 @@ class ServicesView(Gtk.Box):
 
             handler = self.simple_list.connect("map", mapped)
             return
-        for position in range(self.model.get_n_items()):
-            if isinstance(self.model.get_item(position), ServiceItem):
-                # Before the rows are laid out, this only moves the list's cursor.
-                self.simple_list.scroll_to(position, Gtk.ListScrollFlags.FOCUS, None)
-                self.simple_list.grab_focus()
-                return
+        if self.model.get_n_items():
+            # Before the rows are laid out, this only moves the list's cursor.
+            self.simple_list.scroll_to(0, Gtk.ListScrollFlags.FOCUS, None)
+            self.simple_list.grab_focus()
 
     def is_open(self, unit: Unit) -> bool:
         return self._selected_unit is not None and unit.key == self._selected_unit.key
@@ -629,8 +572,6 @@ class ServicesView(Gtk.Box):
 
     def _apply_filters(self) -> None:
         self._refresh()
-        for row in self._bound_rows():
-            row.sync()  # headings word their group by the type shown
         if self.model.get_n_items():
             self.simple_list.scroll_to(0, Gtk.ListScrollFlags.NONE, None)
         self.emit("filter-changed")
@@ -679,53 +620,27 @@ class ServicesView(Gtk.Box):
 
     def _update_simple(self, visible: list[Unit]) -> None:
         """Change the simple list in place, so scrolling and focus are kept."""
-        # Group headings only when State is "all"; a single-state filter is one group.
-        use_headings = self.kind_filter == "all"
         incoming = {u.key: u for u in visible}
         gone: list[int] = []
-        moved: list[ServiceItem] = []
-        kinds: set[str] = set()
-        headings: dict[str, int] = {}
-        # Services that leave the list or change group go; the sorted model puts
-        # those that come back in their new place.
         for position in range(self._store.get_n_items()):
             item = self._store.get_item(position)
-            if isinstance(item, GroupItem):
-                if use_headings:
-                    headings[item.kind] = position
-                else:
-                    gone.append(position)
-                continue
             unit = incoming.pop(item.unit.key, None)
             if unit is None:
                 gone.append(position)
-                continue
-            if unit.kind != item.unit.kind:
-                gone.append(position)
-                item.unit = unit
-                moved.append(item)
             elif unit != item.unit:
                 item.unit = unit
                 item.emit("changed")
-            kinds.add(unit.kind)
         new = list(incoming.values())
         if len(new) > FILL_CHUNK:
             new = sorted(new, key=_unit_order)[:FILL_CHUNK]
             if not self._fill_source:
                 self._fill_source = GLib.idle_add(self._fill_more)
-        kinds.update(u.kind for u in new)
-        # Headings of groups left empty go too.
-        gone = sorted(gone + [position for kind, position in headings.items() if kind not in kinds])
         for start, count in reversed(_runs(gone)):
             self._store.splice(start, count, [])
-        added: list[GObject.Object] = []
-        if use_headings:
-            added += [GroupItem(kind) for kind in kinds - headings.keys()]
-        added += moved + [ServiceItem(u) for u in new]
-        if added:
-            self._store.splice(self._store.get_n_items(), 0, added)
-        if gone or added:
-            # Rows whose neighbours changed, e.g. a group's new last service.
+        if new:
+            self._store.splice(self._store.get_n_items(), 0, [ServiceItem(u) for u in new])
+        if gone or new:
+            # Rows whose place changed, e.g. the list's new last unit.
             for row in self._bound_rows():
                 row.sync()
         self._sync_open()
@@ -745,9 +660,8 @@ class ServicesView(Gtk.Box):
 
     def _on_row_activated(self, _view, position: int) -> None:
         item = self.model.get_item(position)
-        if isinstance(item, ServiceItem):
-            self._selected_unit = item.unit
-            self.emit("unit-activated", item.unit)
+        self._selected_unit = item.unit
+        self.emit("unit-activated", item.unit)
 
     def _sync_open(self) -> None:
         """Highlight the open service's row, if it is shown."""
@@ -755,31 +669,27 @@ class ServicesView(Gtk.Box):
         if unit is not None:
             for position in range(self._store.get_n_items()):
                 item = self._store.get_item(position)
-                if isinstance(item, ServiceItem) and item.unit.key == unit.key:
+                if item.unit.key == unit.key:
                     self._selected_unit = item.unit  # the list's current object
                     break
         for row in self._bound_rows():
-            if isinstance(row.item, ServiceItem):
-                row.service.sync_classes()
+            row.service.sync_classes()
 
     def _refresh_row_labels(self) -> None:
         for row in self._bound_rows():
-            if isinstance(row.item, ServiceItem):
-                row.service.refresh_labels()
+            row.service.refresh_labels()
 
 
 def _compare(a, b) -> int:
     return (a > b) - (a < b)
 
 
-def _sort_key(item: ServiceItem | GroupItem) -> tuple:
-    if isinstance(item, GroupItem):
-        return GROUP_ORDER[item.kind], False, "", False
+def _sort_key(item: ServiceItem) -> tuple:
     return _unit_order(item.unit)
 
 
 def _unit_order(unit: Unit) -> tuple:
-    return GROUP_ORDER[unit.kind], True, unit.name.lower(), unit.is_user
+    return unit.name.lower(), unit.is_user
 
 
 def _runs(positions: list[int]) -> list[tuple[int, int]]:
