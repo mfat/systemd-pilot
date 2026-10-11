@@ -315,7 +315,7 @@ class ServicesView(Gtk.Box):
         ("user", "User", "systemctl --user"),
     )
     KIND_FILTERS = (
-        ("all", "any", None, "any state"),
+        ("all", "any status", None, "any state"),
         ("failed", "failed", "failed", "failed"),
         ("running", "running", "running", "active (running)"),
         ("exited", "exited", "exited", "active (exited)"),
