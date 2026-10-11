@@ -9,6 +9,7 @@ from systemdpilot.core.errors import (
     ConnectionCancelled,
     HostKeyMismatch,
     HostKeyUnknown,
+    PrivilegesUnavailable,
 )
 from systemdpilot.core.known_hosts import KnownHosts, fingerprint
 from systemdpilot.core.models import AuthMethod, Host
@@ -18,9 +19,10 @@ from systemdpilot.core.ssh import SSHRunner
 class ScriptedRunner(SSHRunner):
     """SSHRunner with the network replaced by a fake remote shell."""
 
-    def __init__(self, uid="1000", nopasswd=False, password="secret"):
+    def __init__(self, uid="1000", nopasswd=False, password="secret", sudo_refusal=None):
         super().__init__(Host("h", "h.example", "me"), KnownHosts(path=None, system_path=None))
         self.uid, self.nopasswd, self.password = uid, nopasswd, password
+        self.sudo_refusal = sudo_refusal  # (exit status, stderr) of a sudo that won't run anything
         self.executed: list[tuple[str, str | None]] = []
 
     def _exec(self, command, stdin, timeout):
@@ -29,7 +31,9 @@ class ScriptedRunner(SSHRunner):
             return 0, self.uid + "\n", ""
         if command == "sudo -n true":
             return (0, "", "") if self.nopasswd else (1, "", "sudo: a password is required\n")
-        if command.startswith("sudo -k -S"):
+        if command.startswith(("sudo -k -S", "LC_ALL=C sudo -k -S")):
+            if self.sudo_refusal:
+                return self.sudo_refusal[0], "", self.sudo_refusal[1]
             given = (stdin or "").split("\n", 1)[0]
             if given != self.password:
                 return 1, "", "Sorry, try again.\nsudo: 3 incorrect password attempts\n"
@@ -64,6 +68,29 @@ def test_wrong_password_is_rejected_before_use():
     with pytest.raises(AuthenticationFailed):
         r.set_sudo_password("nope")
     assert r.needs_sudo_password
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        (1, "me is not in the sudoers file.\n"),
+        (127, "sh: 1: sudo: not found\n"),
+        (1, "sudo: sorry, you must have a tty to run sudo\n"),
+    ],
+)
+def test_sudo_refusal_is_not_a_wrong_password(refusal):
+    # The right password, but sudo won't run anything: asking again would loop forever.
+    r = ScriptedRunner(sudo_refusal=refusal)
+    with pytest.raises(PrivilegesUnavailable) as caught:
+        r.set_sudo_password("secret")
+    assert refusal[1].strip() in str(caught.value)
+    assert r.needs_sudo_password
+
+
+def test_password_check_reads_sudo_in_english():
+    r = ScriptedRunner()
+    r.set_sudo_password("secret")
+    assert any(command.startswith("LC_ALL=C sudo -k -S") for command, _stdin in r.executed)
 
 
 def test_nopasswd_and_root_modes():

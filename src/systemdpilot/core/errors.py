@@ -43,6 +43,10 @@ class AuthenticationCancelled(PilotError):
     """The user dismissed the authentication prompt."""
 
 
+class PrivilegesUnavailable(PilotError):
+    """No password helps: sudo is missing, or refuses this user (not in sudoers, needs a tty)."""
+
+
 class ConnectionFailed(PilotError):
     """An SSH connection could not be established or was lost."""
 

@@ -17,6 +17,7 @@ from .errors import (
     ConnectionCancelled,
     ConnectionFailed,
     HostKeyUnknown,
+    PrivilegesUnavailable,
 )
 from .known_hosts import KnownHosts, translate_bad_host_key
 from .models import AuthMethod, Host
@@ -183,9 +184,14 @@ class SSHRunner(CommandRunner):
     def set_sudo_password(self, password: str) -> None:
         """Check ``password`` with sudo and remember it for this connection."""
         # -k: ignore cached credentials so sudo always reads the password from stdin.
-        code, _, err = self._exec("sudo -k -S -p '' true", password + "\n", 30)
+        # LC_ALL=C: sudo's messages in English, so a wrong password can be told apart.
+        code, _, err = self._exec("LC_ALL=C sudo -k -S -p '' true", password + "\n", 30)
         if code != 0:
-            raise AuthenticationFailed(_sudo_error(err) or "Incorrect sudo password")
+            if _sudo_error(err):
+                raise AuthenticationFailed(_sudo_error(err))
+            # Not the password: no sudo, not in sudoers, requiretty… Asking again won't help.
+            detail = err.strip() or f"exit status {code}"
+            raise PrivilegesUnavailable(f"Cannot run commands as root on {self.host.name} with sudo: {detail}")
         self._sudo_password = password
 
     def forget_sudo_password(self) -> None:

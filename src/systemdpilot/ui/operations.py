@@ -54,10 +54,10 @@ class Operations:
         def failed(error):
             runner = manager.runner
             if isinstance(error, AuthenticationRequired) and isinstance(runner, SSHRunner):
-                self._ask_sudo(runner, attempt, cancelled)
+                self._ask_sudo(runner, attempt, cancelled, failed)
                 return
             if isinstance(error, AuthenticationFailed) and isinstance(runner, SSHRunner):
-                self._ask_sudo(runner, attempt, cancelled, error=_("The password was incorrect. Try again."))
+                self._ask_sudo(runner, attempt, cancelled, failed, error=_("The password was incorrect. Try again."))
                 return
             if isinstance(error, AuthenticationCancelled):
                 cancelled()
@@ -74,24 +74,19 @@ class Operations:
 
         attempt()
 
-    def _ask_sudo(self, runner: SSHRunner, retry, cancelled, error: str = "") -> None:
+    def _ask_sudo(self, runner: SSHRunner, retry, cancelled, failed, error: str = "") -> None:
+        def rejected(e: BaseException):
+            # Only a wrong password is worth asking again for; anything else ends the operation.
+            if isinstance(e, AuthenticationFailed):
+                self._ask_sudo(runner, retry, cancelled, failed, error=_("The password was incorrect. Try again."))
+            else:
+                failed(e)
+
         def on_password(password, _remember):
             if password is None:
                 cancelled()
                 return
-            run_in_thread(
-                runner.set_sudo_password,
-                password,
-                on_done=lambda _r: retry(),
-                on_error=lambda e: self._ask_sudo(
-                    runner,
-                    retry,
-                    cancelled,
-                    error=_("The password was incorrect. Try again.")
-                    if isinstance(e, AuthenticationFailed)
-                    else describe(e),
-                ),
-            )
+            run_in_thread(runner.set_sudo_password, password, on_done=lambda _r: retry(), on_error=rejected)
 
         prompts.ask_password(
             self.parent,
