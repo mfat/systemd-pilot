@@ -266,6 +266,9 @@ class Window(Adw.ApplicationWindow):
             self._show_list()
         if journal:
             self.journal.show()
+            # Typing searches the journal straight away.
+            self.search_bar.set_search_mode(True)
+            self.search_entry.grab_focus()
 
     def _on_journal_activated(self, item):
         # Beside the list, selecting it already showed it.

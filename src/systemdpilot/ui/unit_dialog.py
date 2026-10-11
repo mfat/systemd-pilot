@@ -117,10 +117,7 @@ class UnitPanel(Adw.BreakpointBin):
         self.logs_banner.connect("button-clicked", lambda *_: self._view_logs_as_admin())
         self.raw_switch.connect("notify::active", self._on_raw_toggled)
         self.log_search.connect("search-changed", self._on_log_search)
-        self.stack.connect(
-            "notify::visible-child-name",
-            lambda stack, _p: stack.get_visible_child_name() == "activity" and self._build_pending_activity(),
-        )
+        self.stack.connect("notify::visible-child-name", lambda *_: self._on_page_changed())
 
         self._show_unit(unit)
 
@@ -248,7 +245,19 @@ class UnitPanel(Adw.BreakpointBin):
     def _show_pages(self) -> None:
         """Everything has loaded (or failed): the spinner gives way to the pages, once."""
         self.pages_spinner.stop()
-        self.loading_stack.set_visible_child_name("pages")
+        if self.loading_stack.get_visible_child_name() != "pages":
+            self.loading_stack.set_visible_child_name("pages")
+            self._focus_log_search()
+
+    def _on_page_changed(self) -> None:
+        if self.stack.get_visible_child_name() == "activity":
+            self._build_pending_activity()
+            self._focus_log_search()
+
+    def _focus_log_search(self) -> None:
+        """On the Log page, typing searches it."""
+        if self.stack.get_visible_child_name() == "activity":
+            self.log_search.grab_focus()
 
     # -- loading ----------------------------------------------------------
 
