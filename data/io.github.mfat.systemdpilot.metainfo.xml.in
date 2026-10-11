@@ -54,6 +54,11 @@
   </screenshots>
 
   <releases>
+    <release version="4.2.1" date="2026-10-11">
+      <description>
+        <p>The journal opens quickly in the AppImage again: in about a second, instead of up to eight.</p>
+      </description>
+    </release>
     <release version="4.2.0" date="2026-10-11">
       <description>
         <p>Every unit type, and a closer look at each unit.</p>

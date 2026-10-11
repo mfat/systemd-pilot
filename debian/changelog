@@ -1,3 +1,10 @@
+systemd-pilot (4.2.1) unstable; urgency=medium
+
+  * Open the journal in about a second in the AppImage, instead of up to
+    eight: its problem cards no longer wrap down to one character per line.
+
+ -- mFat <newmfat@gmail.com>  Sun, 11 Oct 2026 16:00:00 +0330
+
 systemd-pilot (4.2.0) unstable; urgency=medium
 
   * List every unit type, with type and status filters in the sidebar.
