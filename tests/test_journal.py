@@ -68,6 +68,25 @@ def test_template_instances_count_as_one_source():
     assert issue.source == "systemd-coredump" and issue.unit == ""
 
 
+def test_failed_units_of_any_type():
+    failed = LogEntry(
+        NOW, 4, "systemd", "1", "backup.mount: Failed with result 'exit-code'.", "backup.mount", user_unit=True
+    )
+    (issue,), _flagged = find_issues([failed])
+    assert (issue.kind, issue.unit, issue.user_unit, issue.names) == (
+        "unit-failed",
+        "backup.mount",
+        True,
+        ["exit-code"],
+    )
+
+
+def test_template_instances_keep_their_type():
+    entries = [entry("bad", "app", 3, n, f"app@{n}.socket") for n in range(2)]
+    (issue,), _flagged = find_issues(entries)
+    assert issue.source == "app.socket"
+
+
 def test_presets():
     boot = "b0"
     assert PRESETS_BY_ID["ssh"].matches(entry("x", "sshd"), boot)

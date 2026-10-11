@@ -8,7 +8,7 @@ from gi.repository import Adw, Gtk
 
 from ..core.errors import InvalidUnitName, UnitExists
 from ..core.manager import SystemdManager
-from ..core.models import Scope, UnitAction
+from ..core.models import Scope, UnitAction, short_unit_name
 from ..core.templates import TEMPLATES, render
 from ..core.validation import normalize_service_name
 from ..i18n import _
@@ -91,9 +91,8 @@ class CreateUnitDialog(Adw.Dialog):
         self._edited = False
 
         if self._editing:
-            short = edit_name.removesuffix(".service") if edit_name.endswith(".service") else edit_name
             self.set_title(_("Edit Service"))
-            self.header_title.set_title(_("Edit {unit}").format(unit=short))
+            self.header_title.set_title(_("Edit {unit}").format(unit=short_unit_name(edit_name)))
             self.create_button.set_label(_("_Save"))
             self.create_button.set_sensitive(True)
             self.name_row.set_text(edit_name)

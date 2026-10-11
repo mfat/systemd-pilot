@@ -15,6 +15,16 @@ class Scope(str, Enum):
     USER = "user"
 
 
+def unit_type(name: str) -> str:
+    """The type a unit name ends in: ``service``, ``timer``, ``mount``, …"""
+    return name.rpartition(".")[2]
+
+
+def short_unit_name(name: str) -> str:
+    """The name as shown: services without ".service", other types in full."""
+    return name.removesuffix(".service")
+
+
 class UnitAction(str, Enum):
     START = "start"
     STOP = "stop"
@@ -58,8 +68,12 @@ class Unit:
         return self.scope is Scope.USER
 
     @property
+    def type(self) -> str:
+        return unit_type(self.name)
+
+    @property
     def short_name(self) -> str:
-        return self.name.removesuffix(".service")
+        return short_unit_name(self.name)
 
     @property
     def is_active(self) -> bool:
@@ -131,6 +145,7 @@ class LogEntry:
     unit: str = ""  # the unit the entry is about, or comes from
     boot_id: str = ""
     kernel: bool = False
+    user_unit: bool = False  # ``unit`` is run by the user's systemd
 
 
 @dataclass(frozen=True)

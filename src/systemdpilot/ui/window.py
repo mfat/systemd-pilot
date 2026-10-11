@@ -16,7 +16,7 @@ from ..core.errors import (
     PilotError,
 )
 from ..core.manager import SystemdManager
-from ..core.models import AuthMethod, Host, Unit, UnitAction
+from ..core.models import AuthMethod, Host, Scope, Unit, UnitAction, short_unit_name
 from ..core.session import LOCAL_ID, Sessions
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
@@ -135,7 +135,7 @@ class Window(Adw.ApplicationWindow):
         # The journal takes the place of the services: its filters, list and details.
         journal_operations = Operations(self, self.toast)
         self.journal = JournalView(journal_operations)
-        self.journal.connect("open-unit", lambda _v, name: self._open_unit_by_name(name))
+        self.journal.connect("open-unit", lambda _v, name, scope: self._open_unit_by_name(name, Scope(scope)))
         self.journal.connect("changed", lambda *_: self._update_badges())
         self.journal.connect("selected", lambda _v, item: self.journal_details.show(item))
         self.journal.connect("activated", lambda _v, item: self._on_journal_activated(item))
@@ -227,7 +227,7 @@ class Window(Adw.ApplicationWindow):
     def _empty_hint(self) -> str:
         if self.show_inactive:
             return ""
-        return _("Use “Show Inactive Services” in the main menu to include stopped services.")
+        return _("Use “Show Inactive Units” in the main menu to include stopped units.")
 
     def show_journal(self):
         self._set_mode("journal")
@@ -255,7 +255,7 @@ class Window(Adw.ApplicationWindow):
         journal = mode == "journal"
         self.mode_dropdown.set_selected(MODES.index(mode))
         set_bin_child(self.filters_bin, self.journal.sidebar if journal else self.services.sidebar)
-        self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search services"))
+        self.search_entry.set_placeholder_text(_("Search the journal") if journal else _("Search units"))
         if journal:
             set_bin_child(self.details_bin, self.journal_details)
         else:
@@ -577,7 +577,7 @@ class Window(Adw.ApplicationWindow):
         # quietly, without the spinner above it.
         quiet = show_spinner or not self.services.units
         if quiet:
-            self._show_loading(_("Loading services…"))
+            self._show_loading(_("Loading units…"))
         self._set_pending(generation, "list", True)
         self.journal.set_manager(manager)
         # Only refetch the journal when that page is open. Reloading it on every
@@ -609,7 +609,7 @@ class Window(Adw.ApplicationWindow):
         def incomplete(error):
             if generation == self._generation:
                 self._set_pending(generation, "inactive", False)
-                self.toast(_("Could not load inactive services: {error}").format(error=describe(error)))
+                self.toast(_("Could not load inactive units: {error}").format(error=describe(error)))
 
         def failed(error):
             if generation != self._generation:
@@ -623,7 +623,7 @@ class Window(Adw.ApplicationWindow):
                 self._update_actions()
                 self._show_error(_("Connection Lost"), describe(error))
             else:
-                self._show_error(_("Could Not Load Services"), describe(error))
+                self._show_error(_("Could Not Load Units"), describe(error))
 
         run_in_thread(manager.list_services, True, on_done=done, on_error=failed)
 
@@ -661,7 +661,7 @@ class Window(Adw.ApplicationWindow):
     def _on_units_loaded(self, units: list[Unit]):
         first = not self.services.units
         self.services.set_units(self._carry_over(units))
-        self.journal.set_known_units({u.name for u in units})
+        self.journal.set_known_units({u.key for u in units})
         self._show_list()
         # A machine's first list takes the keyboard, unless a search is being typed.
         if first and not self.journal_shown and not self.search_bar.get_search_mode():
@@ -812,7 +812,7 @@ class Window(Adw.ApplicationWindow):
         view = Adw.ToolbarView()
         view.add_top_bar(header)
         page = Adw.StatusPage(
-            description=_("Select a service to display its details."),
+            description=_("Select a unit to display its details."),
         )
         icon = app_icon(128)
         if icon:
@@ -867,17 +867,17 @@ class Window(Adw.ApplicationWindow):
         if abs(fraction - self.details_split.get_sidebar_width_fraction()) > 0.001:
             self.details_split.set_sidebar_width_fraction(fraction)
 
-    def _open_unit_by_name(self, name: str):
-        """From the journal: back to the services, with that one open."""
-        unit = next((u for u in self.services.units if u.name == name), None)
+    def _open_unit_by_name(self, name: str, scope: Scope):
+        """From the journal: back to the units, with that one open."""
+        unit = next((u for u in self.services.units if u.key == (scope, name)), None)
         if isinstance(dialog := self.get_visible_dialog(), JournalDetailsDialog):
             dialog.close()
         self._close_journal()
-        self.show_unit(unit or Unit(name))
+        self.show_unit(unit or Unit(name, scope=scope))
 
     def _after_unit_created(self, manager: SystemdManager, name: str):
         manager.invalidate_unit_files()
-        self.toast(_("Created {unit}").format(unit=name))
+        self.toast(_("Created {unit}").format(unit=short_unit_name(name)))
         self.reload()
 
     def _after_daemon_reload(self, manager: SystemdManager):

@@ -115,12 +115,12 @@ class SystemdManager:
     # -- queries ----------------------------------------------------------
 
     def list_units(self, scope: Scope = Scope.SYSTEM, include_inactive: bool = False) -> list[Unit]:
-        """Loaded services of one scope. Fast, but ``file_state`` is not filled in (None)."""
+        """Loaded units of one scope, of every type. Fast, but ``file_state`` is not filled in (None)."""
         result = self._list(scope, self._list_units_args(include_inactive)).check()
         return _with_scope(parse_list_units(result.stdout), scope)
 
     def list_services(self, include_inactive: bool = False) -> list[Unit]:
-        """Loaded system and user services, in one round trip.
+        """Loaded system and user units of every type, in one round trip.
 
         The user part is left out when there is no user instance to ask, as is
         usual over SSH unless the user is logged in or has lingering enabled.
@@ -133,7 +133,7 @@ class SystemdManager:
 
     @staticmethod
     def _list_units_args(include_inactive: bool) -> list[str]:
-        args = ["list-units", "--type=service"]
+        args = ["list-units"]
         if include_inactive:
             args.append("--all")
         return args
@@ -141,7 +141,7 @@ class SystemdManager:
     def complete_units(self, loaded: list[Unit], include_unloaded: bool = False) -> list[Unit]:
         """Add startup states and runtime details (PID, memory, since when) to ``loaded``.
 
-        Optionally adds services that have a unit file but are not loaded.
+        Optionally adds units that have a unit file but are not loaded.
         This asks systemd for every unit file's state, which can take seconds.
         Prefer :meth:`attach_file_states` then :meth:`add_runtime` in the UI so
         enable switches appear before the slower uptime/memory pass.
@@ -151,11 +151,11 @@ class SystemdManager:
     def attach_file_states(self, loaded: list[Unit], include_unloaded: bool = False) -> list[Unit]:
         """Add unit-file states (enabled/disabled/…) without fetching uptimes.
 
-        Unloaded services are only added for the scopes that ``loaded`` has units of.
+        Unloaded units are only added for the scopes that ``loaded`` has units of.
         """
         scopes = [scope for scope in Scope if any(u.scope is scope for u in loaded)]
         missing = [scope for scope in scopes if scope not in self._unit_files]
-        args = ["list-unit-files", "--type=service"]
+        args = ["list-unit-files"]
         if len(missing) == 2:
             results = self._list_each_scope(args)
         else:
@@ -262,7 +262,8 @@ class SystemdManager:
         """A unit's newest log entries, oldest first. ``privileged`` reads them as root."""
         validate_unit_name(name)
         argv = ["journalctl", "--no-pager", "--output=json", f"--lines={int(lines)}"]
-        argv += ["--user-unit", name] if scope is Scope.USER else ["--unit", name]
+        # One argument with "=": names such as "-.mount" must not read as options.
+        argv.append(f"--user-unit={name}" if scope is Scope.USER else f"--unit={name}")
         result = self.runner.run(argv, privileged=privileged)
         entries = parse_journal(result.stdout)
         warning = ""
@@ -403,7 +404,13 @@ class SystemdManager:
         return self.unit_path(name, scope)
 
 
+# A user's systemd shows the machine's devices, mounts and swap too, read-only.
+SYSTEM_ONLY_TYPES = frozenset({"device", "mount", "automount", "swap"})
+
+
 def _with_scope(units: list[Unit], scope: Scope) -> list[Unit]:
+    if scope is Scope.USER:
+        units = [u for u in units if u.type not in SYSTEM_ONLY_TYPES]
     return [dataclasses.replace(u, scope=scope) for u in units]
 
 

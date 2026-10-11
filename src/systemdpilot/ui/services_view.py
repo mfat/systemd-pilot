@@ -1,4 +1,4 @@
-"""The services page: filters, then services grouped by state."""
+"""The units page: filters, then units grouped by state."""
 
 from __future__ import annotations
 
@@ -44,17 +44,29 @@ def matches_kind(unit: Unit, kind: str) -> bool:
     return kind == "all" or unit.kind == kind
 
 
-def matches_filter(unit: Unit, scope: str, kind: str, *, show_inactive: bool = True) -> bool:
-    """Whether ``unit`` matches both the scope and state sidebar filters.
+def matches_type(unit: Unit, unit_type: str) -> bool:
+    """Whether ``unit`` matches a type filter: ``all`` or a unit type such as ``timer``."""
+    return unit_type == "all" or unit.type == unit_type
+
+
+def matches_filter(unit: Unit, scope: str, kind: str, unit_type: str = "all", *, show_inactive: bool = True) -> bool:
+    """Whether ``unit`` matches the scope, state and type sidebar filters.
 
     When ``show_inactive`` is false, inactive units stay out of the main list, but
     the ``dead`` filter and presets that look for idle/broken units still see them.
     """
-    if not (matches_scope(unit, scope) and matches_kind(unit, kind)):
+    if not (matches_scope(unit, scope) and matches_kind(unit, kind) and matches_type(unit, unit_type)):
         return False
     if show_inactive or kind == "dead" or kind in PRESET_MATCH:
         return True
     return not is_inactive_unit(unit)
+
+
+def _type_header(row: Gtk.ListBoxRow, before: Gtk.ListBoxRow | None) -> None:
+    if before is None and row.get_header() is None:
+        row.set_header(
+            widgets.label(_("Type"), "dim-label", "caption-heading", margin_top=12, margin_bottom=6, margin_start=12)
+        )
 
 
 def user_tag() -> Gtk.Widget:
@@ -73,7 +85,11 @@ GROUP_ORDER = {"failed": 0, "running": 1, "exited": 2, "dead": 3}
 # New services added to the simple list at a time, more than a screenful: each
 # row the list view makes for them takes a while.
 FILL_CHUNK = 40
-ACTIONS_WIDTH = (32, 68)  # start; or restart and stop: 32px buttons 4px apart
+
+
+def actions_width(count: int) -> int:
+    """Room for ``count`` row buttons: 32px each, 4px apart."""
+    return max(36 * count - 4, 0)
 
 
 class ServiceItem(GObject.Object):
@@ -107,8 +123,11 @@ class SectionHeader(Gtk.Box):
         self._hint = widgets.label("", "dim-label", "caption", ellipsize=Pango.EllipsizeMode.END, valign=Gtk.Align.END)
         self.append(self._hint)
 
-    def show(self, kind: str, first: bool) -> None:
+    def show(self, kind: str, first: bool, services_only: bool) -> None:
         _kind, title, hint, css = ServicesView.GROUPS[GROUP_ORDER[kind]]
+        if kind == "running" and not services_only:
+            # Only services run; timers wait, mounts are mounted…
+            title, hint = "active", ""
         self._heading.set_label(title)
         self._heading.set_css_classes(["heading", css] if css else ["heading"])
         self._hint.set_label(hint)
@@ -165,7 +184,7 @@ class ListRow(Adw.Bin):
         if self.item is None or position == Gtk.INVALID_LIST_POSITION:
             return
         if isinstance(self.item, GroupItem):
-            self._header.show(self.item.kind, first=position == 0)
+            self._header.show(self.item.kind, first=position == 0, services_only=self._view.type_filter == "service")
             return
         model = self._view.model
         before = model.get_item(position - 1) if position else None
@@ -197,7 +216,7 @@ class ServiceRow(Gtk.Box):
         self._list_item = list_item
         self.item: ServiceItem | None = None
         self._changed_handler = 0
-        self._actions_kind = ""
+        self._made_actions: tuple[UnitAction, ...] | None = None
         self._edges: list[str] = []  # "first" and "last" of its group
         # As in a boxed list: its rows add 2px around their content.
         box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=18, margin_end=18, hexpand=True)
@@ -260,7 +279,7 @@ class ServiceRow(Gtk.Box):
         self._state.set_label(words.state_word(unit))
         self._state.set_tooltip_text(words.state_caption(unit) or None)
         self._state.set_css_classes(["state-word", words.state_css(unit)])
-        self._action_box.set_size_request(ACTIONS_WIDTH[unit.kind == "running"], -1)
+        self._action_box.set_size_request(actions_width(len(words.control_actions(unit))), -1)
         self.sync_classes()
         if self._actions.get_reveal_child():
             self._sync_actions()
@@ -281,21 +300,22 @@ class ServiceRow(Gtk.Box):
         self.set_css_classes(["service-row", *self._edges] + (["open"] if is_open else []))
 
     def _sync_actions(self) -> None:
-        kind = self.item.unit.kind if self.item else ""
-        if kind and kind != self._actions_kind:
-            self._fill_actions(kind)
+        if self.item is None:
+            return
+        actions = words.control_actions(self.item.unit)
+        if actions != self._made_actions:
+            self._fill_actions(actions)
 
-    def _fill_actions(self, kind: str) -> None:
-        self._actions_kind = kind
+    def _fill_actions(self, actions: tuple[UnitAction, ...]) -> None:
+        self._made_actions = actions
         widgets.clear(self._action_box)
-        if kind == "running":
-            buttons = (
-                (UnitAction.RESTART, _("Restart"), "view-refresh-symbolic"),
-                (UnitAction.STOP, _("Stop"), "media-playback-stop-symbolic"),
-            )
-        else:
-            buttons = ((UnitAction.START, _("Start"), "media-playback-start-symbolic"),)
-        for action, tooltip, icon in buttons:
+        buttons = {
+            UnitAction.START: (_("Start"), "media-playback-start-symbolic"),
+            UnitAction.RESTART: (_("Restart"), "view-refresh-symbolic"),
+            UnitAction.STOP: (_("Stop"), "media-playback-stop-symbolic"),
+        }
+        for action in actions:
+            tooltip, icon = buttons[action]
             button = Gtk.Button(icon_name=icon, tooltip_text=tooltip, css_classes=["circular", "row-action"])
             button.connect("clicked", lambda _b, a=action: self._view.emit("unit-action", self.unit, a.value))
             self._action_box.append(button)
@@ -342,6 +362,21 @@ class ServicesView(Gtk.Box):
         ("masked", "masked", "action-unavailable-symbolic", "UnitFileState=masked → /dev/null"),
         ("load-error", "load error", "dialog-warning-symbolic", "LoadState=not-found, bad-setting or error"),
     )
+    # value, label, icon, tooltip
+    TYPE_FILTERS = (
+        ("all", "all types", "view-list-symbolic", "every unit type"),
+        ("service", "service", "cogged-wheel-symbolic", "systemd.service(5): processes"),
+        ("socket", "socket", "network-wired-symbolic", "systemd.socket(5): starts a service on connection"),
+        ("timer", "timer", "alarm-symbolic", "systemd.timer(5): starts a unit on a schedule"),
+        ("path", "path", "folder-symbolic", "systemd.path(5): starts a unit when files change"),
+        ("target", "target", "find-location-symbolic", "systemd.target(5): groups units, as boot stages"),
+        ("mount", "mount", "drive-harddisk-symbolic", "systemd.mount(5): file system mount points"),
+        ("automount", "automount", "drive-removable-media-symbolic", "systemd.automount(5): mounts on first access"),
+        ("swap", "swap", "drive-multidisk-symbolic", "systemd.swap(5): swap space"),
+        ("device", "device", "computer-symbolic", "systemd.device(5): devices the kernel reports"),
+        ("slice", "slice", "view-grid-symbolic", "systemd.slice(5): resource groups"),
+        ("scope", "scope", "applications-system-symbolic", "systemd.scope(5): processes started elsewhere"),
+    )
     GROUPS = (
         ("failed", "failed", "failed", "error"),
         ("running", "running", "active (running)", None),
@@ -364,6 +399,10 @@ class ServicesView(Gtk.Box):
         self._filter = Gio.SimpleAction.new_stateful("filter", GLib.VariantType.new("s"), GLib.Variant("s", "all"))
         self._filter.connect("change-state", self._on_filter)
         actions.add_action(self._filter)
+        # Services first, as before other types were listed: devices alone are hundreds.
+        self._type = Gio.SimpleAction.new_stateful("type", GLib.VariantType.new("s"), GLib.Variant("s", "service"))
+        self._type.connect("change-state", self._on_type)
+        actions.add_action(self._type)
         self.insert_action_group("services", actions)
 
         bar = Gtk.Box(spacing=6, margin_top=12, margin_bottom=4, margin_start=24, margin_end=24)
@@ -390,7 +429,17 @@ class ServicesView(Gtk.Box):
         self.filter_list = self._filter_list(self.KIND_FILTERS, self._kind_rows, self._on_filter_row_selected)
         self.filter_list.select_row(self._kind_rows["all"])
         self.sidebar.append(self.filter_list)
-        self.filter_lists = (self.filter_list,)
+        self._type_rows: dict[str, FilterRow] = {}
+        self.type_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
+        for value, text, icon, tip in self.TYPE_FILTERS:
+            row = FilterRow(value, text, icon_name=icon, tooltip_text=tip)
+            self._type_rows[value] = row
+            self.type_list.append(row)
+        self.type_list.set_header_func(_type_header)
+        self.type_list.select_row(self._type_rows["service"])
+        self.type_list.connect("row-selected", self._on_type_row_selected)
+        self.sidebar.append(self.type_list)
+        self.filter_lists = (self.filter_list, self.type_list)
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
         # Grouped by state, then by name, each group after its heading. A list view
@@ -414,7 +463,7 @@ class ServicesView(Gtk.Box):
             single_click_activate=True,
             css_classes=["services-list"],
         )
-        self.simple_list.update_property([Gtk.AccessibleProperty.LABEL], [_("Services")])
+        self.simple_list.update_property([Gtk.AccessibleProperty.LABEL], [_("Units")])
         self.simple_list.connect("activate", self._on_row_activated)
         self._simple_scroll = Gtk.ScrolledWindow(child=self.simple_list, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.stack.add_named(self._simple_scroll, "simple")
@@ -510,6 +559,10 @@ class ServicesView(Gtk.Box):
     def kind_filter(self) -> str:
         return self._filter.get_state().get_string()
 
+    @property
+    def type_filter(self) -> str:
+        return self._type.get_state().get_string()
+
     # -- internals --------------------------------------------------------
 
     def _build_scope_switcher(self) -> Gtk.Widget:
@@ -543,6 +596,15 @@ class ServicesView(Gtk.Box):
         if row is not None and row.value != self.kind_filter:
             self._filter.change_state(GLib.Variant("s", row.value))
 
+    def _on_type_row_selected(self, _listbox, row):
+        if row is not None and row.value != self.type_filter:
+            self._type.change_state(GLib.Variant("s", row.value))
+
+    def _on_type(self, action, value):
+        action.set_state(value)
+        self.type_list.select_row(self._type_rows[value.get_string()])
+        self._apply_filters()
+
     def _on_scope(self, action, value):
         if value.get_string() == self.scope_filter:
             return
@@ -556,6 +618,8 @@ class ServicesView(Gtk.Box):
 
     def _apply_filters(self) -> None:
         self._refresh()
+        for row in self._bound_rows():
+            row.sync()  # headings word their group by the type shown
         if self.model.get_n_items():
             self.simple_list.scroll_to(0, Gtk.ListScrollFlags.NONE, None)
         self.emit("filter-changed")
@@ -565,15 +629,24 @@ class ServicesView(Gtk.Box):
         return [u for u in self._units if not q or q in u.name.lower() or q in u.description.lower()]
 
     def _visible(self) -> list[Unit]:
-        scope, kind = self.scope_filter, self.kind_filter
-        return [u for u in self._matching() if matches_filter(u, scope, kind, show_inactive=self._show_inactive)]
+        scope, kind, unit_type = self.scope_filter, self.kind_filter, self.type_filter
+        return [
+            u for u in self._matching() if matches_filter(u, scope, kind, unit_type, show_inactive=self._show_inactive)
+        ]
 
     def _refresh(self) -> None:
         matching = self._matching()
-        scope = self.scope_filter
+        scope, kind, unit_type = self.scope_filter, self.kind_filter, self.type_filter
         show_inactive = self._show_inactive
+        # Each list counts what its rows would show with the other filters kept.
         for value, row in self._kind_rows.items():
-            row.set_count(sum(1 for u in matching if matches_filter(u, scope, value, show_inactive=show_inactive)))
+            row.set_count(
+                sum(1 for u in matching if matches_filter(u, scope, value, unit_type, show_inactive=show_inactive))
+            )
+        for value, row in self._type_rows.items():
+            row.set_count(
+                sum(1 for u in matching if matches_filter(u, scope, kind, value, show_inactive=show_inactive))
+            )
 
         visible = self._visible()
         if not visible:
@@ -587,7 +660,7 @@ class ServicesView(Gtk.Box):
             self.empty_page.set_title(_("No Results Found"))
             self.empty_page.set_description(GLib.markup_escape_text(widgets.no_results(self._query)))
         else:
-            self.empty_page.set_title(_("No Services Found"))
+            self.empty_page.set_title(_("No Units Found"))
             # Presets and “dead” already include stopped units; the menu hint is for “any”.
             hint = "" if self.kind_filter == "dead" or self.kind_filter in PRESET_MATCH else self._empty_hint
             self.empty_page.set_description(GLib.markup_escape_text(hint))

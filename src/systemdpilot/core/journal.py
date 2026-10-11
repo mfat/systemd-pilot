@@ -12,7 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from .models import LogEntry
+from .models import LogEntry, unit_type
+from .validation import UNIT_TYPES
 
 ERROR, WARNING = "error", "warning"
 WARNING_PRIORITY = 4  # syslog priority of a warning; journalctl --priority=4 keeps it and worse
@@ -174,7 +175,8 @@ class Issue:
     kind: str
     severity: str
     source: str  # unit or program the entries come from
-    unit: str = ""  # service to open, if any
+    unit: str = ""  # unit to open, if any
+    user_unit: bool = False  # ``unit`` is run by the user's systemd
     names: list[str] = field(default_factory=list)
     entries: list[LogEntry] = field(default_factory=list)
 
@@ -192,7 +194,7 @@ _SSH_FAIL = _any(
     r"|Connection closed by invalid user"
 )
 _SSH_ADDR_RE = re.compile(r"from (\S+) port")
-_UNIT_FAILED_RE = re.compile(r"^(\S+\.service): Failed with result '([^']+)'")
+_UNIT_FAILED_RE = re.compile(r"^(\S+\.(?:" + "|".join(UNIT_TYPES) + r")): Failed with result '([^']+)'")
 # Numbers that change between otherwise identical messages: PIDs, durations, addresses.
 _NUMBERS_RE = re.compile(r"0x[0-9a-f]+|\d+", re.IGNORECASE)
 
@@ -209,11 +211,17 @@ def _unique(values) -> list[str]:
     return list(dict.fromkeys(v for v in values if v))
 
 
+def _is_unit(name: str) -> bool:
+    return "." in name and unit_type(name) in UNIT_TYPES
+
+
 def _source(entry: LogEntry) -> str:
-    """Where an entry comes from. Instances of a template ("foo@1.service") count as one source, "foo"."""
+    """Where an entry comes from. Instances of a template count as one source:
+    "foo" for "foo@1.service", "foo.socket" for "foo@1.socket"."""
     unit = entry.unit
     if "@" in unit:
-        return unit.partition("@")[0]
+        prefix, kind = unit.partition("@")[0], unit_type(unit)
+        return prefix if kind == "service" else f"{prefix}.{kind}"
     return unit or entry.identifier or "kernel"
 
 
@@ -230,9 +238,10 @@ def _classify(entry: LogEntry) -> tuple[str, str, str] | None:
         return "ssh", "ssh", WARNING
     if (entry.kernel and _STORAGE(message)) or (entry.identifier == "smartd" and entry.priority <= 4):
         return "storage", "storage", ERROR
-    if entry.identifier in ("systemd", "init") and entry.unit.endswith(".service"):
+    if entry.identifier in ("systemd", "init") and _is_unit(entry.unit):
         if _UNIT_FAILED_RE.search(message) or (entry.priority <= 3 and "Failed" in message):
-            return f"unit:{entry.unit}", "unit-failed", ERROR
+            scope = "user" if entry.user_unit else "system"
+            return f"unit:{scope}:{entry.unit}", "unit-failed", ERROR
     if entry.priority <= 3:
         return f"errors:{_source(entry)}", "errors", ERROR
     return None
@@ -299,9 +308,11 @@ def _describe(issue: Issue) -> None:
         issue.unit = issue.source
         issue.names = _unique(match.group(2) for match in map(_UNIT_FAILED_RE.search, messages) if match)
 
-    # Problems that come from a service can link to it. Crashes and the
-    # kernel's reports name the program, not a service to look at.
+    # Problems that come from a unit can link to it. Crashes and the
+    # kernel's reports name the program, not a unit to look at.
     if not issue.unit and issue.kind in ("ssh", "errors", "warnings"):
-        units = Counter(e.unit for e in issue.entries if e.unit.endswith(".service") and "@" not in e.unit)
+        units = Counter(e.unit for e in issue.entries if _is_unit(e.unit) and "@" not in e.unit)
         if units:
             issue.unit = units.most_common(1)[0][0]
+    if issue.unit:
+        issue.user_unit = any(e.user_unit for e in issue.entries if e.unit == issue.unit)

@@ -10,7 +10,9 @@ from systemdpilot.core.runner import CommandResult, CommandRunner
 from systemdpilot.core.validation import normalize_service_name, validate_unit_name
 
 
-@pytest.mark.parametrize("name", ["sshd.service", "getty@tty1.service", "a-b_c:d.service", "foo.timer"])
+@pytest.mark.parametrize(
+    "name", ["sshd.service", "getty@tty1.service", "a-b_c:d.service", "foo.timer", "-.mount", "-.slice"]
+)
 def test_valid_names(name):
     assert validate_unit_name(name) == name
 
@@ -25,7 +27,13 @@ def test_invalid_names(name):
 
 def test_normalize_service_name():
     assert normalize_service_name(" web ") == "web.service"
-    assert normalize_service_name("web.timer") == "web.timer"
+    assert normalize_service_name("web.service") == "web.service"
+
+
+def test_normalize_service_name_refuses_other_types():
+    # The new-unit templates are services: a timer made from one would not load.
+    with pytest.raises(InvalidUnitName):
+        normalize_service_name("web.timer")
 
 
 def test_list_units_merges_and_uses_scope(runner):
@@ -125,7 +133,6 @@ def test_list_units_falls_back_to_plain(runner):
         "systemctl",
         "--no-pager",
         "list-units",
-        "--type=service",
         "--output=json",
         returncode=1,
         stderr="Unknown output 'json'.",
@@ -134,7 +141,6 @@ def test_list_units_falls_back_to_plain(runner):
         "systemctl",
         "--no-pager",
         "list-units",
-        "--type=service",
         "--plain",
         stdout="a.service loaded active running A\n",
     )
@@ -191,7 +197,7 @@ def test_logs_user_unit_and_permission_warning(runner):
         stderr="Hint: You are currently not seeing messages from other users and the system.",
     )
     result = SystemdManager(runner).logs("a.service", Scope.USER, lines=10)
-    assert runner.calls[0]["argv"][-2:] == ["--user-unit", "a.service"]
+    assert runner.calls[0]["argv"][-1] == "--user-unit=a.service"
     assert [e.message for e in result.entries] == ["hi"]
     assert "systemd-journal" in result.warning
 
@@ -426,3 +432,11 @@ def test_grant_journal_access_rejects_odd_user_names(runner):
 def test_unit_logs_can_be_read_as_root(runner):
     SystemdManager(runner).logs("a.service", privileged=True)
     assert runner.calls[0]["privileged"]
+
+
+def test_user_scope_leaves_out_the_machines_devices_and_mounts():
+    from systemdpilot.core.manager import _with_scope
+
+    units = [Unit("a.service"), Unit("sda.device"), Unit("-.mount"), Unit("app.slice")]
+    assert [u.name for u in _with_scope(units, Scope.USER)] == ["a.service", "app.slice"]
+    assert len(_with_scope(units, Scope.SYSTEM)) == 4

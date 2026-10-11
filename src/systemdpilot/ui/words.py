@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..core.models import Unit
+from ..core.models import Unit, UnitAction
 from ..i18n import _, ngettext
 
 # File states that "systemctl enable/disable" cannot change.
@@ -12,6 +12,20 @@ FIXED_FILE_STATES = ("", "static", "masked", "masked-runtime", "generated", "tra
 # No unit file / generated / already masked: masking is not useful.
 _UNMASKABLE = frozenset({"masked", "masked-runtime"})
 _NOT_MASKABLE = frozenset({"", "masked", "masked-runtime", "generated", "transient", "alias"})
+
+
+def control_actions(unit: Unit) -> tuple[UnitAction, ...]:
+    """Start, or restart and stop, as far as the unit's type allows.
+
+    Devices come and go with the hardware; scopes are made by the programs in
+    them, so they can only be stopped.
+    """
+    running = unit.kind == "running"
+    if unit.type == "device":
+        return ()
+    if unit.type == "scope":
+        return (UnitAction.STOP,) if running else ()
+    return (UnitAction.RESTART, UnitAction.STOP) if running else (UnitAction.START,)
 
 
 def can_toggle_startup(unit: Unit) -> bool:
@@ -54,6 +68,9 @@ def state_word(unit: Unit) -> str:
     """systemd ActiveState while changing, otherwise the SubState-based kind."""
     if unit.active_state in ("activating", "deactivating", "reloading"):
         return unit.active_state
+    # Only services run: a timer is "waiting", a device "plugged", a mount "mounted".
+    if unit.kind == "running" and unit.type != "service":
+        return unit.sub_state or unit.active_state
     return unit.kind
 
 

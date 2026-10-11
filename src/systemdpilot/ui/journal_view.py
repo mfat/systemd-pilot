@@ -20,7 +20,7 @@ from ..core.journal import (
     until_before,
 )
 from ..core.manager import ACCESS_MISSING, ACCESS_PENDING, SystemdManager
-from ..core.models import LogEntry, LogResult
+from ..core.models import LogEntry, LogResult, Scope, short_unit_name
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
 from . import prompts, widgets, words
@@ -143,19 +143,19 @@ def issue_text(issue: Issue) -> tuple[str, str]:
         title = _("Storage errors")
         explanation = _("The kernel reported disk errors. Back up important data and check the drive’s health.")
     elif issue.kind == "unit-failed":
-        name = issue.unit.removesuffix(".service")
+        name = short_unit_name(issue.unit)
         failures = sum(1 for e in issue.entries if "Failed with result" in e.message)
         title = _("{unit} keeps failing").format(unit=name) if failures > 1 else _("{unit} failed").format(unit=name)
         explanation = (
-            _("The service stopped with an error ({result}).").format(result=", ".join(issue.names))
+            _("It stopped with an error ({result}).").format(result=", ".join(issue.names))
             if issue.names
-            else _("The service stopped with an error.")
+            else _("It stopped with an error.")
         )
     elif issue.kind == "errors":
-        title = _("{source} reported errors").format(source=issue.source.removesuffix(".service"))
+        title = _("{source} reported errors").format(source=short_unit_name(issue.source))
         explanation = issue.latest.message
     else:
-        title = _("Repeated warnings from {source}").format(source=issue.source.removesuffix(".service"))
+        title = _("Repeated warnings from {source}").format(source=short_unit_name(issue.source))
         explanation = issue.latest.message
     return title, explanation
 
@@ -260,14 +260,14 @@ def issue_meta(issue: Issue) -> str:
 class JournalView(Gtk.Box):
     """The problems and the timeline, for the middle column; :attr:`sidebar` holds their filters.
 
-    Emits ``open-unit`` (unit name), ``changed`` when the summary or problem count
+    Emits ``open-unit`` (unit name, scope value), ``changed`` when the summary or problem count
     changes, ``selected`` (an :class:`Issue` or :class:`LogEntry`, or None when it
     is no longer listed) and ``activated`` (the same) when a row is clicked.
     """
 
     __gtype_name__ = "SystemdPilotJournalView"
     __gsignals__ = {
-        "open-unit": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "open-unit": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "selected": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "activated": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
@@ -286,7 +286,7 @@ class JournalView(Gtk.Box):
         self._capped = False  # the range has more errors and warnings than were fetched
         self._boot_id = ""
         self._query = ""
-        self._known_units: set[str] = set()
+        self._known_units: set[tuple[Scope, str]] = set()
         self._shown = PAGE
         self.issues: list[Issue] = []
         self.loaded = False
@@ -520,11 +520,11 @@ class JournalView(Gtk.Box):
         self._shown = PAGE
         self._refresh()
 
-    def set_known_units(self, names: set[str]) -> None:
-        self._known_units = names
+    def set_known_units(self, keys: set[tuple[Scope, str]]) -> None:
+        self._known_units = keys
 
-    def knows_unit(self, name: str) -> bool:
-        return name in self._known_units
+    def knows_unit(self, name: str, user: bool) -> bool:
+        return (Scope.USER if user else Scope.SYSTEM, name) in self._known_units
 
     @property
     def boot_id(self) -> str:

@@ -94,6 +94,11 @@ def parse_list_unit_files(text: str) -> dict[str, str]:
     return states
 
 
+def is_template(name: str) -> bool:
+    """Whether ``name`` is a template such as "getty@.service", not an instance of one."""
+    return name.rpartition(".")[0].endswith("@")
+
+
 def merge_units(
     loaded: list[Unit], files: dict[str, str], include_unloaded: bool, scope: Scope = Scope.SYSTEM
 ) -> list[Unit]:
@@ -116,7 +121,7 @@ def merge_units(
     if include_unloaded:
         for name, state in files.items():
             # Templates ("foo@.service") cannot be started without an instance name.
-            if name not in merged and not name.endswith("@.service"):
+            if name not in merged and not is_template(name):
                 merged[name] = Unit(
                     name=name,
                     load_state="not-loaded",
@@ -188,6 +193,17 @@ def _journal_field(entry: dict, key: str) -> str:
     return str(value)
 
 
+def _entry_unit(entry: dict) -> tuple[str, bool]:
+    """The unit an entry is about, and whether the user's systemd runs it.
+
+    systemd's own messages name the unit they are about in UNIT/USER_UNIT.
+    """
+    for key, user in (("UNIT", False), ("USER_UNIT", True), ("_SYSTEMD_USER_UNIT", True), ("_SYSTEMD_UNIT", False)):
+        if value := _journal_field(entry, key):
+            return value, user
+    return "", False
+
+
 def parse_journal(text: str) -> list[LogEntry]:
     """Parse ``journalctl -o json`` output (one JSON object per line)."""
     entries = []
@@ -208,6 +224,7 @@ def parse_journal(text: str) -> list[LogEntry]:
             priority = int(_journal_field(entry, "PRIORITY") or 6)
         except ValueError:
             priority = 6
+        unit, user_unit = _entry_unit(entry)
         entries.append(
             LogEntry(
                 timestamp=timestamp,
@@ -215,11 +232,8 @@ def parse_journal(text: str) -> list[LogEntry]:
                 identifier=_journal_field(entry, "SYSLOG_IDENTIFIER") or _journal_field(entry, "_COMM"),
                 pid=_journal_field(entry, "_PID") or _journal_field(entry, "SYSLOG_PID"),
                 message=strip_ansi(_journal_field(entry, "MESSAGE")),
-                # systemd's own messages name the unit they are about in UNIT/USER_UNIT.
-                unit=_journal_field(entry, "UNIT")
-                or _journal_field(entry, "USER_UNIT")
-                or _journal_field(entry, "_SYSTEMD_USER_UNIT")
-                or _journal_field(entry, "_SYSTEMD_UNIT"),
+                unit=unit,
+                user_unit=user_unit,
                 boot_id=_journal_field(entry, "_BOOT_ID"),
                 kernel=_journal_field(entry, "_TRANSPORT") == "kernel",
             )

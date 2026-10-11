@@ -39,13 +39,13 @@
                 <child type="top">
                   <object class="AdwHeaderBar">
                     <property name="title-widget">
-                      <!-- What the window shows: services or the journal. -->
+                      <!-- What the window shows: units or the journal. -->
                       <object class="GtkDropDown" id="mode_dropdown">
                         <property name="tooltip-text" translatable="yes">Choose What to Show</property>
                         <property name="model">
                           <object class="GtkStringList">
                             <items>
-                              <item translatable="yes">Services</item>
+                              <item translatable="yes">Units</item>
                               <item translatable="yes">Journal</item>
                             </items>
                           </object>
@@ -226,7 +226,7 @@
                         <property name="child">
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="hexpand">True</property>
-                            <property name="placeholder-text" translatable="yes">Search services</property>
+                            <property name="placeholder-text" translatable="yes">Search units</property>
                             <signal name="search-changed" handler="on_search_changed"/>
                           </object>
                         </property>
@@ -388,7 +388,7 @@
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Show _Inactive Services</attribute>
+        <attribute name="label" translatable="yes">Show _Inactive Units</attribute>
         <attribute name="action">win.show-inactive</attribute>
       </item>
     </section>
@@ -412,7 +412,7 @@
         </item>
       </submenu>
       <submenu>
-        <attribute name="label" translatable="yes">Service _Labels</attribute>
+        <attribute name="label" translatable="yes">Unit _Labels</attribute>
         <item>
           <attribute name="label" translatable="yes">_Description / Name</attribute>
           <attribute name="action">win.unit-label-order</attribute>

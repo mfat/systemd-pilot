@@ -69,7 +69,7 @@ def test_parse_list_unit_files():
 
 def test_merge_units_has_no_duplicates():
     loaded = [Unit("a.service", "A", "loaded", "active", "running")]
-    files = {"a.service": "enabled", "b.service": "disabled", "t@.service": "static"}
+    files = {"a.service": "enabled", "b.service": "disabled", "t@.service": "static", "t@.socket": "static"}
 
     merged = merge_units(loaded, files, include_unloaded=True)
     assert [u.name for u in merged] == ["a.service", "b.service"]
@@ -145,3 +145,11 @@ def test_parse_journal_unit_boot_and_transport():
     entry, kernel_entry = parse_journal(line + "\n" + kernel)
     assert (entry.unit, entry.boot_id, entry.kernel) == ("a.service", "abc", False)
     assert kernel_entry.kernel and kernel_entry.unit == ""
+
+
+def test_journal_entry_unit_scope():
+    system = {"MESSAGE": "x", "UNIT": "home.mount"}
+    user = {"MESSAGE": "x", "_SYSTEMD_UNIT": "user@1000.service", "_SYSTEMD_USER_UNIT": "app.service"}
+    (a, b) = parse_journal(json.dumps(system) + "\n" + json.dumps(user))
+    assert (a.unit, a.user_unit) == ("home.mount", False)
+    assert (b.unit, b.user_unit) == ("app.service", True)

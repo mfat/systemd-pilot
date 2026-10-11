@@ -32,7 +32,8 @@ def validate_unit_name(name: str) -> str:
         raise InvalidUnitName(name, "the name is empty")
     if len(name) > MAX_NAME_LENGTH:
         raise InvalidUnitName(name, "the name is too long")
-    if name.startswith(("-", ".")):
+    # "-" alone is the escaped root path, as in "-.mount" and "-.slice".
+    if name.startswith(".") or (name.startswith("-") and not name.startswith("-.")):
         raise InvalidUnitName(name, "the name must not start with “-” or “.”")
     if not _NAME_RE.match(name):
         raise InvalidUnitName(
@@ -43,8 +44,13 @@ def validate_unit_name(name: str) -> str:
 
 
 def normalize_service_name(name: str) -> str:
-    """Append ``.service`` if no unit type was given, then validate."""
+    """Append ``.service`` if no unit type was given, then validate.
+
+    Only services can be made: the templates are service files.
+    """
     name = name.strip()
     if not any(name.endswith("." + t) for t in UNIT_TYPES):
         name += ".service"
+    elif not name.endswith(".service"):
+        raise InvalidUnitName(name, "only services can be created here")
     return validate_unit_name(name)

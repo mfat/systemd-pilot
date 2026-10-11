@@ -6,7 +6,7 @@ from gi.repository import Adw, Gtk, Pango
 
 from .. import APP_ID
 from ..core.journal import ERROR, Issue
-from ..core.models import LogEntry
+from ..core.models import LogEntry, Scope
 from ..i18n import _, ngettext
 from . import widgets, words
 from .journal_view import LEVEL_ICONS, JournalView, issue_meta, issue_text
@@ -85,11 +85,12 @@ class JournalDetails(Adw.Bin):
         box.append(line)
         self._content.append(box)
 
-    def _open_button(self, unit: str) -> None:
-        if not unit or not self.journal.knows_unit(unit):
+    def _open_button(self, unit: str, user: bool) -> None:
+        if not unit or not self.journal.knows_unit(unit, user):
             return
-        button = Gtk.Button(label=_("Open Service"), halign=Gtk.Align.START, css_classes=["pill"])
-        button.connect("clicked", lambda *_: self.journal.emit("open-unit", unit))
+        scope = Scope.USER if user else Scope.SYSTEM
+        button = Gtk.Button(label=_("Open Unit"), halign=Gtk.Align.START, css_classes=["pill"])
+        button.connect("clicked", lambda *_: self.journal.emit("open-unit", unit, scope.value))
         self._content.append(button)
 
     def _show_issue(self, issue: Issue) -> None:
@@ -104,7 +105,7 @@ class JournalDetails(Adw.Bin):
         if explanation:
             self._content.append(widgets.label(explanation, "issue-explanation", wrap=True, selectable=True))
         self._content.append(widgets.label(issue_meta(issue), "dim-label", "caption", wrap=True))
-        self._open_button(issue.unit)
+        self._open_button(issue.unit, issue.user_unit)
 
         count = len(issue.entries)
         section = widgets.Section(ngettext("{n} Entry", "{n} Entries", count).format(n=count), _("Newest first"))
@@ -124,7 +125,7 @@ class JournalDetails(Adw.Bin):
             css_classes=[level_css or "dim-label"],
         )
         self._heading(mark, first or _("Journal Entry"), (level_word, level_css) if level_css else None)
-        self._open_button(entry.unit)
+        self._open_button(entry.unit, entry.user_unit)
 
         message = Gtk.Label(
             label=entry.message,

@@ -163,14 +163,13 @@ class UnitPanel(Adw.BreakpointBin):
 
     def _show_actions(self, unit: Unit):
         widgets.clear(self.action_box)
-        if unit.kind == "running":
-            buttons = [
-                (UnitAction.RESTART, _("_Restart"), "view-refresh-symbolic", None),
-                (UnitAction.STOP, _("S_top"), "media-playback-stop-symbolic", "destructive-action"),
-            ]
-        else:
-            buttons = [(UnitAction.START, _("_Start"), "media-playback-start-symbolic", "suggested-action")]
-        for action, label, icon, css in buttons:
+        buttons = {
+            UnitAction.START: (_("_Start"), "media-playback-start-symbolic", "suggested-action"),
+            UnitAction.RESTART: (_("_Restart"), "view-refresh-symbolic", None),
+            UnitAction.STOP: (_("S_top"), "media-playback-stop-symbolic", "destructive-action"),
+        }
+        for action in words.control_actions(unit):
+            label, icon, css = buttons[action]
             button = Gtk.Button(
                 child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True),
                 css_classes=["hero-action"],
@@ -411,9 +410,7 @@ class UnitPanel(Adw.BreakpointBin):
             if peak:
                 memory_row.set_tooltip_text(f"MemoryPeak {words.size(peak)}")
             resources.add(memory_row)
-            resources.add(
-                self._row("CPUUsageNSec", words.cpu_time(parse_int(props.get("CPUUsageNSec", ""))))
-            )
+            resources.add(self._row("CPUUsageNSec", words.cpu_time(parse_int(props.get("CPUUsageNSec", "")))))
             tasks = parse_int(props.get("TasksCurrent", ""))
             limit = parse_int(props.get("TasksMax", ""))
             tasks_row = self._row(
