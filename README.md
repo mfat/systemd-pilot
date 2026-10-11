@@ -6,9 +6,8 @@
 
 systemd Pilot is a desktop app for managing systemd units on your local machine or remotely over SSH. 
 
-![Units on this computer](data/screenshots/main.png)
+<img width="1652" height="1093" alt="image" src="https://github.com/user-attachments/assets/061c3c13-50c5-40b1-927f-eefb10cb7fbc" />
 
-![Details and logs of a unit](data/screenshots/details.png)
 
 ## Features
 
