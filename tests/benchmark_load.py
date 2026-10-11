@@ -59,10 +59,7 @@ def backend_report(manager: SystemdManager, scope: Scope) -> None:
             t0 = time.perf_counter()
             fn()
             times.append(time.perf_counter() - t0)
-        print(
-            f"  {label:32s}  med={statistics.median(times):.3f}s  "
-            f"(2nd call cached: ", end=""
-        )
+        print(f"  {label:32s}  med={statistics.median(times):.3f}s  (2nd call cached: ", end="")
         t0 = time.perf_counter()
         fn()
         print(f"{time.perf_counter() - t0:.3f}s)")

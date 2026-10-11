@@ -151,7 +151,18 @@ def run_steps(window):
         manager._unit_files = {Scope.SYSTEM: {"taken.timer": "enabled"}}
         dialog = CreateUnitDialog(manager, scope, "test", Operations(), on_created=created.append, **kwargs)
         dialog.present(window)
+        wait_shown(dialog)
         return dialog, created
+
+    def wait_shown(dialog):
+        """Until ``dialog`` has opened. libadwaita 1.5 opens it on its second frame
+        after being shown, and closing it before then does nothing."""
+        ticks = []
+        dialog.add_tick_callback(lambda *_: ticks.append(None) or len(ticks) < 3)
+        context = GLib.MainContext.default()
+        deadline = GLib.get_monotonic_time() + 5 * GLib.USEC_PER_SEC
+        while len(ticks) < 3 and GLib.get_monotonic_time() < deadline:
+            context.iteration(False)
 
     def fake_runner(*codes):
         """Answers each command with the next exit status (0 once they run out), recording calls."""
@@ -255,6 +266,7 @@ def run_steps(window):
         check(not runner.calls[-1]["privileged"], "a user unit was written privileged")
         alert = window.get_visible_dialog()
         check(isinstance(alert, Adw.Dialog) and "Enable" in alert.get_title(), "enable failure not shown")
+        wait_shown(alert)
         alert.close()
         check(window.get_visible_dialog() is None, f"left open: {window.get_visible_dialog()}")
 
@@ -364,6 +376,7 @@ def run_steps(window):
         window.machine_list.select_row(window._row_for(host.id))
 
     def answer(alert, response):
+        wait_shown(alert)
         alert.emit("response", response)
         alert.close()
 
