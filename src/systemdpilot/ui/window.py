@@ -50,9 +50,11 @@ class MachineRow(Gtk.ListBoxRow):
         box.append(Gtk.Image(icon_name=icon_name))
         labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         labels.append(Gtk.Label(label=title, xalign=0, ellipsize=Pango.EllipsizeMode.END))
-        labels.append(
-            Gtk.Label(label=subtitle, xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["dim-label", "caption"])
+        subtitle_label = Gtk.Label(
+            label=subtitle, xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["dim-label", "caption"]
         )
+        subtitle_label.set_visible(bool(subtitle))
+        labels.append(subtitle_label)
         box.append(labels)
         self.status = dot("running", small=True)
         self.status.set_tooltip_text(_("Connected"))
@@ -326,7 +328,7 @@ class Window(Adw.ApplicationWindow):
 
     def _rebuild_machine_list(self):
         self.machine_list.remove_all()
-        local = MachineRow(LOCAL_ID, _("This Computer"), GLib.get_host_name(), "systemdpilot-computer-symbolic")
+        local = MachineRow(LOCAL_ID, _("This Computer"), "", "systemdpilot-computer-symbolic")
         local.set_connected(False)
         self.machine_list.append(local)
         for host in self.sessions.hosts.hosts():
@@ -356,6 +358,7 @@ class Window(Adw.ApplicationWindow):
         self.machine_icon.set_from_icon_name(row.icon_name)
         self.machine_name.set_label(row.title)
         self.machine_subtitle.set_label(row.subtitle)
+        self.machine_subtitle.set_visible(bool(row.subtitle))
         self.machine_dot.set_visible(row.connected)
         self.machine_button.update_property([Gtk.AccessibleProperty.LABEL], [row.title])
 
