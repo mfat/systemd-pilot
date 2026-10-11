@@ -52,9 +52,6 @@ class Unit:
     sub_state: str = ""
     # enabled, disabled, static, masked, …; "" if there is no unit file, None if not known yet
     file_state: str | None = None
-    # What starts it even when it is disabled: a socket, a D-Bus name, a unit that
-    # wants it… Only looked up for active, disabled units; see attach_file_states.
-    started_by: tuple[str, ...] = ()
     # Filled in with the startup states; see SystemdManager.complete_units.
     main_pid: int = 0
     memory: int | None = None  # bytes

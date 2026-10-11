@@ -135,27 +135,6 @@ def test_runtime_is_asked_per_scope(runner):
     assert (system.main_pid, user.main_pid) == (1, 9)
 
 
-def test_started_by_is_asked_only_for_active_disabled_units(runner):
-    runner.reply("systemctl", "--no-pager", "list-unit-files", stdout="[]")
-    runner.reply(
-        "systemctl",
-        "--no-pager",
-        "show",
-        stdout="Id=a.service\nTriggeredBy=a.socket\nWantedBy=\nBusName=\n\nId=b.service\nTriggeredBy=\nBusName=\n",
-    )
-    units = [
-        Unit("a.service", active_state="active", sub_state="running", file_state="disabled"),
-        Unit("b.service", active_state="active", sub_state="running", file_state="disabled"),
-        Unit("c.service", active_state="inactive", sub_state="dead", file_state="disabled"),
-    ]
-    manager = SystemdManager(runner)
-    manager._unit_files[Scope.SYSTEM] = {u.name: "disabled" for u in units}
-    a, b, c = manager.attach_file_states(units)
-    assert (a.started_by, b.started_by, c.started_by) == (("a.socket",), (), ())
-    (show,) = [call["argv"] for call in runner.calls if "show" in call["argv"]]
-    assert show[-2:] == ["a.service", "b.service"]
-
-
 def test_list_units_falls_back_to_plain(runner):
     runner.reply(
         "systemctl",

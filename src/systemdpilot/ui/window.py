@@ -718,7 +718,7 @@ class Window(Adw.ApplicationWindow):
         for unit in units:
             old = previous.get(unit.key)
             if unit.file_state is None and old is not None:
-                unit = dataclasses.replace(unit, file_state=old.file_state, started_by=old.started_by)
+                unit = dataclasses.replace(unit, file_state=old.file_state)
                 if old.active_state == unit.active_state:
                     unit = dataclasses.replace(unit, main_pid=old.main_pid, memory=old.memory, since=old.since)
             carried.append(unit)
