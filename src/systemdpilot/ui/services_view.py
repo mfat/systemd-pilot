@@ -352,7 +352,7 @@ class ServicesView(Gtk.Box):
         self._scope = Gio.SimpleAction.new_stateful("scope", GLib.VariantType.new("s"), GLib.Variant("s", "all"))
         self._scope.connect("change-state", self._on_scope)
         actions.add_action(self._scope)
-        self._filter = Gio.SimpleAction.new_stateful("filter", GLib.VariantType.new("s"), GLib.Variant("s", "all"))
+        self._filter = Gio.SimpleAction.new_stateful("filter", GLib.VariantType.new("s"), GLib.Variant("s", "running"))
         self._filter.connect("change-state", self._on_filter)
         actions.add_action(self._filter)
         # Services first, as before other types were listed: devices alone are hundreds.
@@ -383,7 +383,7 @@ class ServicesView(Gtk.Box):
         self.sidebar.append(switcher)
         self._kind_rows: dict[str, FilterRow] = {}
         self.filter_list = self._filter_list(self.KIND_FILTERS, self._kind_rows, self._on_filter_row_selected)
-        self.filter_list.select_row(self._kind_rows["all"])
+        self.filter_list.select_row(self._kind_rows["running"])
         self.sidebar.append(self.filter_list)
         self._type_rows: dict[str, FilterRow] = {}
         self.type_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
@@ -622,8 +622,8 @@ class ServicesView(Gtk.Box):
             self.empty_page.set_description(GLib.markup_escape_text(widgets.no_results(self._query)))
         else:
             self.empty_page.set_title(_("No Units Found"))
-            # Presets and “dead” already include stopped units; the menu hint is for “any”.
-            hint = "" if self.kind_filter == "dead" or self.kind_filter in PRESET_MATCH else self._empty_hint
+            # Only “any” leaves stopped units out; the other statuses never or always include them.
+            hint = self._empty_hint if self.kind_filter == "all" else ""
             self.empty_page.set_description(GLib.markup_escape_text(hint))
         self.stack.set_visible_child_name("empty")
 
