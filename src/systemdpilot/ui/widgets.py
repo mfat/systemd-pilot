@@ -169,10 +169,16 @@ class FilterRow(Gtk.ListBoxRow):
         else:
             mark = Gtk.Image(icon_name=icon_name or "cogged-wheel-symbolic")
         box.append(mark)
-        box.append(label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        self.text = label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END)
+        box.append(self.text)
         self.count = label("", "dim-label", "numeric")
         box.append(self.count)
         self.set_child(box)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [text])
+
+    def set_text(self, text: str, tooltip: str) -> None:
+        self.text.set_label(text)
+        self.set_tooltip_text(tooltip)
         self.update_property([Gtk.AccessibleProperty.LABEL], [text])
 
     def set_count(self, count: int) -> None:

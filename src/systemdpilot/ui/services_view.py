@@ -557,7 +557,15 @@ class ServicesView(Gtk.Box):
     def _on_type(self, action, value):
         action.set_state(value)
         self.type_list.select_row(self._type_rows[value.get_string()])
+        self._name_running_row()
         self._apply_filters()
+
+    def _name_running_row(self) -> None:
+        # Only services run: other active units are plugged, mounted, waiting, listening.
+        if self.type_filter == "service":
+            self._kind_rows["running"].set_text("running", "active (running)")
+        else:
+            self._kind_rows["running"].set_text("active", "ActiveState=active")
 
     def _on_scope(self, action, value):
         if value.get_string() == self.scope_filter:
