@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from datetime import datetime
 
 from .errors import ParseError
@@ -134,13 +135,36 @@ def merge_units(
 
 
 def parse_properties(text: str) -> dict[str, str]:
-    """Parse ``systemctl show`` ``Key=Value`` lines."""
-    props = {}
+    """Parse ``systemctl show`` ``Key=Value`` lines.
+
+    Some properties come once per value, as a socket's ``Listen=`` or each
+    ``ExecStart=`` command: their values are joined by newlines.
+    """
+    props: dict[str, str] = {}
     for line in strip_ansi(text).splitlines():
         key, sep, value = line.partition("=")
         if sep:
-            props[key] = value
+            props[key] = f"{props[key]}\n{value}" if key in props else value
     return props
+
+
+def parse_unit_list(value: str) -> list[str]:
+    """Unit names from a dependency property such as ``Wants=``; odd names come quoted."""
+    try:
+        return shlex.split(value)
+    except ValueError:
+        return value.split()
+
+
+_TIMER_SPEC_RE = re.compile(r"\{ (\w+)=(.*?) ; next_elapse=(.*?) \}")
+
+
+def parse_timer_specs(value: str) -> list[tuple[str, str, str]]:
+    """``TimersCalendar=``/``TimersMonotonic=`` as (setting, value, next elapse) triples.
+
+    systemd writes each as ``{ OnCalendar=daily ; next_elapse=@1791750600 }``.
+    """
+    return _TIMER_SPEC_RE.findall(value)
 
 
 def parse_show_units(text: str) -> dict[str, dict[str, str]]:

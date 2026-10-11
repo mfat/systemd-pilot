@@ -7,6 +7,21 @@ from datetime import datetime
 from ..core.models import Unit, UnitAction
 from ..i18n import _, ngettext
 
+# An icon for each unit type, in the sidebar and the details header.
+TYPE_ICONS = {
+    "service": "cogged-wheel-symbolic",
+    "socket": "network-wired-symbolic",
+    "timer": "alarm-symbolic",
+    "path": "folder-symbolic",
+    "target": "find-location-symbolic",
+    "mount": "drive-harddisk-symbolic",
+    "automount": "drive-removable-media-symbolic",
+    "swap": "drive-multidisk-symbolic",
+    "device": "computer-symbolic",
+    "slice": "view-grid-symbolic",
+    "scope": "applications-system-symbolic",
+}
+
 # File states that "systemctl enable/disable" cannot change.
 FIXED_FILE_STATES = ("", "static", "masked", "masked-runtime", "generated", "transient", "indirect", "alias")
 # No unit file / generated / already masked: masking is not useful.
@@ -14,18 +29,43 @@ _UNMASKABLE = frozenset({"masked", "masked-runtime"})
 _NOT_MASKABLE = frozenset({"", "masked", "masked-runtime", "generated", "transient", "alias"})
 
 
-def control_actions(unit: Unit) -> tuple[UnitAction, ...]:
-    """Start, or restart and stop, as far as the unit's type allows.
+# The root file system and slice, and PID 1's scope, stay up as long as the machine does.
+_UNSTOPPABLE = frozenset({"-.mount", "-.slice", "init.scope"})
+
+
+def control_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[UnitAction, ...]:
+    """Start, or restart and stop, as far as the unit allows.
 
     Devices come and go with the hardware; scopes are made by the programs in
-    them, so they can only be stopped.
+    them, so they can only be stopped. With the unit's ``props``, systemd's own
+    CanStart/CanStop and RefuseManualStart/RefuseManualStop decide too.
     """
     running = unit.kind == "running"
-    if unit.type == "device":
+    if unit.type == "device" or unit.name in _UNSTOPPABLE:
         return ()
     if unit.type == "scope":
-        return (UnitAction.STOP,) if running else ()
-    return (UnitAction.RESTART, UnitAction.STOP) if running else (UnitAction.START,)
+        actions: tuple[UnitAction, ...] = (UnitAction.STOP,) if running else ()
+    else:
+        actions = (UnitAction.RESTART, UnitAction.STOP) if running else (UnitAction.START,)
+    if props:
+        can_start = props.get("CanStart") != "no" and props.get("RefuseManualStart") != "yes"
+        can_stop = props.get("CanStop") != "no" and props.get("RefuseManualStop") != "yes"
+        allowed = {UnitAction.START: can_start, UnitAction.STOP: can_stop, UnitAction.RESTART: can_start and can_stop}
+        actions = tuple(a for a in actions if allowed[a])
+    return actions
+
+
+def confirm_control(unit: Unit, action: UnitAction) -> tuple[str, str, str] | None:
+    """(heading, body, button) to ask before ``action``, or None to go ahead.
+
+    Stopping a target can take down the units that need it.
+    """
+    if unit.type != "target" or action not in (UnitAction.STOP, UnitAction.RESTART):
+        return None
+    body = _("Units that need this target may stop with it.")
+    if action is UnitAction.STOP:
+        return _("Stop {unit}?").format(unit=unit.short_name), body, _("S_top")
+    return _("Restart {unit}?").format(unit=unit.short_name), body, _("_Restart")
 
 
 def can_toggle_startup(unit: Unit) -> bool:
@@ -139,6 +179,16 @@ def duration(since: datetime, now: datetime | None = None) -> str:
         return ngettext("{n} hour", "{n} hours", hours).format(n=hours)
     days = round(minutes / 1440)
     return ngettext("{n} day", "{n} days", days).format(n=days)
+
+
+def moment(when: datetime, now: datetime | None = None) -> str:
+    """A time before or after now: "in 5 hours · Mon, Oct 12 at 00:00", "2 days ago · …"."""
+    clock = now or datetime.now()
+    date = when.strftime("%a, %b %-d at %H:%M")
+    if when > clock:
+        # Translators: {time} is a duration such as "5 minutes"
+        return _("in {time} · {date}").format(time=duration(clock, when), date=date)
+    return _("{ago} · {date}").format(ago=ago(when, clock), date=date)
 
 
 def ago(when: datetime | None, now: datetime | None = None) -> str:

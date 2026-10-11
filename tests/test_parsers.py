@@ -7,6 +7,8 @@ from systemdpilot.core.parsers import (
     parse_list_unit_files,
     parse_list_units,
     parse_properties,
+    parse_timer_specs,
+    parse_unit_list,
     strip_ansi,
     unit_file_body,
 )
@@ -153,3 +155,25 @@ def test_journal_entry_unit_scope():
     (a, b) = parse_journal(json.dumps(system) + "\n" + json.dumps(user))
     assert (a.unit, a.user_unit) == ("home.mount", False)
     assert (b.unit, b.user_unit) == ("app.service", True)
+
+
+def test_repeated_properties_are_kept():
+    props = parse_properties("Listen=/run/a (Stream)\nListen=/run/b (Datagram)\nId=a.socket\n")
+    assert props["Listen"].splitlines() == ["/run/a (Stream)", "/run/b (Datagram)"]
+
+
+def test_parse_unit_list_unquotes_escaped_names():
+    assert parse_unit_list('a.service "snap-gnome\\x2d46.mount" b.target') == [
+        "a.service",
+        "snap-gnome\\x2d46.mount",
+        "b.target",
+    ]
+    assert parse_unit_list("") == []
+
+
+def test_parse_timer_specs():
+    text = "{ OnCalendar=Mon *-*-* 00:00:00 ; next_elapse=@1791750600 }\n{ OnBootUSec=15min ; next_elapse=15min }"
+    assert parse_timer_specs(text) == [
+        ("OnCalendar", "Mon *-*-* 00:00:00", "@1791750600"),
+        ("OnBootUSec", "15min", "15min"),
+    ]

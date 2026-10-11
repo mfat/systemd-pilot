@@ -375,17 +375,17 @@ class ServicesView(Gtk.Box):
     # value, label, icon, tooltip
     TYPE_FILTERS = (
         ("all", "all types", "view-list-symbolic", "every unit type"),
-        ("service", "service", "cogged-wheel-symbolic", "systemd.service(5): processes"),
-        ("socket", "socket", "network-wired-symbolic", "systemd.socket(5): starts a service on connection"),
-        ("timer", "timer", "alarm-symbolic", "systemd.timer(5): starts a unit on a schedule"),
-        ("path", "path", "folder-symbolic", "systemd.path(5): starts a unit when files change"),
-        ("target", "target", "find-location-symbolic", "systemd.target(5): groups units, as boot stages"),
-        ("mount", "mount", "drive-harddisk-symbolic", "systemd.mount(5): file system mount points"),
-        ("automount", "automount", "drive-removable-media-symbolic", "systemd.automount(5): mounts on first access"),
-        ("swap", "swap", "drive-multidisk-symbolic", "systemd.swap(5): swap space"),
-        ("device", "device", "computer-symbolic", "systemd.device(5): devices the kernel reports"),
-        ("slice", "slice", "view-grid-symbolic", "systemd.slice(5): resource groups"),
-        ("scope", "scope", "applications-system-symbolic", "systemd.scope(5): processes started elsewhere"),
+        ("service", "service", words.TYPE_ICONS["service"], "systemd.service(5): processes"),
+        ("socket", "socket", words.TYPE_ICONS["socket"], "systemd.socket(5): starts a service on connection"),
+        ("timer", "timer", words.TYPE_ICONS["timer"], "systemd.timer(5): starts a unit on a schedule"),
+        ("path", "path", words.TYPE_ICONS["path"], "systemd.path(5): starts a unit when files change"),
+        ("target", "target", words.TYPE_ICONS["target"], "systemd.target(5): groups units, as boot stages"),
+        ("mount", "mount", words.TYPE_ICONS["mount"], "systemd.mount(5): file system mount points"),
+        ("automount", "automount", words.TYPE_ICONS["automount"], "systemd.automount(5): mounts on first access"),
+        ("swap", "swap", words.TYPE_ICONS["swap"], "systemd.swap(5): swap space"),
+        ("device", "device", words.TYPE_ICONS["device"], "systemd.device(5): devices the kernel reports"),
+        ("slice", "slice", words.TYPE_ICONS["slice"], "systemd.slice(5): resource groups"),
+        ("scope", "scope", words.TYPE_ICONS["scope"], "systemd.scope(5): processes started elsewhere"),
     )
     GROUPS = (
         ("failed", "failed", "failed", "error"),

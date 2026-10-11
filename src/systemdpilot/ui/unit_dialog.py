@@ -11,8 +11,14 @@ from gi.repository import Adw, GLib, Gtk, Pango
 
 from ..core.journal import matches_query
 from ..core.manager import SystemdManager
-from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
-from ..core.parsers import parse_int, unit_file_body
+from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction, short_unit_name
+from ..core.parsers import (
+    parse_int,
+    parse_timer_specs,
+    parse_unit_list,
+    parse_unix_timestamp,
+    unit_file_body,
+)
 from ..core.ssh import SSHRunner
 from ..i18n import _
 from . import prompts, text, widgets, words
@@ -28,6 +34,13 @@ _AFTER_REDRAW = GLib.PRIORITY_HIGH_IDLE + 21
 
 _EXEC_PATH_RE = re.compile(r"path=(\S+)")
 _EXEC_ARGV_RE = re.compile(r"argv\[\]=(.*?) ; ignore_errors=")
+_FRACTION_RE = re.compile(r"(\d+)\.\d+s\b")
+# Types that run processes in a control group of their own while active.
+_RESOURCE_TYPES = ("service", "slice", "scope")
+# Types without unit files to enable: the kernel or a program makes them.
+_NO_STARTUP_TYPES = ("device", "scope")
+# Unit names listed in a row before "…and N more".
+_UNIT_LIST_LIMIT = 8
 
 
 @dataclass
@@ -150,7 +163,7 @@ class UnitPanel(Adw.BreakpointBin):
 
     # -- header -----------------------------------------------------------
 
-    def _show_unit(self, unit: Unit):
+    def _show_unit(self, unit: Unit, props: dict[str, str] | None = None):
         self.unit = unit
         self.title_label.set_label(unit.short_name)
         self.title_label.set_tooltip_text(unit.name)
@@ -159,16 +172,17 @@ class UnitPanel(Adw.BreakpointBin):
         self.name_label.set_visible(bool(description))
         self.name_label.set_tooltip_text(description or None)
         self.icon_tile.set_css_classes(["unit-icon", words.state_css(unit)])
-        self._show_actions(unit)
+        self.icon_tile.get_first_child().set_from_icon_name(words.TYPE_ICONS.get(unit.type, "pegged-wheels-symbolic"))
+        self._show_actions(unit, props)
 
-    def _show_actions(self, unit: Unit):
+    def _show_actions(self, unit: Unit, props: dict[str, str] | None):
         widgets.clear(self.action_box)
         buttons = {
             UnitAction.START: (_("_Start"), "media-playback-start-symbolic", "suggested-action"),
             UnitAction.RESTART: (_("_Restart"), "view-refresh-symbolic", None),
             UnitAction.STOP: (_("S_top"), "media-playback-stop-symbolic", "destructive-action"),
         }
-        for action in words.control_actions(unit):
+        for action in words.control_actions(unit, props):
             label, icon, css = buttons[action]
             button = Gtk.Button(
                 child=Adw.ButtonContent(label=label, icon_name=icon, use_underline=True),
@@ -176,8 +190,15 @@ class UnitPanel(Adw.BreakpointBin):
             )
             if css:
                 button.add_css_class(css)
-            button.connect("clicked", lambda _b, a=action: self._run_action(a))
+            button.connect("clicked", lambda _b, a=action: self._on_control_clicked(a))
             self.action_box.append(button)
+
+    def _on_control_clicked(self, action: UnitAction):
+        if question := words.confirm_control(self.unit, action):
+            heading, body, label = question
+            prompts.confirm(self, heading, body, label, lambda: self._run_action(action), destructive=True)
+        else:
+            self._run_action(action)
 
     def _set_busy(self, busy: bool):
         self.action_box.set_sensitive(not busy)
@@ -299,7 +320,7 @@ class UnitPanel(Adw.BreakpointBin):
             return
         self._details_load = load
         self._details = details
-        self._show_unit(details.unit)
+        self._show_unit(details.unit, details.properties)
         if self.raw_switch.get_active():
             self._show_raw_logs(details)
         self.logs_banner.set_title(GLib.markup_escape_text(self._logs_warning(details)))
@@ -375,7 +396,10 @@ class UnitPanel(Adw.BreakpointBin):
             status.add(pid_row)
         box.append(status)
 
-        behavior = Adw.PreferencesGroup(title=_("Startup"))
+        if kind_group := self._type_group(unit, props):
+            box.append(kind_group)
+
+        behavior = Adw.PreferencesGroup(title=_("Startup"), visible=unit.type not in _NO_STARTUP_TYPES)
         if words.can_toggle_startup(unit):
             enabled = words.starts_at_boot(unit)
             row = Adw.SwitchRow(
@@ -398,7 +422,7 @@ class UnitPanel(Adw.BreakpointBin):
             behavior.add(self._mask_row(_("Mask"), UnitAction.MASK, destructive=True))
         box.append(behavior)
 
-        if unit.kind == "running":
+        if unit.kind == "running" and unit.type in _RESOURCE_TYPES:
             resources = Adw.PreferencesGroup(title=_("Resources"))
             memory = parse_int(props.get("MemoryCurrent", ""))
             peak = parse_int(props.get("MemoryPeak", ""))
@@ -438,11 +462,6 @@ class UnitPanel(Adw.BreakpointBin):
             edit.connect("clicked", lambda *_: self._edit_unit_file())
             file_row.add_suffix(edit)
         where.add(file_row)
-        commands = self._commands(props)
-        if commands:
-            command_row = self._row("ExecStart", commands, mono=True)
-            command_row.add_css_class("command-row")
-            where.add(command_row)
         box.append(where)
 
         recent = [e for e in reversed(details.logs.entries[-3:])]
@@ -511,6 +530,94 @@ class UnitPanel(Adw.BreakpointBin):
         if self._remote:
             return _("Some entries may be hidden: only entries this user may read are shown.")
         return details.logs.warning
+
+    def _type_group(self, unit: Unit, props: dict[str, str]) -> Adw.PreferencesGroup | None:
+        """What this type of unit does: a timer's schedule, a socket's addresses, a mount's device…"""
+        get = props.get
+        rows: list[Adw.ActionRow] = []
+        title = ""
+        if unit.type == "service":
+            title = _("Service")
+            if get("Type"):
+                rows.append(self._row("Type", get("Type")))
+            if commands := self._commands(props):
+                command_row = self._row("ExecStart", commands, mono=True)
+                command_row.add_css_class("command-row")
+                rows.append(command_row)
+        elif unit.type == "timer":
+            title = _("Schedule")
+            specs = [*parse_timer_specs(get("TimersCalendar", "")), *parse_timer_specs(get("TimersMonotonic", ""))]
+            rows.append(self._row(_("Next run"), self._next_run(props, specs), "NextElapseUSecRealtime"))
+            last = parse_unix_timestamp(get("LastTriggerUSec", ""))
+            rows.append(self._row(_("Last run"), words.moment(last) if last else _("never"), "LastTriggerUSec"))
+            for setting, value, _next in specs:
+                rows.append(self._row(setting.replace("USec", "Sec"), value))
+            if get("Persistent") == "yes":
+                rows.append(self._row("Persistent", "yes", _("runs missed while off are caught up")))
+        elif unit.type == "socket":
+            title = _("Listening")
+            rows += [self._row("Listen", listen, mono=True) for listen in get("Listen", "").splitlines()]
+            if get("Accept") == "yes":
+                rows.append(self._row("NConnections", get("NConnections", "0"), _("open now")))
+                rows.append(self._row("NAccepted", get("NAccepted", "0"), _("since started")))
+        elif unit.type == "path":
+            title = _("Watching")
+            rows += [self._row("Paths", path, mono=True) for path in get("Paths", "").splitlines()]
+        elif unit.type in ("mount", "swap"):
+            title = _("Mount") if unit.type == "mount" else _("Swap")
+            for key in ("What", "Where", "Type", "Options", "Priority"):
+                if get(key):
+                    rows.append(self._row(key, get(key), mono=key in ("What", "Where")))
+        elif unit.type == "automount":
+            title = _("Automount")
+            if get("Where"):
+                rows.append(self._row("Where", get("Where"), mono=True))
+            idle = get("TimeoutIdleUSec", "")
+            rows.append(
+                self._row("TimeoutIdleSec", idle if idle not in ("", "0") else _("never"), _("unmount when idle"))
+            )
+        elif unit.type == "device":
+            title = _("Device")
+            if get("SysFSPath"):
+                rows.append(self._row("SysFSPath", get("SysFSPath"), mono=True))
+        elif unit.type in ("slice", "scope"):
+            title = _("Control Group")
+            if get("ControlGroup"):
+                rows.append(self._row("ControlGroup", get("ControlGroup"), mono=True))
+        elif unit.type == "target":
+            title = _("Dependencies")
+            for key in ("Requires", "Wants"):
+                if row := self._units_row(key, get(key, "")):
+                    rows.append(row)
+        # What starts what: a timer, socket or path starts a service; a service may be started by one.
+        for key in ("Triggers", "TriggeredBy"):
+            if row := self._units_row(key, get(key, "")):
+                rows.append(row)
+        if not rows:
+            return None
+        group = Adw.PreferencesGroup(title=title)
+        for row in rows:
+            group.add(row)
+        return group
+
+    @staticmethod
+    def _next_run(props: dict[str, str], specs: list[tuple[str, str, str]]) -> str:
+        if when := parse_unix_timestamp(props.get("NextElapseUSecRealtime", "")):
+            return words.moment(when)
+        # Timers counted from boot or from their last run give the time left instead.
+        spans = [_FRACTION_RE.sub(r"\1s", next_elapse) for _s, _v, next_elapse in specs if next_elapse not in ("", "0")]
+        if spans and not spans[0].startswith("@"):
+            return _("in {time}").format(time=spans[0])
+        return "—"
+
+    def _units_row(self, key: str, value: str) -> Adw.ActionRow | None:
+        names = parse_unit_list(value)
+        if not names:
+            return None
+        shown = "\n".join(short_unit_name(n) for n in names[:_UNIT_LIST_LIMIT])
+        if len(names) > _UNIT_LIST_LIMIT:
+            shown += "\n" + _("…and {n} more").format(n=len(names) - _UNIT_LIST_LIMIT)
+        return self._row(key, shown, mono=True)
 
     @staticmethod
     def _program(props: dict[str, str]) -> str:

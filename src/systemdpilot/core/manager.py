@@ -248,8 +248,13 @@ class SystemdManager:
         return strip_ansi(result.stdout)
 
     def properties(self, name: str, scope: Scope = Scope.SYSTEM) -> dict[str, str]:
+        """All of a unit's properties, with times as ``@<unix seconds>`` where systemd can."""
         validate_unit_name(name)
-        return parse_properties(self.runner.run(self._systemctl(scope, "show", "--", name)).check().stdout)
+        result = self.runner.run(self._systemctl(scope, "show", "--timestamp=unix", "--", name))
+        if not result.ok and "timestamp" in result.stderr.lower():
+            # systemd < 248 has no --timestamp; times then stay in its own words.
+            result = self.runner.run(self._systemctl(scope, "show", "--", name))
+        return parse_properties(result.check().stdout)
 
     def unit_file(self, name: str, scope: Scope = Scope.SYSTEM) -> str:
         validate_unit_name(name)

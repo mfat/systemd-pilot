@@ -112,3 +112,26 @@ def test_control_actions_follow_type():
 def test_state_word_uses_sub_state_for_other_types():
     assert words.state_word(Unit("a.timer", active_state="active", sub_state="waiting")) == "waiting"
     assert words.state_word(Unit("a.service", active_state="active", sub_state="running")) == "running"
+
+
+def test_moment_before_and_after_now():
+    now = datetime(2026, 10, 11, 12, 0)
+    assert words.moment(now + timedelta(hours=5), now) == "in 5 hours · Sun, Oct 11 at 17:00"
+    assert words.moment(now - timedelta(days=2), now) == "2 days ago · Fri, Oct 9 at 12:00"
+
+
+def test_control_actions_follow_systemd():
+    running = Unit("a.socket", active_state="active", sub_state="running")
+    assert words.control_actions(running, {"CanStop": "no"}) == ()
+    assert words.control_actions(running, {"CanStart": "yes", "CanStop": "yes"}) == (
+        UnitAction.RESTART,
+        UnitAction.STOP,
+    )
+    assert words.control_actions(Unit("-.mount", active_state="active", sub_state="mounted")) == ()
+
+
+def test_stopping_a_target_asks_first():
+    target = Unit("multi-user.target", active_state="active", sub_state="active")
+    assert words.confirm_control(target, UnitAction.STOP)
+    assert words.confirm_control(target, UnitAction.START) is None
+    assert words.confirm_control(Unit("a.service"), UnitAction.STOP) is None

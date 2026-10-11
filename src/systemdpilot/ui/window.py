@@ -20,7 +20,7 @@ from ..core.models import AuthMethod, Host, Scope, Unit, UnitAction, short_unit_
 from ..core.session import LOCAL_ID, Sessions
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
-from . import prompts, websearch
+from . import prompts, websearch, words
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
 from .journal_details import JournalDetails, JournalDetailsDialog
@@ -725,9 +725,13 @@ class Window(Adw.ApplicationWindow):
         if not bar.get_search_mode():
             self.search_entry.set_text("")
 
-    def control_unit(self, unit: Unit | None, action: UnitAction):
+    def control_unit(self, unit: Unit | None, action: UnitAction, confirmed: bool = False):
         manager = self.sessions.get(self.machine_id)
         if not unit or not manager:
+            return
+        if not confirmed and (question := words.confirm_control(unit, action)):
+            heading, body, label = question
+            prompts.confirm(self, heading, body, label, lambda: self.control_unit(unit, action, True), destructive=True)
             return
 
         def finish():
