@@ -385,6 +385,24 @@ class ServicesView(Gtk.Box):
         self._selected_unit = unit
         self._sync_open()
 
+    def focus_list(self) -> None:
+        """Put keyboard focus on the first service, so arrow keys move through the list."""
+        if not self.simple_list.get_mapped():
+            # The first list can arrive before the window shows, and showing it
+            # focuses the first button: wait until after that.
+            def mapped(*_):
+                self.simple_list.disconnect(handler)
+                GLib.idle_add(lambda: self.focus_list() and False)
+
+            handler = self.simple_list.connect("map", mapped)
+            return
+        for position in range(self.model.get_n_items()):
+            if isinstance(self.model.get_item(position), ServiceItem):
+                # Before the rows are laid out, this only moves the list's cursor.
+                self.simple_list.scroll_to(position, Gtk.ListScrollFlags.FOCUS, None)
+                self.simple_list.grab_focus()
+                return
+
     def is_open(self, unit: Unit) -> bool:
         return self._selected_unit is not None and unit.key == self._selected_unit.key
 

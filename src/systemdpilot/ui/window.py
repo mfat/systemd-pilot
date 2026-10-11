@@ -657,9 +657,13 @@ class Window(Adw.ApplicationWindow):
         run_in_thread(manager.attach_file_states, units, True, on_done=on_done, on_error=on_error)
 
     def _on_units_loaded(self, units: list[Unit]):
+        first = not self.services.units
         self.services.set_units(self._carry_over(units))
         self.journal.set_known_units({u.name for u in units})
         self._show_list()
+        # A machine's first list takes the keyboard, unless a search is being typed.
+        if first and not self.journal_shown and not self.search_bar.get_search_mode():
+            self.services.focus_list()
         self._update_badges()
         self._update_actions()
         self._schedule_journal_badge()
