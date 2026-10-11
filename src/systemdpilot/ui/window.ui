@@ -320,27 +320,42 @@
                                 <property name="icon-name">dialog-warning-symbolic</property>
                                 <property name="child">
                                   <object class="GtkBox">
-                                    <property name="spacing">12</property>
-                                    <property name="halign">center</property>
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">24</property>
                                     <child>
-                                      <object class="GtkButton" id="error_edit_button">
-                                        <property name="label" translatable="yes">_Edit Host</property>
-                                        <property name="use-underline">True</property>
-                                        <property name="action-name">win.edit-host</property>
-                                        <style>
-                                          <class name="pill"/>
-                                        </style>
+                                      <object class="GtkLabel" id="error_message">
+                                        <property name="wrap">True</property>
+                                        <property name="wrap-mode">word-char</property>
+                                        <property name="justify">center</property>
+                                        <property name="selectable">True</property>
+                                        <property name="max-width-chars">70</property>
                                       </object>
                                     </child>
                                     <child>
-                                      <object class="GtkButton">
-                                        <property name="label" translatable="yes">_Try Again</property>
-                                        <property name="use-underline">True</property>
-                                        <property name="action-name">win.refresh</property>
-                                        <style>
-                                          <class name="pill"/>
-                                          <class name="suggested-action"/>
-                                        </style>
+                                      <object class="GtkBox">
+                                        <property name="spacing">12</property>
+                                        <property name="halign">center</property>
+                                        <child>
+                                          <object class="GtkButton" id="error_edit_button">
+                                            <property name="label" translatable="yes">_Edit Host</property>
+                                            <property name="use-underline">True</property>
+                                            <property name="action-name">win.edit-host</property>
+                                            <style>
+                                              <class name="pill"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkButton">
+                                            <property name="label" translatable="yes">_Try Again</property>
+                                            <property name="use-underline">True</property>
+                                            <property name="action-name">win.refresh</property>
+                                            <style>
+                                              <class name="pill"/>
+                                              <class name="suggested-action"/>
+                                            </style>
+                                          </object>
+                                        </child>
                                       </object>
                                     </child>
                                   </object>

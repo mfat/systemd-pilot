@@ -96,6 +96,7 @@ class Window(Adw.ApplicationWindow):
     disconnected_page: Adw.StatusPage = Gtk.Template.Child()
     error_page: Adw.StatusPage = Gtk.Template.Child()
     error_edit_button: Gtk.Button = Gtk.Template.Child()
+    error_message: Gtk.Label = Gtk.Template.Child()
 
     def __init__(self, *, application: Adw.Application, sessions: Sessions, settings: Settings):
         super().__init__(application=application)
@@ -920,7 +921,7 @@ class Window(Adw.ApplicationWindow):
     def _show_error(self, title: str, message: str, offer_edit: bool = False):
         self.spinner.stop()
         self.error_page.set_title(title)
-        self.error_page.set_description(GLib.markup_escape_text(message))
+        self.error_message.set_label(message)  # a label, not the description, so it can be selected
         self.error_edit_button.set_visible(offer_edit and self.machine_id != LOCAL_ID)
         self.content_stack.set_visible_child_name("error")
         self._update_badges()
