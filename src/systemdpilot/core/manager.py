@@ -86,7 +86,15 @@ done
 for p in $pairs; do rm -f -- "$dir/${p%%/*}"; done
 pairs=
 systemctl "$flag" daemon-reload
-if [ "$enable" = 1 ]; then systemctl "$flag" enable -- "$activate" || exit 18; fi
+if [ "$enable" = 1 ]; then
+    msg=$(systemctl "$flag" enable -- "$activate" 2>&1) || { printf '%s\n' "$msg" >&2; exit 18; }
+    # Without an [Install] section enable succeeds, but enables nothing.
+    case $(systemctl "$flag" is-enabled -- "$activate" 2>/dev/null) in
+        static | disabled | masked | "")
+            printf '%s\n' "$activate has no [Install] section saying when to start it." >&2
+            exit 18 ;;
+    esac
+fi
 if [ "$start" = 1 ]; then systemctl "$flag" start -- "$activate" || exit 19; fi
 """
 _EXISTS, _ENABLE_FAILED, _START_FAILED = 17, 18, 19

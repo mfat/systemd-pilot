@@ -174,6 +174,7 @@ def _systemctl_stub(bindir):
     """A systemctl that logs its calls and the unit directory at reload, and fails on request."""
     (bindir / "systemctl").write_text(
         """#!/bin/sh
+if [ "$2" = is-enabled ]; then echo "${STUB_STATE:-enabled}"; exit 0; fi
 echo "$*" >> "$STUB_LOG"
 if [ "$2" = daemon-reload ]; then echo "files: $(ls -A "$STUB_DIR" | tr '\\n' ' ')" >> "$STUB_LOG"; fi
 if [ "$2" = "${STUB_FAIL:-}" ]; then echo "Failed to $2 unit: denied" >&2; exit 1; fi
@@ -204,10 +205,11 @@ def install(request, runner, tmp_path, monkeypatch):
         dir = unit_dir
 
         @staticmethod
-        def run(fail=""):
+        def run(fail="", state="enabled"):
             call = runner.calls[-1]
             argv = shell + call["argv"][1:]  # the shell in place of "sh"
             monkeypatch.setenv("STUB_FAIL", fail)
+            monkeypatch.setenv("STUB_STATE", state)
             return subprocess.run(argv, input=call["input"], capture_output=True, text=True)
 
         @staticmethod
@@ -310,6 +312,23 @@ def test_activation_failure_leaves_the_files_in_place(install, action, code):
     assert proc.returncode == code
     assert "denied" in proc.stderr
     assert install.files() == ["demo.service"]
+
+
+@pytest.mark.parametrize("state", ["static", "disabled", "masked"])
+def test_enabling_a_unit_without_install_section_fails(install, state):
+    """systemctl enable succeeds for such a unit, but nothing would start it at boot."""
+    install.manager.create_unit("demo.service", "[Service]\n", Scope.USER, enable=True, start=True)
+    proc = install.run(state=state)
+    assert proc.returncode == 18
+    assert "[Install]" in proc.stderr
+    assert install.files() == ["demo.service"]
+    assert not any("start" in line for line in install.calls())  # stopped before starting
+
+
+@pytest.mark.parametrize("state", ["enabled", "enabled-runtime", "indirect", "alias"])
+def test_enabled_states_pass(install, state):
+    install.manager.create_unit("demo.service", "[Unit]\n", Scope.USER, enable=True)
+    assert install.run(state=state).returncode == 0
 
 
 def test_short_input_installs_nothing(install):
