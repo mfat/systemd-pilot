@@ -1,3 +1,17 @@
+systemd-pilot (4.2.0) unstable; urgency=medium
+
+  * List every unit type, with type and status filters in the sidebar.
+  * Add a Dependencies tab to unit details.
+  * Reload, run a timer's job, clear a failed state, send signals, and mask
+    or unmask units.
+  * Create timer and path units, and install, enable and start them in one
+    privileged call.
+  * Follow the journal as new entries are logged.
+  * Let polkit ask for the password for unit actions on this computer.
+  * Bundle every UI icon so no icon theme overrides them.
+
+ -- mFat <newmfat@gmail.com>  Sun, 11 Oct 2026 14:50:00 +0330
+
 systemd-pilot (4.1.1) unstable; urgency=medium
 
   * Avoid setting a panel's child again, which aborted the AppImage on

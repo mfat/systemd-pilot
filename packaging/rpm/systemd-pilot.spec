@@ -1,5 +1,5 @@
 Name:           systemd-pilot
-Version:        4.1.1
+Version:        4.2.0
 Release:        1%{?dist}
 Summary:        Manage systemd services locally and over SSH
 
@@ -60,6 +60,15 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.mfat.system
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg
 
 %changelog
+* Sun Oct 11 2026 mFat <newmfat@gmail.com> - 4.2.0-1
+- List every unit type, with type and status filters in the sidebar
+- Add a Dependencies tab to unit details
+- Reload, run a timer's job, clear a failed state, send signals, and mask or unmask units
+- Create timer and path units, and install, enable and start them in one privileged call
+- Follow the journal as new entries are logged
+- Let polkit ask for the password for unit actions on this computer
+- Bundle every UI icon so no icon theme overrides them
+
 * Sun Oct 11 2026 mFat <newmfat@gmail.com> - 4.1.1-1
 - Avoid setting a panel's child again, which aborted the AppImage on libadwaita 1.5
 - Open the journal when it is chosen, even if services failed to load

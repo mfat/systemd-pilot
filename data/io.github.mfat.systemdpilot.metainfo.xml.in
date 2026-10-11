@@ -54,6 +54,20 @@
   </screenshots>
 
   <releases>
+    <release version="4.2.0" date="2026-10-11">
+      <description>
+        <p>Every unit type, and a closer look at each unit.</p>
+        <ul>
+          <li>List every unit type, not just services, with type and status filters in the sidebar</li>
+          <li>A Dependencies tab shows what a unit requires, what requires it, and what it starts after or before</li>
+          <li>Reload units, run a timer's job now, clear a failed state, send signals, and mask or unmask units</li>
+          <li>Create timer and path units along with their service, and enable and start them in one step</li>
+          <li>Follow the journal as new entries are logged</li>
+          <li>On this computer, polkit asks for the password and remembers it for a few minutes</li>
+          <li>Icons are bundled, so the app looks the same on every desktop</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.1.1" date="2026-10-11">
       <description>
         <p>The journal and the services list now share the main window.</p>
