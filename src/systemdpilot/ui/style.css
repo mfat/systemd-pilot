@@ -1,3 +1,10 @@
+/* Gtk.DropDown.flat: some themes (e.g. Yaru) skip Adwaita's rule, so the
+   services/journal selector in the sidebar header stays raised without this. */
+dropdown.flat > button:not(:checked):not(:hover):not(:active) {
+  background: none;
+  box-shadow: none;
+}
+
 .badge {
   padding: 2px 10px;
   border-radius: 999px;
