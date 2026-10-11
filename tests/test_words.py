@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import datetime, timedelta
 
 from systemdpilot.core.models import Scope, Unit, UnitAction
@@ -84,6 +85,8 @@ def test_matches_filter_presets():
     assert matches_filter(by_hand, "all", "active-disabled") and not matches_filter(
         enabled_dead, "all", "active-disabled"
     )
+    socket_started = dataclasses.replace(by_hand, started_by=("c.socket",))
+    assert not matches_filter(socket_started, "all", "active-disabled")
     assert matches_filter(masked, "all", "masked") and not matches_filter(masked, "all", "load-error")
     assert matches_filter(missing, "all", "load-error") and not matches_filter(missing, "user", "load-error")
 

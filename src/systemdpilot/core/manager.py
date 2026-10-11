@@ -146,6 +146,10 @@ _RUNTIME_PROPERTIES = (
     "Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,ActiveExitTimestamp,InactiveEnterTimestamp,InactiveExitTimestamp"
 )
 
+# What starts a unit besides being enabled: the units that trigger, want, need or
+# uphold it, and D-Bus, which starts a service when its bus name is first called.
+_STARTED_BY_PROPERTIES = ("TriggeredBy", "WantedBy", "RequiredBy", "BoundBy", "UpheldBy", "BusName")
+
 # Only what the journal view shows; keeps the JSON small over SSH.
 _JOURNAL_FIELDS = ",".join(
     (
@@ -242,7 +246,33 @@ class SystemdManager:
         for scope in scopes:
             part = [u for u in loaded if u.scope is scope]
             merged += merge_units(part, self._unit_files[scope], include_unloaded=include_unloaded, scope=scope)
+        merged = self._add_started_by(merged)
         return sorted(merged, key=lambda u: (u.name.lower(), u.scope is Scope.USER))
+
+    def _add_started_by(self, units: list[Unit]) -> list[Unit]:
+        """Fill in :attr:`Unit.started_by` for active, disabled units: usually a handful."""
+        found: dict[tuple[Scope, str], tuple[str, ...]] = {}
+        for scope in Scope:
+            names = []
+            for unit in units:
+                if unit.scope is scope and unit.is_active and (unit.file_state or "").startswith("disabled"):
+                    try:
+                        names.append(validate_unit_name(unit.name))
+                    except InvalidUnitName:
+                        pass
+            if not names:
+                continue
+            props = ",".join(("Id", *_STARTED_BY_PROPERTIES))
+            result = self.runner.run(self._systemctl(scope, "show", f"--property={props}", "--", *names))
+            if not result.ok:
+                continue
+            for name, shown in parse_show_units(result.stdout).items():
+                found[scope, name] = tuple(
+                    starter for key in _STARTED_BY_PROPERTIES for starter in shown.get(key, "").split()
+                )
+        if not found:
+            return units
+        return [dataclasses.replace(u, started_by=found[u.key]) if u.key in found else u for u in units]
 
     def add_runtime(self, units: list[Unit]) -> list[Unit]:
         """Fill in main PID, memory and since when, for units that are or were running."""

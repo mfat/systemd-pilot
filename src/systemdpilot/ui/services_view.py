@@ -27,8 +27,8 @@ PRESET_MATCH = {
     "auto-restart": lambda u: u.sub_state == "auto-restart",
     # Meant to start at boot, but not running now.
     "enabled-dead": lambda u: words.starts_at_boot(u) and u.kind == "dead",
-    # Started by hand: gone after a reboot.
-    "active-disabled": lambda u: u.is_active and (u.file_state or "").startswith("disabled"),
+    # Started by hand: gone after a reboot. Not those a socket, D-Bus or another unit starts.
+    "active-disabled": lambda u: u.is_active and (u.file_state or "").startswith("disabled") and not u.started_by,
     "masked": lambda u: (u.file_state or "").startswith("masked"),
     "load-error": lambda u: u.load_state in ("not-found", "bad-setting", "error"),
 }
@@ -246,7 +246,7 @@ class ServicesView(Gtk.Box):
     PRESET_FILTERS = (
         ("auto-restart", "auto-restart", "warning", "activating (auto-restart): crashed, restarting"),
         ("enabled-dead", "enabled, inactive", "ring-warning", "UnitFileState=enabled, inactive (dead)"),
-        ("active-disabled", "active, disabled", "ring-running", "UnitFileState=disabled: stops after reboot"),
+        ("active-disabled", "active, disabled", "ring-running", "UnitFileState=disabled, nothing else starts it: stops after reboot"),
         ("masked", "masked", "info", "UnitFileState=masked → /dev/null"),
         ("load-error", "load error", "ring-failed", "LoadState=not-found, bad-setting or error"),
     )
