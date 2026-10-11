@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from gi.repository import Adw, GLib, Gtk, Pango
+from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from ..core.journal import matches_query
 from ..core.manager import SystemdManager
@@ -22,7 +22,7 @@ from ..core.parsers import (
 )
 from ..core.ssh import SSHRunner
 from ..i18n import _
-from . import prompts, text, widgets, words
+from . import prompts, text, websearch, widgets, words
 from .create_unit_dialog import CreateUnitDialog
 from .operations import Operations, describe
 from .resources import template
@@ -69,6 +69,7 @@ class UnitPanel(Adw.BreakpointBin):
     icon_tile: Gtk.Box = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
+    name_actions: Gtk.Box = Gtk.Template.Child()
     action_box: Gtk.Box = Gtk.Template.Child()
     stack: Adw.ViewStack = Gtk.Template.Child()
     loading_stack: Gtk.Stack = Gtk.Template.Child()
@@ -177,7 +178,26 @@ class UnitPanel(Adw.BreakpointBin):
         self.name_label.set_tooltip_text(description or None)
         self.icon_tile.set_css_classes(["unit-icon", words.state_css(unit)])
         self.icon_tile.get_first_child().set_from_icon_name(words.TYPE_ICONS.get(unit.type, "pegged-wheels-symbolic"))
+        self._show_name_actions(unit)
         self._show_actions(unit, props)
+
+    def _show_name_actions(self, unit: Unit) -> None:
+        """Copy and web search buttons beside the name, shown while it is hovered."""
+        widgets.clear(self.name_actions)
+
+        def add(icon: str, tooltip: str, callback: Callable[[], None]) -> None:
+            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip, css_classes=["flat", "circular"])
+            button.connect("clicked", lambda *_: callback())
+            self.name_actions.append(button)
+
+        add("edit-copy-symbolic", _("Copy Name"), lambda: self._copy_name(unit.name))
+        if query := words.search_name(unit):
+            tooltip = _("Search the Web for {name}").format(name=query)
+            add("system-search-symbolic", tooltip, lambda: websearch.search(self.get_root(), query))
+
+    def _copy_name(self, name: str) -> None:
+        self.get_clipboard().set(name)
+        self.toast_overlay.add_toast(Adw.Toast(title=_("Copied {name}").format(name=name), use_markup=False, timeout=2))
 
     def _show_actions(self, unit: Unit, props: dict[str, str] | None):
         widgets.clear(self.action_box)
@@ -546,6 +566,22 @@ class UnitPanel(Adw.BreakpointBin):
             where.add(self._row(_("Drop-ins"), "\n".join(drop_ins), "DropInPaths", mono=True))
         box.append(where)
 
+        if links := words.documentation(props):
+            docs = Adw.PreferencesGroup(title=_("Documentation"))
+            for title, uri in links:
+                manual = uri.startswith("man:")
+                row = Adw.ActionRow(
+                    title=title,
+                    subtitle=_("Manual page") if manual else "",
+                    title_lines=1,
+                    activatable=True,
+                    tooltip_text=uri,
+                )
+                row.add_suffix(Gtk.Image(icon_name="adw-external-link-symbolic"))
+                row.connect("activated", lambda _r, u=uri: self._open_documentation(u))
+                docs.add(row)
+            box.append(docs)
+
         recent = [e for e in reversed(details.logs.entries[-3:])]
         activity = Adw.PreferencesGroup(title=_("Recent log"))
         more = Gtk.Button(label=_("Full Log"), css_classes=["flat"], valign=Gtk.Align.CENTER)
@@ -558,6 +594,13 @@ class UnitPanel(Adw.BreakpointBin):
             listbox.append(widgets.placeholder_row(_("Nothing logged yet")))
         activity.add(listbox)
         box.append(activity)
+
+    def _open_documentation(self, uri: str) -> None:
+        # A man page opens in the manual viewer here, if there is one. A remote
+        # machine's may differ from ours, so it opens on the web, as it does without one.
+        if uri.startswith("man:") and (self._remote or Gio.AppInfo.get_default_for_uri_scheme("man") is None):
+            uri = words.man_page_url(uri)
+        Gtk.UriLauncher.new(uri).launch(self.get_root(), None, None, None)
 
     def _error_banner(self, details: _Details) -> Gtk.Widget:
         banner = Gtk.Box(spacing=14, css_classes=["error-banner"])

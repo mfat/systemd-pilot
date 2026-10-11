@@ -158,3 +158,28 @@ def test_stopping_a_target_asks_first():
     assert words.confirm_control(target, UnitAction.STOP)
     assert words.confirm_control(target, UnitAction.START) is None
     assert words.confirm_control(Unit("a.service"), UnitAction.STOP) is None
+
+
+def test_search_name():
+    assert words.search_name(Unit("nginx.service")) == "nginx.service"
+    assert words.search_name(Unit("getty@tty1.service")) == "getty@.service"
+    assert words.search_name(Unit("getty@.service")) == "getty@.service"
+    assert words.search_name(Unit("fstrim.timer")) == "fstrim.timer"
+    assert words.search_name(Unit("dev-sda1.device")) == ""
+    assert words.search_name(Unit("session-4.scope")) == ""
+
+
+def test_documentation_links():
+    props = {"Documentation": '"man:agetty(8)" man:cron https://0pointer.de/blog/ file:/usr/share/doc/x'}
+    assert words.documentation(props) == [
+        ("agetty(8)", "man:agetty(8)"),
+        ("cron", "man:cron"),
+        ("0pointer.de/blog", "https://0pointer.de/blog/"),
+    ]
+    assert words.documentation({"Documentation": ""}) == []
+    assert words.documentation({}) == []
+
+
+def test_man_page_url():
+    assert words.man_page_url("man:sshd_config(5)") == "https://manpages.debian.org/sshd_config.5"
+    assert words.man_page_url("man:cron") == "https://manpages.debian.org/cron"

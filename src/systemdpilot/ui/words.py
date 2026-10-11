@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from ..core.models import Unit, UnitAction
+from ..core.parsers import parse_unit_list
 from ..i18n import _, ngettext
 
 # An icon for each unit type, in the sidebar and the details header.
@@ -84,6 +86,40 @@ def confirm_control(unit: Unit, action: UnitAction) -> tuple[str, str, str] | No
 def can_signal(unit: Unit, props: dict[str, str]) -> bool:
     """The unit has processes running in a control group of its own."""
     return unit.kind == "running" and bool(props.get("ControlGroup")) and unit.name not in _UNSTOPPABLE
+
+
+# Types named by the software that ships them, not made up by the machine
+# (devices, mounts, sessions), so the web knows about them.
+_SEARCHABLE_TYPES = ("service", "socket", "timer", "path", "target")
+_MAN_RE = re.compile(r"man:([^()\s]+)(?:\((\w+)\))?$")
+MAN_PAGES_URL = "https://manpages.debian.org/{page}"
+
+
+def search_name(unit: Unit) -> str:
+    """What to search the web for: the unit's name, its template's for an instance, or ""."""
+    if unit.type not in _SEARCHABLE_TYPES:
+        return ""
+    base, _dot, kind = unit.name.rpartition(".")
+    prefix, at, _instance = base.partition("@")
+    return f"{prefix}@.{kind}" if at else unit.name
+
+
+def documentation(props: dict[str, str]) -> list[tuple[str, str]]:
+    """The unit's ``Documentation=`` links it can open, as (title, URI): man pages and web pages."""
+    links = []
+    for uri in parse_unit_list(props.get("Documentation", "")):
+        if match := _MAN_RE.match(uri):
+            name, section = match.groups()
+            links.append((f"{name}({section})" if section else name, uri))
+        elif uri.startswith(("https://", "http://")):
+            links.append((uri.split("://", 1)[1].rstrip("/"), uri))
+    return links
+
+
+def man_page_url(uri: str) -> str:
+    """A web address for a ``man:`` link, for machines with no manual viewer."""
+    name, section = _MAN_RE.match(uri).groups()
+    return MAN_PAGES_URL.format(page=f"{name}.{section}" if section else name)
 
 
 def can_override(unit: Unit, props: dict[str, str]) -> bool:
