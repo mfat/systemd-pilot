@@ -132,7 +132,7 @@ def test_control_actions_follow_systemd():
 
 def test_reload_shown_for_running_services_and_units_that_can():
     running = Unit("a.service", active_state="active", sub_state="running")
-    assert words.detail_actions(running) == (UnitAction.RELOAD, UnitAction.RESTART, UnitAction.STOP)
+    assert words.detail_actions(running) == (UnitAction.RESTART, UnitAction.RELOAD, UnitAction.STOP)
     assert words.control_actions(running) == (UnitAction.RESTART, UnitAction.STOP)  # not in the list rows
     assert not words.can_reload({"CanReload": "no"})
     assert words.can_reload({"CanReload": "yes"})
