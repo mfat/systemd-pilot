@@ -19,8 +19,23 @@ def matches_scope(unit: Unit, scope: str) -> bool:
     return True
 
 
+# Sidebar filters past the states: units that are likely in trouble.
+PRESET_MATCH = {
+    # Crashed and waiting to be started again; kind still says "running".
+    "auto-restart": lambda u: u.sub_state == "auto-restart",
+    # Meant to start at boot, but not running now.
+    "enabled-dead": lambda u: words.starts_at_boot(u) and u.kind == "dead",
+    # Started by hand: gone after a reboot.
+    "active-disabled": lambda u: u.is_active and (u.file_state or "").startswith("disabled"),
+    "masked": lambda u: (u.file_state or "").startswith("masked"),
+    "load-error": lambda u: u.load_state in ("not-found", "bad-setting", "error"),
+}
+
+
 def matches_kind(unit: Unit, kind: str) -> bool:
-    """Whether ``unit`` matches a state filter (``all`` or a :attr:`Unit.kind`)."""
+    """Whether ``unit`` matches a state filter: ``all``, a :attr:`Unit.kind` or a preset."""
+    if kind in PRESET_MATCH:
+        return PRESET_MATCH[kind](unit)
     return kind == "all" or unit.kind == kind
 
 
@@ -305,6 +320,14 @@ class ServicesView(Gtk.Box):
         ("exited", "exited", "exited", "active (exited)"),
         ("dead", "dead", "dead", "inactive (dead)"),
     )
+    # value, label, icon, tooltip; in the same list as the states.
+    PRESET_FILTERS = (
+        ("auto-restart", "auto-restart", "view-refresh-symbolic", "activating (auto-restart): crashed, restarting"),
+        ("enabled-dead", "enabled, inactive", "media-playback-stop-symbolic", "UnitFileState=enabled, inactive (dead)"),
+        ("active-disabled", "active, disabled", "system-reboot-symbolic", "UnitFileState=disabled: stops after reboot"),
+        ("masked", "masked", "action-unavailable-symbolic", "UnitFileState=masked → /dev/null"),
+        ("load-error", "load error", "dialog-warning-symbolic", "LoadState=not-found, bad-setting or error"),
+    )
     GROUPS = (
         ("failed", "failed", "failed", "error"),
         ("running", "running", "active (running)", None),
@@ -483,6 +506,10 @@ class ServicesView(Gtk.Box):
         listbox = Gtk.ListBox(css_classes=["navigation-sidebar"])
         for value, text, dot_kind, tip in filters:
             row = FilterRow(value, text, dot_kind, tooltip_text=tip)
+            rows[value] = row
+            listbox.append(row)
+        for value, text, icon, tip in self.PRESET_FILTERS:
+            row = FilterRow(value, text, icon_name=icon, tooltip_text=tip)
             rows[value] = row
             listbox.append(row)
         listbox.connect("row-selected", on_selected)

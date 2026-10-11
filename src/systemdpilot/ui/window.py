@@ -585,19 +585,17 @@ class Window(Adw.ApplicationWindow):
         else:
             self.journal.mark_stale()
 
-        # list-units is fast. Enable/disabled state is not shown in the list (details
-        # dialog loads it). list-unit-files is only needed to add unloaded units when
-        # “Show Inactive” is on.
+        # list-units is fast. list-unit-files follows: the sidebar's startup filters
+        # need the enabled/disabled states, and “Show Inactive” its unloaded units.
         def done(units):
             if generation != self._generation:
                 return
             self._set_pending(generation, "list", False)
             self._on_units_loaded(units)
-            if include_inactive:
-                self._inactive_job = lambda: self._start_inactive_load(
-                    generation, manager, units, quiet, inactive_done, incomplete
-                )
-                self._arm_inactive_load()
+            self._inactive_job = lambda: self._start_inactive_load(
+                generation, manager, units, include_inactive, quiet, inactive_done, incomplete
+            )
+            self._arm_inactive_load()
 
         def inactive_done(units):
             if generation != self._generation:
@@ -651,11 +649,11 @@ class Window(Adw.ApplicationWindow):
 
         self._inactive_source = GLib.timeout_add(700, fire)
 
-    def _start_inactive_load(self, generation, manager, units, quiet, on_done, on_error) -> None:
+    def _start_inactive_load(self, generation, manager, units, include_unloaded, quiet, on_done, on_error) -> None:
         if generation != self._generation:
             return
         self._set_pending(generation, "inactive", True, quiet)
-        run_in_thread(manager.attach_file_states, units, True, on_done=on_done, on_error=on_error)
+        run_in_thread(manager.attach_file_states, units, include_unloaded, on_done=on_done, on_error=on_error)
 
     def _on_units_loaded(self, units: list[Unit]):
         first = not self.services.units

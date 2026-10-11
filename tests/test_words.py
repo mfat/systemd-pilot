@@ -61,3 +61,18 @@ def test_matches_filter_scope_and_kind():
     assert matches_filter(system, "system", "running") and not matches_filter(user, "system", "all")
     assert matches_filter(user, "user", "failed") and not matches_filter(system, "user", "all")
     assert matches_filter(system, "system", "all") and not matches_filter(system, "all", "failed")
+
+
+def test_matches_filter_presets():
+    looping = Unit("a.service", active_state="activating", sub_state="auto-restart", file_state="enabled")
+    enabled_dead = Unit("b.service", active_state="inactive", sub_state="dead", file_state="enabled")
+    by_hand = Unit("c.service", active_state="active", sub_state="running", file_state="disabled")
+    masked = Unit("d.service", load_state="masked", active_state="inactive", file_state="masked")
+    missing = Unit("e.service", load_state="not-found", active_state="inactive")
+    assert matches_filter(looping, "all", "auto-restart") and looping.kind == "running"
+    assert matches_filter(enabled_dead, "all", "enabled-dead") and not matches_filter(looping, "all", "enabled-dead")
+    assert matches_filter(by_hand, "all", "active-disabled") and not matches_filter(
+        enabled_dead, "all", "active-disabled"
+    )
+    assert matches_filter(masked, "all", "masked") and not matches_filter(masked, "all", "load-error")
+    assert matches_filter(missing, "all", "load-error") and not matches_filter(missing, "user", "load-error")
