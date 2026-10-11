@@ -369,7 +369,9 @@ class UnitPanel(Adw.BreakpointBin):
         status.add(self._state_row(unit))
         if unit.kind == "running" and unit.main_pid:
             program = (props.get("ExecMainPath") or self._program(props)).rsplit("/", 1)[-1] or unit.short_name
-            status.add(self._row(_("Main PID"), f"{unit.main_pid} ({program})", _("The program this service runs")))
+            pid_row = self._row(_("Main PID"), f"{unit.main_pid} ({program})", _("The program this service runs"))
+            pid_row.set_tooltip_text("MainPID")
+            status.add(pid_row)
         box.append(status)
 
         behavior = Adw.PreferencesGroup(title=_("Startup"))
@@ -381,55 +383,61 @@ class UnitPanel(Adw.BreakpointBin):
                 subtitle=starts if enabled else _("Only runs when you start it"),
                 active=enabled,
             )
+            row.add_suffix(widgets.label(unit.file_state or "", "dim-label", "caption"))
             row.connect("notify::active", self._on_startup_toggled)
             behavior.add(row)
         else:
-            help_text = (
-                _("Other services start this one when they need it")
-                if unit.file_state in ("static", "indirect")
-                else _("Can’t be turned on or off at boot")
-            )
-            behavior.add(self._row(_("Enabled"), words.boot_text(unit.file_state), help_text))
+            state = unit.file_state or ""
+            row = self._row(_("Unit file state"), words.file_state_word(state), words.file_state_caption(state))
+            if tip := words.file_state_tooltip(state):
+                row.set_tooltip_text(tip)
+            behavior.add(row)
         box.append(behavior)
 
         if unit.kind == "running":
             resources = Adw.PreferencesGroup(title=_("Resources"))
             memory = parse_int(props.get("MemoryCurrent", ""))
             peak = parse_int(props.get("MemoryPeak", ""))
-            resources.add(
-                self._row(
-                    _("Memory"),
-                    words.size(memory),
-                    _("Highest so far: {size}").format(size=words.size(peak)) if peak else "",
-                )
+            memory_row = self._row(
+                _("Memory"),
+                words.size(memory),
+                _("Highest so far: {size}").format(size=words.size(peak)) if peak else "",
             )
-            resources.add(
-                self._row(
-                    _("Processor time"),
-                    words.cpu_time(parse_int(props.get("CPUUsageNSec", ""))),
-                    _("Total since it started"),
-                )
+            memory_row.set_tooltip_text(
+                f"MemoryCurrent · MemoryPeak {words.size(peak)}" if peak else "MemoryCurrent"
             )
+            resources.add(memory_row)
+            cpu_row = self._row(
+                _("Processor time"),
+                words.cpu_time(parse_int(props.get("CPUUsageNSec", ""))),
+                _("Total since it started"),
+            )
+            cpu_row.set_tooltip_text("CPUUsageNSec")
+            resources.add(cpu_row)
             tasks = parse_int(props.get("TasksCurrent", ""))
             limit = parse_int(props.get("TasksMax", ""))
-            resources.add(
-                self._row(
-                    _("Tasks"),
-                    str(tasks) if tasks is not None else "—",
-                    _("Threads and child processes, limit {n}").format(n=f"{limit:,}")
-                    if limit
-                    else _("Threads and child processes"),
-                )
+            tasks_row = self._row(
+                _("Tasks"),
+                str(tasks) if tasks is not None else "—",
+                _("Threads and child processes, limit {n}").format(n=f"{limit:,}")
+                if limit
+                else _("Threads and child processes"),
             )
+            tasks_row.set_tooltip_text(f"TasksCurrent · TasksMax {limit:,}" if limit else "TasksCurrent")
+            resources.add(tasks_row)
             box.append(resources)
 
         where = Adw.PreferencesGroup(title=_("Unit"))
         if unit.is_user:
-            where.add(self._row(_("Scope"), _("User"), "systemctl --user"))
+            where.add(
+                self._row(_("Scope"), unit.scope.value, _("User-level systemd (systemctl --user)"))
+            )
         else:
-            where.add(self._row(_("Scope"), _("System"), "systemctl --system"))
+            where.add(
+                self._row(_("Scope"), unit.scope.value, _("System-wide systemd (systemctl --system)"))
+            )
         path = props.get("FragmentPath") or ""
-        file_row = self._row(_("Unit file"), path or _("None"), mono=True)
+        file_row = self._row(_("Unit file"), path or "—", "FragmentPath" if path else "", mono=True)
         if path and unit_file_body(details.unit_file):
             edit = Gtk.Button(
                 label=_("_Edit"),
@@ -527,10 +535,12 @@ class UnitPanel(Adw.BreakpointBin):
     @staticmethod
     def _state_row(unit: Unit) -> Adw.ActionRow:
         sentence = words.state_sentence(unit)
-        row = Adw.ActionRow(title=words.active_word(unit), subtitle=sentence[:1].upper() + sentence[1:])
+        caption = sentence[:1].upper() + sentence[1:] if sentence else words.state_caption(unit)
+        row = Adw.ActionRow(title=_("Active"), subtitle=caption)
+        row.set_tooltip_text(words.state_caption(unit) or None)
         state = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
         state.append(widgets.dot(unit.kind))
-        state.append(widgets.label(words.state_word(unit), "heading", words.state_css(unit)))
+        state.append(widgets.label(unit.state_label, "heading", words.state_css(unit)))
         row.add_suffix(state)
         return row
 

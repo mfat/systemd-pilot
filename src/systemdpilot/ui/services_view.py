@@ -22,12 +22,12 @@ def matches_filter(unit: Unit, value: str) -> bool:
 def user_tag() -> Gtk.Widget:
     """Marks a user service: run by the user's own systemd, not the machine's."""
     return widgets.label(
-        _("User"),
+        "user",
         "badge",
         "user",
         "compact",
         valign=Gtk.Align.CENTER,
-        tooltip_text=_("User-level systemd unit"),
+        tooltip_text=_("User-level systemd unit (systemctl --user)"),
     )
 
 
@@ -185,7 +185,7 @@ class ServiceRow(Gtk.Box):
         )
         box.append(self._actions)
 
-        self._state = widgets.label("", "state-word", xalign=1, valign=Gtk.Align.CENTER, width_request=90)
+        self._state = widgets.label("", "state-word", xalign=1, valign=Gtk.Align.CENTER, width_request=110)
         box.append(self._state)
         box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"]))
         self.append(box)
@@ -220,6 +220,7 @@ class ServiceRow(Gtk.Box):
             self._user_tag.set_visible(unit.is_user)
         self.refresh_labels()
         self._state.set_label(words.state_word(unit))
+        self._state.set_tooltip_text(words.state_caption(unit) or None)
         self._state.set_css_classes(["state-word", words.state_css(unit)])
         self._action_box.set_size_request(ACTIONS_WIDTH[unit.kind == "running"], -1)
         self.sync_classes()
@@ -282,20 +283,21 @@ class ServicesView(Gtk.Box):
         "filter-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
+    # Labels are systemd state words; tooltips/group hints are plain language.
     FILTERS = (
-        ("all", _("All services"), None),
-        ("failed", _("Needs attention"), "failed"),
-        ("running", _("Running"), "running"),
-        ("exited", _("Done"), "exited"),
-        ("dead", _("Stopped"), "dead"),
+        ("all", _("All services"), None, _("System and user services")),
+        ("failed", "failed", "failed", _("Stopped with an error")),
+        ("running", "running", "running", _("Working in the background")),
+        ("exited", "exited", "exited", _("Ran once, then finished")),
+        ("dead", "dead", "dead", _("Not running")),
         # Not a state: services run by the user's own systemd, in whatever state.
-        ("user", _("User services"), "user"),
+        ("user", "user", "user", _("User-level systemd units (systemctl --user)")),
     )
     GROUPS = (
-        ("failed", _("Needs attention"), _("These services stopped with an error"), "error"),
-        ("running", _("Running"), _("Working in the background right now"), None),
-        ("exited", _("Done"), _("Ran once, then finished"), None),
-        ("dead", _("Stopped"), _("Not running"), None),
+        ("failed", "failed", _("These services stopped with an error"), "error"),
+        ("running", "running", _("Working in the background right now"), None),
+        ("exited", "exited", _("Ran once, then finished"), None),
+        ("dead", "dead", _("Not running"), None),
     )
 
     def __init__(self):
@@ -323,8 +325,8 @@ class ServicesView(Gtk.Box):
         # The state filters live in the window sidebar.
         self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
         self._filter_rows: dict[str, FilterRow] = {}
-        for value, text, dot_kind in self.FILTERS:
-            row = FilterRow(value, text, dot_kind)
+        for value, text, dot_kind, tip in self.FILTERS:
+            row = FilterRow(value, text, dot_kind, tooltip_text=tip)
             self._filter_rows[value] = row
             self.filter_list.append(row)
         self.filter_list.select_row(self._filter_rows["all"])
