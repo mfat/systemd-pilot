@@ -3,7 +3,14 @@ import subprocess
 
 import pytest
 
-from systemdpilot.core.errors import CommandError, InvalidUnitName, PilotError, UnitExists
+from systemdpilot.core.errors import (
+    AuthenticationCancelled,
+    AuthenticationTimedOut,
+    CommandError,
+    InvalidUnitName,
+    PilotError,
+    UnitExists,
+)
 from systemdpilot.core.manager import SystemdManager
 from systemdpilot.core.models import Scope, Unit, UnitAction
 from systemdpilot.core.runner import CommandResult, CommandRunner
@@ -177,6 +184,63 @@ def test_control_reports_failure(runner):
     runner.reply("systemctl", returncode=5, stderr="Unit a.service not found.")
     with pytest.raises(CommandError, match="not found"):
         SystemdManager(runner).control("a.service", UnitAction.START)
+
+
+@pytest.fixture
+def polkit_runner(runner):
+    """A runner where systemctl asks for authorization itself, as on this computer."""
+    runner.polkit_prompts = True
+    return runner
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda m: m.control("a.service", UnitAction.RESTART),
+        lambda m: m.control("a.service", UnitAction.ENABLE),
+        lambda m: m.kill("a.service", "SIGTERM"),
+        lambda m: m.daemon_reload(),
+    ],
+)
+def test_polkit_changes_run_without_root(polkit_runner, change):
+    # systemd's polkit prompt is remembered for a few minutes; pkexec asks every time.
+    change(SystemdManager(polkit_runner))
+    (call,) = polkit_runner.calls
+    assert call["argv"][:2] == ["systemctl", "--no-pager"] and not call["privileged"]
+
+
+def test_polkit_dismissed_is_cancelled(polkit_runner):
+    polkit_runner.reply("systemctl", returncode=1, stderr="Failed to restart a.service: Access denied\n")
+    with pytest.raises(AuthenticationCancelled):
+        SystemdManager(polkit_runner).control("a.service", UnitAction.RESTART)
+
+
+def test_polkit_prompt_timeout(polkit_runner):
+    polkit_runner.reply("systemctl", returncode=1, stderr="Failed to restart a.service: Connection timed out\n")
+    with pytest.raises(AuthenticationTimedOut):
+        SystemdManager(polkit_runner).control("a.service", UnitAction.RESTART)
+
+
+def test_polkit_without_agent_shows_systemds_message(polkit_runner):
+    stderr = (
+        "Failed to restart a.service: Access denied as the requested operation requires interactive "
+        "authentication. However, interactive authentication has not been enabled by the calling program.\n"
+    )
+    polkit_runner.reply("systemctl", returncode=1, stderr=stderr)
+    with pytest.raises(CommandError, match="interactive authentication"):
+        SystemdManager(polkit_runner).control("a.service", UnitAction.RESTART)
+
+
+def test_polkit_other_failures_pass_through(polkit_runner):
+    polkit_runner.reply("systemctl", returncode=5, stderr="Unit a.service not found.")
+    with pytest.raises(CommandError, match="not found"):
+        SystemdManager(polkit_runner).control("a.service", UnitAction.START)
+
+
+def test_polkit_runner_still_writes_files_as_root(polkit_runner):
+    # systemd cannot write unit files for us, so those keep pkexec.
+    SystemdManager(polkit_runner).write_override("a.service", "[Service]\nNice=5\n")
+    assert polkit_runner.calls[0]["privileged"]
 
 
 def test_control_rejects_bad_names(runner):

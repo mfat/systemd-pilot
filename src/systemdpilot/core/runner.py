@@ -35,6 +35,9 @@ class CommandResult:
 class CommandRunner(ABC):
     #: Human-readable name of the machine, for messages.
     label: str = ""
+    #: Whether systemctl, run unprivileged, can ask for authorization itself
+    #: through the desktop's polkit agent. Over SSH no agent can show a prompt.
+    polkit_prompts: bool = False
 
     @abstractmethod
     def run(

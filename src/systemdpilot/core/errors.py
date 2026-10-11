@@ -43,6 +43,10 @@ class AuthenticationCancelled(PilotError):
     """The user dismissed the authentication prompt."""
 
 
+class AuthenticationTimedOut(PilotError):
+    """Nobody answered the password prompt in time; systemd closes polkit's after 25 seconds."""
+
+
 class PrivilegesUnavailable(PilotError):
     """No password helps: sudo is missing, or refuses this user (not in sudoers, needs a tty)."""
 

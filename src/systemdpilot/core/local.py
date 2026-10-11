@@ -28,6 +28,7 @@ class LocalRunner(CommandRunner):
     """
 
     label = "this computer"
+    polkit_prompts = True
 
     def __init__(self, *, sandboxed: bool | None = None):
         self.sandboxed = in_flatpak() if sandboxed is None else sandboxed

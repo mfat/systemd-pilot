@@ -4,10 +4,20 @@ from __future__ import annotations
 
 import base64
 import dataclasses
+import errno
+import os
 import re
 from collections.abc import Sequence
 
-from .errors import CommandError, InvalidUnitName, PilotError, UnitActivationFailed, UnitExists
+from .errors import (
+    AuthenticationCancelled,
+    AuthenticationTimedOut,
+    CommandError,
+    InvalidUnitName,
+    PilotError,
+    UnitActivationFailed,
+    UnitExists,
+)
 from .models import LogResult, Scope, Unit, UnitAction
 from .parsers import (
     merge_units,
@@ -469,23 +479,34 @@ class SystemdManager:
 
     def control(self, name: str, action: UnitAction, scope: Scope = Scope.SYSTEM) -> None:
         validate_unit_name(name)
-        self.runner.run(
-            self._systemctl(scope, action.value, "--", name),
-            privileged=self._privileged(scope),
-        ).check()
+        self._change(scope, action.value, "--", name)
 
     def kill(self, name: str, signal: str, scope: Scope = Scope.SYSTEM) -> None:
         """Send ``signal`` to all of the unit's processes."""
         validate_unit_name(name)
         if signal not in SIGNALS:
             raise PilotError(f"Unsupported signal: {signal}")
-        self.runner.run(
-            self._systemctl(scope, "kill", f"--signal={signal}", "--", name),
-            privileged=self._privileged(scope),
-        ).check()
+        self._change(scope, "kill", f"--signal={signal}", "--", name)
 
     def daemon_reload(self, scope: Scope = Scope.SYSTEM) -> None:
-        self.runner.run(self._systemctl(scope, "daemon-reload"), privileged=self._privileged(scope)).check()
+        self._change(scope, "daemon-reload")
+
+    def _change(self, scope: Scope, *args: str) -> None:
+        """Run a systemctl command that changes the system instance, as root where needed.
+
+        Where systemd can ask for a password itself (polkit, on this computer),
+        it does: polkit remembers the answer for a few minutes and its prompt
+        names the unit, where pkexec would ask again on every action.
+        """
+        argv = self._systemctl(scope, *args)
+        if scope is Scope.USER or not self.runner.polkit_prompts:
+            self.runner.run(argv, privileged=self._privileged(scope)).check()
+            return
+        # No timeout of our own: a person is typing a password.
+        result = self.runner.run(argv, timeout=None)
+        if not result.ok:
+            _raise_polkit_refusal(result.stderr)
+        result.check()
 
     def daemon_reload_all(self) -> None:
         """Reload the system instance, then the user one if there is one to reach."""
@@ -621,6 +642,19 @@ def _split_scopes(text: str) -> dict[str, tuple[str, int]]:
         parts[match.group(1)] = (text[start : match.start()], int(match.group(2)))
         start = match.end()
     return parts
+
+
+def _raise_polkit_refusal(stderr: str) -> None:
+    """Raise if systemctl failed because polkit's password prompt did not let it through."""
+    text = stderr.lower()
+    if "interactive authentication" in text:
+        return  # No polkit agent to ask; systemd's own message says so.
+    if "access denied" in text:
+        raise AuthenticationCancelled("Authentication was cancelled")
+    # systemd closes the prompt after 25 seconds (its D-Bus timeout); the C
+    # library words "Connection timed out" in the user's language.
+    if "timed out" in text or os.strerror(errno.ETIMEDOUT).lower() in text:
+        raise AuthenticationTimedOut("systemd stopped waiting for the password after 25 seconds. Try again.")
 
 
 def _since_property(active_state: str) -> str:
