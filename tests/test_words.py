@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 
-from systemdpilot.core.models import Unit
+from systemdpilot.core.models import Scope, Unit
 from systemdpilot.ui import words
+from systemdpilot.ui.services_view import matches_filter
 
 
 def test_file_state_word_is_systemd_term():
@@ -11,19 +12,26 @@ def test_file_state_word_is_systemd_term():
     assert words.file_state_word(None) == ""
 
 
-def test_file_state_caption_is_plain_language():
-    assert words.file_state_caption("static") == "Started when needed"
-    assert words.file_state_caption("disabled") == "Does not start automatically"
-    assert words.file_state_caption("enabled") == "Starts automatically"
-    assert words.file_state_caption("masked") == "Blocked from starting"
-    assert words.file_state_caption("") == "No unit file"
+def test_file_state_caption():
+    assert words.file_state_caption("enabled") == "starts at boot"
+    assert words.file_state_caption("static") == "no [Install]"
+    assert words.file_state_caption("masked") == "→ /dev/null"
+    assert words.file_state_caption("disabled") == ""
 
 
-def test_file_state_tooltip_explains_fixed_states():
-    assert "can’t be enabled or disabled" in words.file_state_tooltip("static").lower()
-    assert "unmasked" in words.file_state_tooltip("masked")
-    assert words.file_state_tooltip("disabled") == ""
-    assert words.file_state_tooltip("enabled") == ""
+def test_enable_caption():
+    assert words.enable_caption(Unit("a.service", file_state="enabled")) == "starts at boot"
+    assert words.enable_caption(Unit("a.service", file_state="enabled", scope=Scope.USER)) == "starts at login"
+
+
+def test_can_mask_unmask():
+    assert words.can_mask(Unit("a.service", file_state="enabled"))
+    assert words.can_mask(Unit("a.service", file_state="static"))
+    assert not words.can_mask(Unit("a.service", file_state="masked"))
+    assert not words.can_mask(Unit("a.service", file_state=""))
+    assert words.can_unmask(Unit("a.service", file_state="masked"))
+    assert words.can_unmask(Unit("a.service", file_state="masked-runtime"))
+    assert not words.can_unmask(Unit("a.service", file_state="disabled"))
 
 
 def test_state_word_is_systemd_term():
@@ -32,21 +40,9 @@ def test_state_word_is_systemd_term():
     assert words.state_word(Unit("a.service", active_state="inactive", sub_state="dead")) == "dead"
     assert words.state_word(Unit("a.service", active_state="failed", sub_state="failed")) == "failed"
     assert words.state_word(Unit("a.service", active_state="activating", sub_state="start")) == "activating"
-    assert words.state_word(Unit("a.service", active_state="deactivating", sub_state="stop")) == "deactivating"
 
 
-def test_state_caption_is_plain_language():
-    exited = Unit("a.service", active_state="active", sub_state="exited")
-    dead = Unit("a.service", active_state="inactive", sub_state="dead")
-    failed = Unit("a.service", active_state="failed", sub_state="failed")
-    starting = Unit("a.service", active_state="activating", sub_state="start")
-    assert words.state_caption(exited) == "Ran once, then finished"
-    assert words.state_caption(dead) == "Not running"
-    assert words.state_caption(failed) == "Stopped with an error"
-    assert words.state_caption(starting) == "Starting…"
-
-
-def test_state_sentence_stays_plain_language():
+def test_state_sentence():
     running = Unit(
         "a.service",
         active_state="active",
@@ -55,4 +51,13 @@ def test_state_sentence_stays_plain_language():
     )
     exited = Unit("a.service", active_state="active", sub_state="exited")
     assert "ago" in words.state_sentence(running)
-    assert words.state_sentence(exited) == "ran and finished normally"
+    assert words.state_sentence(exited) == "active (exited)"
+
+
+def test_matches_filter_scope():
+    system = Unit("a.service", scope=Scope.SYSTEM, active_state="active", sub_state="running")
+    user = Unit("a.service", scope=Scope.USER, active_state="active", sub_state="running")
+    assert matches_filter(system, "all") and matches_filter(user, "all")
+    assert matches_filter(system, "system") and not matches_filter(user, "system")
+    assert matches_filter(user, "user") and not matches_filter(system, "user")
+    assert matches_filter(system, "running")

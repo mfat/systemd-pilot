@@ -729,7 +729,7 @@ class Window(Adw.ApplicationWindow):
             return
 
         def finish():
-            if action in (UnitAction.ENABLE, UnitAction.DISABLE):
+            if action in (UnitAction.ENABLE, UnitAction.DISABLE, UnitAction.MASK, UnitAction.UNMASK):
                 manager.invalidate_unit_files()
             self.reload()
 
@@ -752,6 +752,8 @@ class Window(Adw.ApplicationWindow):
             UnitAction.RELOAD: _("Reloaded {unit}"),
             UnitAction.ENABLE: _("Enabled {unit}"),
             UnitAction.DISABLE: _("Disabled {unit}"),
+            UnitAction.MASK: _("Masked {unit}"),
+            UnitAction.UNMASK: _("Unmasked {unit}"),
         }
         return messages[action].format(unit=unit.short_name)
 
@@ -764,6 +766,8 @@ class Window(Adw.ApplicationWindow):
             UnitAction.RELOAD: _("Could Not Reload {unit}"),
             UnitAction.ENABLE: _("Could Not Enable {unit}"),
             UnitAction.DISABLE: _("Could Not Disable {unit}"),
+            UnitAction.MASK: _("Could Not Mask {unit}"),
+            UnitAction.UNMASK: _("Could Not Unmask {unit}"),
         }
         return headings[action].format(unit=unit.short_name)
 

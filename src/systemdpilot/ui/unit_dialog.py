@@ -15,7 +15,7 @@ from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction
 from ..core.parsers import parse_int, unit_file_body
 from ..core.ssh import SSHRunner
 from ..i18n import _
-from . import text, widgets, words
+from . import prompts, text, widgets, words
 from .create_unit_dialog import CreateUnitDialog
 from .operations import Operations, describe
 from .resources import template
@@ -362,14 +362,16 @@ class UnitPanel(Adw.BreakpointBin):
         elif unit.is_failed:
             banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
             banner.append(Gtk.Image(icon_name="dialog-error-symbolic", css_classes=["error"]))
-            banner.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
+            banner.append(widgets.label("failed", "heading", "error"))
             box.append(banner)
 
         status = Adw.PreferencesGroup(title=_("Status"))
         status.add(self._state_row(unit))
+        load = props.get("LoadState") or unit.load_state or "—"
+        status.add(self._row("LoadState", load))
         if unit.kind == "running" and unit.main_pid:
             program = (props.get("ExecMainPath") or self._program(props)).rsplit("/", 1)[-1] or unit.short_name
-            pid_row = self._row(_("Main PID"), f"{unit.main_pid} ({program})", _("The program this service runs"))
+            pid_row = self._row(_("Main PID"), f"{unit.main_pid} ({program})")
             pid_row.set_tooltip_text("MainPID")
             status.add(pid_row)
         box.append(status)
@@ -377,10 +379,9 @@ class UnitPanel(Adw.BreakpointBin):
         behavior = Adw.PreferencesGroup(title=_("Startup"))
         if words.can_toggle_startup(unit):
             enabled = words.starts_at_boot(unit)
-            starts = _("Starts every time you log in") if unit.is_user else _("Starts every time the computer boots")
             row = Adw.SwitchRow(
                 title=_("Enabled"),
-                subtitle=starts if enabled else _("Only runs when you start it"),
+                subtitle=words.enable_caption(unit) if enabled else "",
                 active=enabled,
             )
             row.add_suffix(widgets.label(unit.file_state or "", "dim-label", "caption"))
@@ -392,6 +393,10 @@ class UnitPanel(Adw.BreakpointBin):
             if tip := words.file_state_tooltip(state):
                 row.set_tooltip_text(tip)
             behavior.add(row)
+        if words.can_unmask(unit):
+            behavior.add(self._mask_row(_("Unmask"), UnitAction.UNMASK, destructive=False))
+        elif words.can_mask(unit):
+            behavior.add(self._mask_row(_("Mask"), UnitAction.MASK, destructive=True))
         box.append(behavior)
 
         if unit.kind == "running":
@@ -399,43 +404,31 @@ class UnitPanel(Adw.BreakpointBin):
             memory = parse_int(props.get("MemoryCurrent", ""))
             peak = parse_int(props.get("MemoryPeak", ""))
             memory_row = self._row(
-                _("Memory"),
+                "MemoryCurrent",
                 words.size(memory),
-                _("Highest so far: {size}").format(size=words.size(peak)) if peak else "",
+                _("peak {size}").format(size=words.size(peak)) if peak else "",
             )
-            memory_row.set_tooltip_text(
-                f"MemoryCurrent · MemoryPeak {words.size(peak)}" if peak else "MemoryCurrent"
-            )
+            if peak:
+                memory_row.set_tooltip_text(f"MemoryPeak {words.size(peak)}")
             resources.add(memory_row)
-            cpu_row = self._row(
-                _("Processor time"),
-                words.cpu_time(parse_int(props.get("CPUUsageNSec", ""))),
-                _("Total since it started"),
+            resources.add(
+                self._row("CPUUsageNSec", words.cpu_time(parse_int(props.get("CPUUsageNSec", ""))))
             )
-            cpu_row.set_tooltip_text("CPUUsageNSec")
-            resources.add(cpu_row)
             tasks = parse_int(props.get("TasksCurrent", ""))
             limit = parse_int(props.get("TasksMax", ""))
             tasks_row = self._row(
-                _("Tasks"),
+                "TasksCurrent",
                 str(tasks) if tasks is not None else "—",
-                _("Threads and child processes, limit {n}").format(n=f"{limit:,}")
-                if limit
-                else _("Threads and child processes"),
+                f"TasksMax {limit:,}" if limit else "",
             )
-            tasks_row.set_tooltip_text(f"TasksCurrent · TasksMax {limit:,}" if limit else "TasksCurrent")
             resources.add(tasks_row)
             box.append(resources)
 
         where = Adw.PreferencesGroup(title=_("Unit"))
         if unit.is_user:
-            where.add(
-                self._row(_("Scope"), unit.scope.value, _("User-level systemd (systemctl --user)"))
-            )
+            where.add(self._row(_("Scope"), unit.scope.value, "systemctl --user"))
         else:
-            where.add(
-                self._row(_("Scope"), unit.scope.value, _("System-wide systemd (systemctl --system)"))
-            )
+            where.add(self._row(_("Scope"), unit.scope.value, "systemctl --system"))
         path = props.get("FragmentPath") or ""
         file_row = self._row(_("Unit file"), path or "—", "FragmentPath" if path else "", mono=True)
         if path and unit_file_body(details.unit_file):
@@ -472,13 +465,13 @@ class UnitPanel(Adw.BreakpointBin):
         banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
         banner.append(Gtk.Image(icon_name="dialog-error-symbolic", valign=Gtk.Align.START, css_classes=["error"]))
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
-        texts.append(widgets.label(_("This service stopped with an error"), "heading", "error"))
+        texts.append(widgets.label("failed", "heading", "error"))
         errors = [e for e in details.logs.entries if e.priority <= 3]
         reason = errors[-1].message if errors else details.properties.get("Result", "")
         if reason:
             texts.append(widgets.label(reason, "issue-explanation", wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR))
         banner.append(texts)
-        button = Gtk.Button(label=_("See What Happened"), valign=Gtk.Align.START, css_classes=["small-pill"])
+        button = Gtk.Button(label=_("Journal"), valign=Gtk.Align.START, css_classes=["small-pill"])
         button.connect("clicked", lambda *_: self.stack.set_visible_child_name("activity"))
         banner.append(button)
         return banner
@@ -535,14 +528,37 @@ class UnitPanel(Adw.BreakpointBin):
     @staticmethod
     def _state_row(unit: Unit) -> Adw.ActionRow:
         sentence = words.state_sentence(unit)
-        caption = sentence[:1].upper() + sentence[1:] if sentence else words.state_caption(unit)
-        row = Adw.ActionRow(title=_("Active"), subtitle=caption)
-        row.set_tooltip_text(words.state_caption(unit) or None)
+        row = Adw.ActionRow(title="Active", subtitle=sentence)
         state = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
         state.append(widgets.dot(unit.kind))
         state.append(widgets.label(unit.state_label, "heading", words.state_css(unit)))
         row.add_suffix(state)
         return row
+
+    def _mask_row(self, label: str, action: UnitAction, *, destructive: bool) -> Adw.ActionRow:
+        row = Adw.ActionRow(title=label, subtitle="systemctl " + action.value)
+        button = Gtk.Button(
+            label=label,
+            valign=Gtk.Align.CENTER,
+            css_classes=["destructive-action", "small-pill"] if destructive else ["small-pill"],
+        )
+        button.connect("clicked", lambda *_: self._on_mask_action(action))
+        row.add_suffix(button)
+        row.set_activatable_widget(button)
+        return row
+
+    def _on_mask_action(self, action: UnitAction) -> None:
+        if action is UnitAction.UNMASK:
+            self._run_action(action)
+            return
+        prompts.confirm(
+            self,
+            _("Mask {unit}?").format(unit=self.unit.short_name),
+            _("Links the unit to /dev/null so it cannot be started."),
+            _("_Mask"),
+            on_confirm=lambda: self._run_action(UnitAction.MASK),
+            destructive=True,
+        )
 
     @staticmethod
     def _row(title: str, value: str, help_text: str = "", mono: bool = False) -> Adw.ActionRow:
@@ -623,6 +639,8 @@ class UnitPanel(Adw.BreakpointBin):
         manager, name, scope = self.manager, self.unit.name, self.scope
 
         def success(_result):
+            if action in (UnitAction.ENABLE, UnitAction.DISABLE, UnitAction.MASK, UnitAction.UNMASK):
+                manager.invalidate_unit_files()
             if not self._closed:
                 self.toast_overlay.add_toast(
                     Adw.Toast(title=self._action_message(self.unit, action), use_markup=False, timeout=3)

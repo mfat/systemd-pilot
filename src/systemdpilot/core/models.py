@@ -22,6 +22,8 @@ class UnitAction(str, Enum):
     RELOAD = "reload"
     ENABLE = "enable"
     DISABLE = "disable"
+    MASK = "mask"
+    UNMASK = "unmask"
 
 
 class AuthMethod(str, Enum):

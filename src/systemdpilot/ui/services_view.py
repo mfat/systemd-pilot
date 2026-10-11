@@ -11,11 +11,13 @@ from .widgets import FilterRow
 
 
 def matches_filter(unit: Unit, value: str) -> bool:
-    """Whether the sidebar filter ``value`` ("all", "user" or a :attr:`Unit.kind`) shows ``unit``."""
+    """Whether the sidebar filter ``value`` shows ``unit`` (scope or :attr:`Unit.kind`)."""
     if value == "all":
         return True
     if value == "user":
         return unit.is_user
+    if value == "system":
+        return not unit.is_user
     return unit.kind == value
 
 
@@ -27,7 +29,7 @@ def user_tag() -> Gtk.Widget:
         "user",
         "compact",
         valign=Gtk.Align.CENTER,
-        tooltip_text=_("User-level systemd unit (systemctl --user)"),
+        tooltip_text="systemctl --user",
     )
 
 
@@ -283,21 +285,21 @@ class ServicesView(Gtk.Box):
         "filter-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
-    # Labels are systemd state words; tooltips/group hints are plain language.
+    # Labels are systemd terms; tooltips are CLI-oriented.
     FILTERS = (
-        ("all", _("All services"), None, _("System and user services")),
-        ("failed", "failed", "failed", _("Stopped with an error")),
-        ("running", "running", "running", _("Working in the background")),
-        ("exited", "exited", "exited", _("Ran once, then finished")),
-        ("dead", "dead", "dead", _("Not running")),
-        # Not a state: services run by the user's own systemd, in whatever state.
-        ("user", "user", "user", _("User-level systemd units (systemctl --user)")),
+        ("all", "all", None, "system + user"),
+        ("system", "system", None, "systemctl --system"),
+        ("user", "user", "user", "systemctl --user"),
+        ("failed", "failed", "failed", "failed"),
+        ("running", "running", "running", "active (running)"),
+        ("exited", "exited", "exited", "active (exited)"),
+        ("dead", "dead", "dead", "inactive (dead)"),
     )
     GROUPS = (
-        ("failed", "failed", _("These services stopped with an error"), "error"),
-        ("running", "running", _("Working in the background right now"), None),
-        ("exited", "exited", _("Ran once, then finished"), None),
-        ("dead", "dead", _("Not running"), None),
+        ("failed", "failed", "failed", "error"),
+        ("running", "running", "active (running)", None),
+        ("exited", "exited", "active (exited)", None),
+        ("dead", "dead", "inactive (dead)", None),
     )
 
     def __init__(self):
@@ -326,7 +328,8 @@ class ServicesView(Gtk.Box):
         self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
         self._filter_rows: dict[str, FilterRow] = {}
         for value, text, dot_kind, tip in self.FILTERS:
-            row = FilterRow(value, text, dot_kind, tooltip_text=tip)
+            icon = "computer-symbolic" if value == "system" else ""
+            row = FilterRow(value, text, dot_kind, icon_name=icon, tooltip_text=tip)
             self._filter_rows[value] = row
             self.filter_list.append(row)
         self.filter_list.select_row(self._filter_rows["all"])
