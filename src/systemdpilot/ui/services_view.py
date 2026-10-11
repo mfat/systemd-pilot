@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
-from ..core.models import Unit, UnitAction
+from ..core.models import Unit
 from ..i18n import _
 from . import widgets, words
 from .widgets import FilterRow
@@ -96,11 +96,6 @@ def user_tag() -> Gtk.Widget:
 FILL_CHUNK = 40
 
 
-def actions_width(count: int) -> int:
-    """Room for ``count`` row buttons: 32px each, 4px apart."""
-    return max(36 * count - 4, 0)
-
-
 class ServiceItem(GObject.Object):
     """A service in the simple list. Emits ``changed`` when its unit is replaced."""
 
@@ -124,12 +119,6 @@ class ListRow(Adw.Bin):
         self._list_item = list_item
         self.item: ServiceItem | None = None
         self.service: ServiceRow | None = None
-        # The list's own row around this widget is what takes keyboard focus.
-        self._focus = Gtk.EventControllerFocus()
-        self._focus.connect("enter", lambda *_: self._set_focused(True))
-        self._focus.connect("leave", lambda *_: self._set_focused(False))
-        self._focus_target: Gtk.Widget | None = None
-        self.connect("notify::parent", lambda *_: self._follow_parent())
         list_item.connect("notify::position", lambda *_: self.sync())
 
     def bind(self, item: ServiceItem) -> None:
@@ -152,20 +141,9 @@ class ListRow(Adw.Bin):
             return
         self.service.set_edges(position == 0, position == self._view.model.get_n_items() - 1)
 
-    def _follow_parent(self) -> None:
-        if self._focus_target is not None:
-            self._focus_target.remove_controller(self._focus)
-        self._focus_target = self.get_parent()
-        if self._focus_target is not None:
-            self._focus_target.add_controller(self._focus)
-
-    def _set_focused(self, focused: bool) -> None:
-        if self.service is not None:
-            self.service.set_hover(focused=focused)
-
 
 class ServiceRow(Gtk.Box):
-    """A service in the simple view. Start/stop buttons show while hovered or focused.
+    """A service in the simple view. Its controls live in the details panel.
 
     Enable/disable lives in the details dialog — fetching unit-file state for every
     row was the main load bottleneck.
@@ -177,7 +155,6 @@ class ServiceRow(Gtk.Box):
         self._list_item = list_item
         self.item: ServiceItem | None = None
         self._changed_handler = 0
-        self._made_actions: tuple[UnitAction, ...] | None = None
         self._edges: list[str] = []  # "first" and "last" of the list
         # As in a boxed list: its rows add 2px around their content.
         box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=18, margin_end=18, hexpand=True)
@@ -195,24 +172,10 @@ class ServiceRow(Gtk.Box):
         text.append(self._subtitle)
         box.append(text)
 
-        # Buttons are slow to make, and most rows are never hovered: they are made
-        # when first shown. The box keeps their room, so names don't shift then.
-        self._action_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
-        self._actions = Gtk.Revealer(
-            child=self._action_box, transition_type=Gtk.RevealerTransitionType.CROSSFADE, transition_duration=100
-        )
-        box.append(self._actions)
-
         self._state = widgets.label("", "state-word", xalign=1, valign=Gtk.Align.CENTER, width_request=110)
         box.append(self._state)
         box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"]))
         self.append(box)
-
-        self._hovered = self._focused = False
-        motion = Gtk.EventControllerMotion()
-        motion.connect("enter", lambda *_: self.set_hover(hovered=True))
-        motion.connect("leave", lambda *_: self.set_hover(hovered=False))
-        self.add_controller(motion)
 
     @property
     def unit(self) -> Unit | None:
@@ -240,10 +203,7 @@ class ServiceRow(Gtk.Box):
         self._state.set_label(words.state_word(unit))
         self._state.set_tooltip_text(words.state_caption(unit) or None)
         self._state.set_css_classes(["state-word", words.state_css(unit)])
-        self._action_box.set_size_request(actions_width(len(words.control_actions(unit))), -1)
         self.sync_classes()
-        if self._actions.get_reveal_child():
-            self._sync_actions()
 
     def refresh_labels(self) -> None:
         unit, order = self.item.unit, self._view.label_order
@@ -260,45 +220,13 @@ class ServiceRow(Gtk.Box):
         is_open = self.item is not None and self._view.is_open(self.item.unit)
         self.set_css_classes(["service-row", *self._edges] + (["open"] if is_open else []))
 
-    def _sync_actions(self) -> None:
-        if self.item is None:
-            return
-        actions = words.control_actions(self.item.unit)
-        if actions != self._made_actions:
-            self._fill_actions(actions)
-
-    def _fill_actions(self, actions: tuple[UnitAction, ...]) -> None:
-        self._made_actions = actions
-        widgets.clear(self._action_box)
-        buttons = {
-            UnitAction.START: (_("Start"), "media-playback-start-symbolic"),
-            UnitAction.RESTART: (_("Restart"), "view-refresh-symbolic"),
-            UnitAction.STOP: (_("Stop"), "media-playback-stop-symbolic"),
-        }
-        for action in actions:
-            tooltip, icon = buttons[action]
-            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip, css_classes=["circular", "row-action"])
-            button.connect("clicked", lambda _b, a=action: self._view.emit("unit-action", self.unit, a.value))
-            self._action_box.append(button)
-
-    def set_hover(self, hovered: bool | None = None, focused: bool | None = None):
-        if hovered is not None:
-            self._hovered = hovered
-        if focused is not None:
-            self._focused = focused
-        reveal = self._hovered or self._focused
-        if reveal:
-            self._sync_actions()
-        self._actions.set_reveal_child(reveal)
-
 
 class ServicesView(Gtk.Box):
-    """Emits ``unit-activated`` (unit) and ``unit-action`` (unit, UnitAction value)."""
+    """Emits ``unit-activated`` (unit)."""
 
     __gtype_name__ = "SystemdPilotServicesView"
     __gsignals__ = {
         "unit-activated": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
-        "unit-action": (GObject.SignalFlags.RUN_FIRST, None, (object, str)),
         "filter-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 

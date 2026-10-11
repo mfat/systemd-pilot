@@ -20,7 +20,7 @@ from ..core.models import AuthMethod, Host, Scope, Unit, UnitAction, short_unit_
 from ..core.session import LOCAL_ID, Sessions
 from ..core.ssh import SSHRunner
 from ..i18n import _, ngettext
-from . import prompts, websearch, words
+from . import prompts, websearch
 from .create_unit_dialog import CreateUnitDialog
 from .host_dialog import HostDialog
 from .journal_details import JournalDetails, JournalDetailsDialog
@@ -120,7 +120,6 @@ class Window(Adw.ApplicationWindow):
         self.services = ServicesView()
         self.services.set_show_inactive(self.settings.get_boolean("show-inactive"))
         self.services.connect("unit-activated", lambda _v, unit: self.show_unit(unit))
-        self.services.connect("unit-action", lambda _v, unit, action: self.control_unit(unit, UnitAction(action)))
         self.services.connect("filter-changed", lambda *_: self._update_badges())
         set_bin_child(self.services_bin, self.services)
         set_bin_child(self.filters_bin, self.services.sidebar)
@@ -725,30 +724,6 @@ class Window(Adw.ApplicationWindow):
         if not bar.get_search_mode():
             self.search_entry.set_text("")
 
-    def control_unit(self, unit: Unit | None, action: UnitAction, confirmed: bool = False):
-        manager = self.sessions.get(self.machine_id)
-        if not unit or not manager:
-            return
-        if not confirmed and (question := words.confirm_control(unit, action)):
-            heading, body, label = question
-            prompts.confirm(self, heading, body, label, lambda: self.control_unit(unit, action, True), destructive=True)
-            return
-
-        def finish():
-            if action in (UnitAction.ENABLE, UnitAction.DISABLE, UnitAction.MASK, UnitAction.UNMASK):
-                manager.invalidate_unit_files()
-            self.reload()
-
-        self.operations.run(
-            manager,
-            lambda: manager.control(unit.name, action, unit.scope),
-            on_success=lambda _r: self.toast(self._action_message(unit, action)),
-            # Also after a failure or cancel, so a pending enable switch goes back.
-            # Also after a failure or cancel (e.g. pending UI), so the list matches reality.
-            on_finish=finish,
-            error_heading=self._action_error_heading(unit, action),
-        )
-
     @staticmethod
     def _action_message(unit: Unit, action: UnitAction) -> str:
         messages = {
@@ -763,21 +738,6 @@ class Window(Adw.ApplicationWindow):
             UnitAction.RESET_FAILED: _("Cleared the failed state of {unit}"),
         }
         return messages[action].format(unit=unit.short_name)
-
-    @staticmethod
-    def _action_error_heading(unit: Unit, action: UnitAction) -> str:
-        headings = {
-            UnitAction.START: _("Could Not Start {unit}"),
-            UnitAction.STOP: _("Could Not Stop {unit}"),
-            UnitAction.RESTART: _("Could Not Restart {unit}"),
-            UnitAction.RELOAD: _("Could Not Reload {unit}"),
-            UnitAction.ENABLE: _("Could Not Enable {unit}"),
-            UnitAction.DISABLE: _("Could Not Disable {unit}"),
-            UnitAction.MASK: _("Could Not Mask {unit}"),
-            UnitAction.UNMASK: _("Could Not Unmask {unit}"),
-            UnitAction.RESET_FAILED: _("Could Not Clear the Failed State of {unit}"),
-        }
-        return headings[action].format(unit=unit.short_name)
 
     def show_unit(self, unit: Unit | None):
         """Beside the services list, or in a dialog when the window is too narrow."""
