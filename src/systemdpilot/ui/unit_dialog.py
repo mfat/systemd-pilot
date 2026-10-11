@@ -448,7 +448,9 @@ class UnitPanel(Adw.BreakpointBin):
                 subtitle=words.enable_caption(unit) if enabled else "",
                 active=enabled,
             )
-            row.add_suffix(widgets.label(unit.file_state or "", "dim-label", "caption"))
+            if unit.file_state not in ("enabled", "disabled"):
+                # The switch says enabled or not; only states like enabled-runtime say more.
+                row.add_suffix(widgets.label(unit.file_state or "", "dim-label", "caption"))
             row.connect("notify::active", self._on_startup_toggled)
             behavior.add(row)
         else:
