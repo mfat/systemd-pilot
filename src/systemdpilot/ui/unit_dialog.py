@@ -7,10 +7,10 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from gi.repository import Adw, Gio, GLib, Gtk, Pango
+from gi.repository import Adw, GLib, Gtk, Pango
 
 from ..core.journal import matches_query
-from ..core.manager import SIGNALS, SystemdManager
+from ..core.manager import SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction, short_unit_name
 from ..core.parsers import (
     override_body,
@@ -42,12 +42,12 @@ _RESOURCE_TYPES = ("service", "slice", "scope")
 _NO_STARTUP_TYPES = ("device", "scope")
 # Unit names listed in a row before "…and N more".
 _UNIT_LIST_LIMIT = 8
-# The More Actions menu's Send Signal items, in SIGNALS' order.
-_SIGNAL_LABELS = {
-    "SIGTERM": _("Terminate (SIGTERM)"),
-    "SIGHUP": _("Hang Up (SIGHUP)"),
-    "SIGKILL": _("Kill (SIGKILL)"),
-}
+# Buttons that signal a unit's processes: label, signal, and whether it is destructive.
+_SIGNAL_BUTTONS = (
+    (_("Terminate"), "SIGTERM", False),
+    (_("Hang Up"), "SIGHUP", False),
+    (_("Kill"), "SIGKILL", True),
+)
 
 
 @dataclass
@@ -122,16 +122,7 @@ class UnitPanel(Adw.BreakpointBin):
             lambda stack, _p: stack.get_visible_child_name() == "activity" and self._build_pending_activity(),
         )
 
-        self._install_actions()
         self._show_unit(unit)
-
-    def _install_actions(self) -> None:
-        """The Send Signal menu's items, as an action of the "unit" group."""
-        group = Gio.SimpleActionGroup()
-        action = Gio.SimpleAction.new("signal", GLib.VariantType.new("s"))
-        action.connect("activate", lambda _a, signal: self._on_signal(signal.get_string()))
-        group.add_action(action)
-        self.insert_action_group("unit", group)
 
     def start_loading(self) -> None:
         """Fetch fresh data in the background (call after :meth:`present`)."""
@@ -224,8 +215,10 @@ class UnitPanel(Adw.BreakpointBin):
         """What the unit allows beyond starting and stopping it, in a smaller row."""
         box = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
 
-        def add(label: str, callback: Callable[[], None]) -> None:
-            button = Gtk.Button(label=label, use_underline=True, css_classes=["small-pill"])
+        def add(label: str, callback: Callable[[], None], tooltip: str = "", destructive: bool = False) -> None:
+            button = Gtk.Button(label=label, tooltip_text=tooltip or None, css_classes=["small-pill"])
+            if destructive:
+                button.add_css_class("destructive-action")
             button.connect("clicked", lambda *_: callback())
             box.append(button)
 
@@ -236,12 +229,9 @@ class UnitPanel(Adw.BreakpointBin):
         if unit.is_failed:
             add(_("Clear Failed State"), lambda: self._run_action(UnitAction.RESET_FAILED))
         if words.can_signal(unit, props):
-            signals = Gio.Menu()
-            for signal in SIGNALS:
-                item = Gio.MenuItem.new(_SIGNAL_LABELS[signal], None)
-                item.set_action_and_target_value("unit.signal", GLib.Variant.new_string(signal))
-                signals.append_item(item)
-            box.append(Gtk.MenuButton(label=_("Send Signal"), menu_model=signals, css_classes=["small-pill"]))
+            for label, signal, destructive in _SIGNAL_BUTTONS:
+                tooltip = _("Send {signal} to its processes").format(signal=signal)
+                add(label, lambda s=signal: self._on_signal(s), tooltip, destructive)
         return box
 
     def _on_control_clicked(self, action: UnitAction):

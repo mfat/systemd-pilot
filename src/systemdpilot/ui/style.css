@@ -159,7 +159,7 @@ button.hero-action.destructive-action:hover { background-image: image(alpha(curr
   border-radius: 8px;
   background-color: alpha(currentColor, 0.05);
 }
-button.small-pill, menubutton.small-pill > button { min-height: 30px; padding: 0 12px; font-size: 13px; font-weight: bold; }
+button.small-pill { min-height: 30px; padding: 0 12px; font-size: 13px; font-weight: bold; }
 .ok-banner, .error-banner {
   padding: 14px 16px;
   border-radius: 12px;
