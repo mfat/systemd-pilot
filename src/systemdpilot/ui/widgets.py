@@ -124,7 +124,7 @@ class OptionDropDown(Gtk.DropDown):
         text.append(label("", "dim-label", "caption"))
         row.append(text)
         row.append(label("", "dim-label", "monospace", "caption", valign=Gtk.Align.CENTER))
-        row.append(Gtk.Image(icon_name="object-select-symbolic", valign=Gtk.Align.CENTER))
+        row.append(Gtk.Image(icon_name="systemdpilot-object-select-symbolic", valign=Gtk.Align.CENTER))
         # Choosing the current option again changes nothing, so the dropdown says nothing: tell.
         click = Gtk.GestureClick(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         click.connect("pressed", lambda *_: self._on_row_pressed(item))
@@ -167,7 +167,7 @@ class FilterRow(Gtk.ListBoxRow):
             mark = Gtk.Box(width_request=16, valign=Gtk.Align.CENTER)  # dots line up with the icons
             mark.append(dot(dot_kind, small=True))
         else:
-            mark = Gtk.Image(icon_name=icon_name or "cogged-wheel-symbolic")
+            mark = Gtk.Image(icon_name=icon_name or "systemdpilot-cogged-wheel-symbolic")
         box.append(mark)
         self.text = label(text, hexpand=True, ellipsize=Pango.EllipsizeMode.END)
         box.append(self.text)

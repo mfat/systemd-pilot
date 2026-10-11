@@ -9,10 +9,54 @@
     <!-- The app icon, for the icon theme (GtkApplication adds <prefix>/icons). -->
     <file alias="icons/scalable/apps/io.github.mfat.systemdpilot.svg">../data/icons/hicolor/scalable/apps/io.github.mfat.systemdpilot.svg</file>
     <file alias="icons/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg">../data/icons/hicolor/symbolic/apps/io.github.mfat.systemdpilot-symbolic.svg</file>
-    <!-- Icons only the app uses; not installed into the system theme. -->
-    <file alias="icons/scalable/actions/cogged-wheel-symbolic.svg">../data/icons/actions/cogged-wheel-symbolic.svg</file>
-    <file alias="icons/scalable/actions/bell-symbolic.svg">../data/icons/actions/bell-symbolic.svg</file>
-    <file alias="icons/scalable/actions/pegged-wheels-symbolic.svg">../data/icons/actions/pegged-wheels-symbolic.svg</file>
-    <file alias="icons/scalable/actions/arrows-circle-rotated-symbolic.svg">../data/icons/actions/arrows-circle-rotated-symbolic.svg</file>
+    <!-- Every icon the app names, under names of its own: no icon theme has them,
+         so GTK finds these and never a theme's (see CLAUDE.md). -->
+    <file alias="icons/scalable/actions/systemdpilot-adw-external-link-symbolic.svg">../data/icons/actions/systemdpilot-adw-external-link-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-alarm-symbolic.svg">../data/icons/actions/systemdpilot-alarm-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-application-x-addon-symbolic.svg">../data/icons/actions/systemdpilot-application-x-addon-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-applications-system-symbolic.svg">../data/icons/actions/systemdpilot-applications-system-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-arrows-circle-rotated-symbolic.svg">../data/icons/actions/systemdpilot-arrows-circle-rotated-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-audio-speakers-symbolic.svg">../data/icons/actions/systemdpilot-audio-speakers-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-bell-symbolic.svg">../data/icons/actions/systemdpilot-bell-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-cogged-wheel-symbolic.svg">../data/icons/actions/systemdpilot-cogged-wheel-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-computer-fail-symbolic.svg">../data/icons/actions/systemdpilot-computer-fail-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-computer-symbolic.svg">../data/icons/actions/systemdpilot-computer-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-dialog-error-symbolic.svg">../data/icons/actions/systemdpilot-dialog-error-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-dialog-information-symbolic.svg">../data/icons/actions/systemdpilot-dialog-information-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-dialog-password-symbolic.svg">../data/icons/actions/systemdpilot-dialog-password-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-dialog-warning-symbolic.svg">../data/icons/actions/systemdpilot-dialog-warning-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-drive-harddisk-symbolic.svg">../data/icons/actions/systemdpilot-drive-harddisk-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-drive-multidisk-symbolic.svg">../data/icons/actions/systemdpilot-drive-multidisk-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-drive-removable-media-symbolic.svg">../data/icons/actions/systemdpilot-drive-removable-media-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-edit-find-symbolic.svg">../data/icons/actions/systemdpilot-edit-find-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-find-location-symbolic.svg">../data/icons/actions/systemdpilot-find-location-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-folder-symbolic.svg">../data/icons/actions/systemdpilot-folder-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-go-down-symbolic.svg">../data/icons/actions/systemdpilot-go-down-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-go-next-symbolic.svg">../data/icons/actions/systemdpilot-go-next-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-go-up-symbolic.svg">../data/icons/actions/systemdpilot-go-up-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-list-add-symbolic.svg">../data/icons/actions/systemdpilot-list-add-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-media-playback-start-symbolic.svg">../data/icons/actions/systemdpilot-media-playback-start-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-media-playback-stop-symbolic.svg">../data/icons/actions/systemdpilot-media-playback-stop-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-media-removable-symbolic.svg">../data/icons/actions/systemdpilot-media-removable-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-network-server-symbolic.svg">../data/icons/actions/systemdpilot-network-server-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-network-wired-symbolic.svg">../data/icons/actions/systemdpilot-network-wired-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-network-wireless-symbolic.svg">../data/icons/actions/systemdpilot-network-wireless-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-object-select-symbolic.svg">../data/icons/actions/systemdpilot-object-select-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-open-menu-symbolic.svg">../data/icons/actions/systemdpilot-open-menu-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-pan-up-symbolic.svg">../data/icons/actions/systemdpilot-pan-up-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-pegged-wheels-symbolic.svg">../data/icons/actions/systemdpilot-pegged-wheels-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-process-stop-symbolic.svg">../data/icons/actions/systemdpilot-process-stop-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-security-high-symbolic.svg">../data/icons/actions/systemdpilot-security-high-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-sidebar-show-symbolic.svg">../data/icons/actions/systemdpilot-sidebar-show-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-system-reboot-symbolic.svg">../data/icons/actions/systemdpilot-system-reboot-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-system-search-symbolic.svg">../data/icons/actions/systemdpilot-system-search-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-system-software-install-symbolic.svg">../data/icons/actions/systemdpilot-system-software-install-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-text-x-generic-symbolic.svg">../data/icons/actions/systemdpilot-text-x-generic-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-video-display-symbolic.svg">../data/icons/actions/systemdpilot-video-display-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-view-grid-symbolic.svg">../data/icons/actions/systemdpilot-view-grid-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-view-list-symbolic.svg">../data/icons/actions/systemdpilot-view-list-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-view-more-horizontal-symbolic.svg">../data/icons/actions/systemdpilot-view-more-horizontal-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-view-more-symbolic.svg">../data/icons/actions/systemdpilot-view-more-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-view-refresh-symbolic.svg">../data/icons/actions/systemdpilot-view-refresh-symbolic.svg</file>
   </gresource>
 </gresources>

@@ -97,7 +97,7 @@ class JournalDetails(Adw.Bin):
         title, explanation = issue_text(issue)
         error = issue.severity == ERROR
         icon = Gtk.Image(
-            icon_name="dialog-error-symbolic" if error else "dialog-warning-symbolic",
+            icon_name="systemdpilot-dialog-error-symbolic" if error else "systemdpilot-dialog-warning-symbolic",
             pixel_size=24,
             css_classes=["error" if error else "warning"],
         )
@@ -120,7 +120,7 @@ class JournalDetails(Adw.Bin):
         level_word, level_css = words.level(entry.priority)
         first = entry.message.partition("\n")[0]
         mark = Gtk.Image(
-            icon_name=LEVEL_ICONS.get(level_css, "dialog-information-symbolic"),
+            icon_name=LEVEL_ICONS.get(level_css, "systemdpilot-dialog-information-symbolic"),
             pixel_size=24,
             css_classes=[level_css or "dim-label"],
         )

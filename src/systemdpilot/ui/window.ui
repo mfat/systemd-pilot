@@ -58,7 +58,7 @@
                     </property>
                     <child type="end">
                       <object class="GtkMenuButton">
-                        <property name="icon-name">open-menu-symbolic</property>
+                        <property name="icon-name">systemdpilot-open-menu-symbolic</property>
                         <property name="menu-model">primary_menu</property>
                         <property name="primary">True</property>
                         <property name="tooltip-text" translatable="yes">Main Menu</property>
@@ -91,7 +91,7 @@
                             <property name="spacing">10</property>
                             <child>
                               <object class="GtkImage" id="machine_icon">
-                                <property name="icon-name">computer-symbolic</property>
+                                <property name="icon-name">systemdpilot-computer-symbolic</property>
                               </object>
                             </child>
                             <child>
@@ -130,7 +130,7 @@
                             </child>
                             <child>
                               <object class="GtkImage">
-                                <property name="icon-name">pan-up-symbolic</property>
+                                <property name="icon-name">systemdpilot-pan-up-symbolic</property>
                               </object>
                             </child>
                           </object>
@@ -160,7 +160,7 @@
                     </child>
                     <child type="end">
                       <object class="GtkButton">
-                        <property name="icon-name">list-add-symbolic</property>
+                        <property name="icon-name">systemdpilot-list-add-symbolic</property>
                         <property name="tooltip-text" translatable="yes">Add Remote Host</property>
                         <property name="action-name">win.add-host</property>
                         <property name="valign">center</property>
@@ -193,28 +193,28 @@
                         <property name="show-title">False</property>
                         <child type="start">
                           <object class="GtkToggleButton" id="sidebar_button">
-                            <property name="icon-name">sidebar-show-symbolic</property>
+                            <property name="icon-name">systemdpilot-sidebar-show-symbolic</property>
                             <property name="tooltip-text" translatable="yes">Toggle Sidebar</property>
                             <property name="active">True</property>
                           </object>
                         </child>
                         <child type="end">
                           <object class="GtkMenuButton" id="host_menu_button">
-                            <property name="icon-name">view-more-symbolic</property>
+                            <property name="icon-name">systemdpilot-view-more-symbolic</property>
                             <property name="menu-model">host_menu</property>
                             <property name="tooltip-text" translatable="yes">Host Menu</property>
                           </object>
                         </child>
                         <child type="end">
                           <object class="GtkToggleButton" id="search_button">
-                            <property name="icon-name">system-search-symbolic</property>
+                            <property name="icon-name">systemdpilot-system-search-symbolic</property>
                             <property name="tooltip-text" translatable="yes">Search</property>
                             <property name="active" bind-source="search_bar" bind-property="search-mode-enabled" bind-flags="sync-create|bidirectional"/>
                           </object>
                         </child>
                         <child type="end">
                           <object class="GtkButton">
-                            <property name="icon-name">view-refresh-symbolic</property>
+                            <property name="icon-name">systemdpilot-view-refresh-symbolic</property>
                             <property name="tooltip-text" translatable="yes">Refresh</property>
                             <property name="action-name">win.refresh</property>
                           </object>
@@ -294,7 +294,7 @@
                             <property name="name">disconnected</property>
                             <property name="child">
                               <object class="AdwStatusPage" id="disconnected_page">
-                                <property name="icon-name">network-wired-symbolic</property>
+                                <property name="icon-name">systemdpilot-network-wired-symbolic</property>
                                 <property name="title" translatable="yes">Not Connected</property>
                                 <property name="child">
                                   <object class="GtkButton">
@@ -317,7 +317,7 @@
                             <property name="name">error</property>
                             <property name="child">
                               <object class="AdwStatusPage" id="error_page">
-                                <property name="icon-name">dialog-warning-symbolic</property>
+                                <property name="icon-name">systemdpilot-dialog-warning-symbolic</property>
                                 <property name="child">
                                   <object class="GtkBox">
                                     <property name="orientation">vertical</property>

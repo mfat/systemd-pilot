@@ -16,6 +16,68 @@ License: CC0-1.0
  On Debian systems, the complete text of the CC0 1.0 Universal license can be
  found in "/usr/share/common-licenses/CC0-1.0".
 
+Files: data/icons/actions/systemdpilot-alarm-symbolic.svg
+       data/icons/actions/systemdpilot-application-x-addon-symbolic.svg
+       data/icons/actions/systemdpilot-applications-system-symbolic.svg
+       data/icons/actions/systemdpilot-audio-speakers-symbolic.svg
+       data/icons/actions/systemdpilot-computer-fail-symbolic.svg
+       data/icons/actions/systemdpilot-computer-symbolic.svg
+       data/icons/actions/systemdpilot-dialog-error-symbolic.svg
+       data/icons/actions/systemdpilot-dialog-information-symbolic.svg
+       data/icons/actions/systemdpilot-dialog-password-symbolic.svg
+       data/icons/actions/systemdpilot-dialog-warning-symbolic.svg
+       data/icons/actions/systemdpilot-drive-harddisk-symbolic.svg
+       data/icons/actions/systemdpilot-drive-multidisk-symbolic.svg
+       data/icons/actions/systemdpilot-drive-removable-media-symbolic.svg
+       data/icons/actions/systemdpilot-edit-find-symbolic.svg
+       data/icons/actions/systemdpilot-find-location-symbolic.svg
+       data/icons/actions/systemdpilot-folder-symbolic.svg
+       data/icons/actions/systemdpilot-go-down-symbolic.svg
+       data/icons/actions/systemdpilot-go-next-symbolic.svg
+       data/icons/actions/systemdpilot-go-up-symbolic.svg
+       data/icons/actions/systemdpilot-list-add-symbolic.svg
+       data/icons/actions/systemdpilot-media-playback-start-symbolic.svg
+       data/icons/actions/systemdpilot-media-playback-stop-symbolic.svg
+       data/icons/actions/systemdpilot-media-removable-symbolic.svg
+       data/icons/actions/systemdpilot-network-server-symbolic.svg
+       data/icons/actions/systemdpilot-network-wired-symbolic.svg
+       data/icons/actions/systemdpilot-network-wireless-symbolic.svg
+       data/icons/actions/systemdpilot-object-select-symbolic.svg
+       data/icons/actions/systemdpilot-open-menu-symbolic.svg
+       data/icons/actions/systemdpilot-pan-up-symbolic.svg
+       data/icons/actions/systemdpilot-process-stop-symbolic.svg
+       data/icons/actions/systemdpilot-security-high-symbolic.svg
+       data/icons/actions/systemdpilot-sidebar-show-symbolic.svg
+       data/icons/actions/systemdpilot-system-reboot-symbolic.svg
+       data/icons/actions/systemdpilot-system-search-symbolic.svg
+       data/icons/actions/systemdpilot-system-software-install-symbolic.svg
+       data/icons/actions/systemdpilot-text-x-generic-symbolic.svg
+       data/icons/actions/systemdpilot-video-display-symbolic.svg
+       data/icons/actions/systemdpilot-view-grid-symbolic.svg
+       data/icons/actions/systemdpilot-view-list-symbolic.svg
+       data/icons/actions/systemdpilot-view-more-horizontal-symbolic.svg
+       data/icons/actions/systemdpilot-view-more-symbolic.svg
+       data/icons/actions/systemdpilot-view-refresh-symbolic.svg
+Copyright: The GNOME Project
+Comment: Adwaita icon theme symbolic icons, renamed with the app's prefix.
+License: LGPL-3.0-or-later or CC-BY-SA-3.0
+ These icons come from the Adwaita icon theme, which is dual-licensed under
+ the GNU Lesser General Public License version 3 or later, or the Creative
+ Commons Attribution-Share Alike 3.0 United States License.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public License
+ version 3 can be found in "/usr/share/common-licenses/LGPL-3".
+
+Files: data/icons/actions/systemdpilot-adw-external-link-symbolic.svg
+Copyright: The GNOME Project
+Comment: From libadwaita's bundled icons, renamed with the app's prefix.
+License: LGPL-2.1-or-later
+ This icon comes from libadwaita, licensed under the GNU Lesser General Public
+ License version 2.1 or later.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public License
+ version 2.1 can be found in "/usr/share/common-licenses/LGPL-2.1".
+
 License: GPL-3.0-or-later
  This program is free software: you can redistribute it and/or modify it under
  the terms of the GNU General Public License as published by the Free Software

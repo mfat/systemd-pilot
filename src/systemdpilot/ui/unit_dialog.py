@@ -177,7 +177,9 @@ class UnitPanel(Adw.BreakpointBin):
         self.name_label.set_visible(bool(description))
         self.name_label.set_tooltip_text(description or None)
         self.icon_tile.set_css_classes(["unit-icon", words.state_css(unit)])
-        self.icon_tile.get_first_child().set_from_icon_name(words.TYPE_ICONS.get(unit.type, "pegged-wheels-symbolic"))
+        self.icon_tile.get_first_child().set_from_icon_name(
+            words.TYPE_ICONS.get(unit.type, "systemdpilot-pegged-wheels-symbolic")
+        )
         self._show_actions(unit, props)
 
     @staticmethod
@@ -197,10 +199,10 @@ class UnitPanel(Adw.BreakpointBin):
     def _show_actions(self, unit: Unit, props: dict[str, str] | None):
         widgets.clear(self.action_box)
         buttons = {
-            UnitAction.START: (_("_Start"), "media-playback-start-symbolic", "suggested-action"),
-            UnitAction.RELOAD: (_("Re_load"), "arrows-circle-rotated-symbolic", None),
-            UnitAction.RESTART: (_("_Restart"), "view-refresh-symbolic", None),
-            UnitAction.STOP: (_("S_top"), "media-playback-stop-symbolic", "destructive-action"),
+            UnitAction.START: (_("_Start"), "systemdpilot-media-playback-start-symbolic", "suggested-action"),
+            UnitAction.RELOAD: (_("Re_load"), "systemdpilot-arrows-circle-rotated-symbolic", None),
+            UnitAction.RESTART: (_("_Restart"), "systemdpilot-view-refresh-symbolic", None),
+            UnitAction.STOP: (_("S_top"), "systemdpilot-media-playback-stop-symbolic", "destructive-action"),
         }
         controls = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER)
         for action in words.detail_actions(unit, props):
@@ -256,7 +258,7 @@ class UnitPanel(Adw.BreakpointBin):
             item.connect("clicked", lambda _b, s=signal: (popover.popdown(), self._on_signal(s)))
             items.append(item)
         return Gtk.MenuButton(
-            icon_name="view-more-horizontal-symbolic",
+            icon_name="systemdpilot-view-more-horizontal-symbolic",
             popover=popover,
             valign=Gtk.Align.CENTER,
             tooltip_text=_("Send Signal"),
@@ -443,7 +445,7 @@ class UnitPanel(Adw.BreakpointBin):
         widgets.clear(self.overview_box)
         self.overview_box.append(
             Adw.StatusPage(
-                icon_name="dialog-warning-symbolic",
+                icon_name="systemdpilot-dialog-warning-symbolic",
                 title=_("Could Not Load Details"),
                 description=GLib.markup_escape_text(message),
             )
@@ -462,7 +464,7 @@ class UnitPanel(Adw.BreakpointBin):
             box.append(self._error_banner(details))
         elif unit.is_failed:
             banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
-            banner.append(Gtk.Image(icon_name="dialog-error-symbolic", css_classes=["error"]))
+            banner.append(Gtk.Image(icon_name="systemdpilot-dialog-error-symbolic", css_classes=["error"]))
             banner.append(widgets.label("failed", "heading", "error"))
             box.append(banner)
 
@@ -572,7 +574,7 @@ class UnitPanel(Adw.BreakpointBin):
                     activatable=True,
                     tooltip_text=uri,
                 )
-                row.add_suffix(Gtk.Image(icon_name="adw-external-link-symbolic"))
+                row.add_suffix(Gtk.Image(icon_name="systemdpilot-adw-external-link-symbolic"))
                 row.connect("activated", lambda _r, u=uri: self._open_documentation(u))
                 docs.add(row)
             box.append(docs)
@@ -599,7 +601,9 @@ class UnitPanel(Adw.BreakpointBin):
 
     def _error_banner(self, details: _Details) -> Gtk.Widget:
         banner = Gtk.Box(spacing=14, css_classes=["error-banner"])
-        banner.append(Gtk.Image(icon_name="dialog-error-symbolic", valign=Gtk.Align.START, css_classes=["error"]))
+        banner.append(
+            Gtk.Image(icon_name="systemdpilot-dialog-error-symbolic", valign=Gtk.Align.START, css_classes=["error"])
+        )
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
         texts.append(widgets.label("failed", "heading", "error"))
         errors = [e for e in details.logs.entries if e.priority <= 3]

@@ -62,7 +62,7 @@
                   <object class="AdwViewStackPage" id="overview_page">
                     <property name="name">overview</property>
                     <property name="title" translatable="yes">Overview</property>
-                    <property name="icon-name">dialog-information-symbolic</property>
+                    <property name="icon-name">systemdpilot-dialog-information-symbolic</property>
                     <property name="child">
                       <object class="GtkScrolledWindow">
                         <property name="hscrollbar-policy">never</property>
@@ -95,7 +95,7 @@
                                         </style>
                                         <child>
                                           <object class="GtkImage">
-                                            <property name="icon-name">pegged-wheels-symbolic</property>
+                                            <property name="icon-name">systemdpilot-pegged-wheels-symbolic</property>
                                             <property name="pixel-size">48</property>
                                             <property name="halign">center</property>
                                             <property name="valign">center</property>
@@ -153,7 +153,7 @@
                   <object class="AdwViewStackPage" id="activity_page">
                     <property name="name">activity</property>
                     <property name="title" translatable="yes">Log</property>
-                    <property name="icon-name">text-x-generic-symbolic</property>
+                    <property name="icon-name">systemdpilot-text-x-generic-symbolic</property>
                     <property name="child">
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>

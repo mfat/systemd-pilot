@@ -11,17 +11,17 @@ from ..i18n import _, ngettext
 
 # An icon for each unit type, in the sidebar and the details header.
 TYPE_ICONS = {
-    "service": "cogged-wheel-symbolic",
-    "socket": "network-wired-symbolic",
-    "timer": "alarm-symbolic",
-    "path": "folder-symbolic",
-    "target": "find-location-symbolic",
-    "mount": "drive-harddisk-symbolic",
-    "automount": "drive-removable-media-symbolic",
-    "swap": "drive-multidisk-symbolic",
-    "device": "computer-symbolic",
-    "slice": "view-grid-symbolic",
-    "scope": "applications-system-symbolic",
+    "service": "systemdpilot-cogged-wheel-symbolic",
+    "socket": "systemdpilot-network-wired-symbolic",
+    "timer": "systemdpilot-alarm-symbolic",
+    "path": "systemdpilot-folder-symbolic",
+    "target": "systemdpilot-find-location-symbolic",
+    "mount": "systemdpilot-drive-harddisk-symbolic",
+    "automount": "systemdpilot-drive-removable-media-symbolic",
+    "swap": "systemdpilot-drive-multidisk-symbolic",
+    "device": "systemdpilot-computer-symbolic",
+    "slice": "systemdpilot-view-grid-symbolic",
+    "scope": "systemdpilot-applications-system-symbolic",
 }
 
 # File states that "systemctl enable/disable" cannot change.

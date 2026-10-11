@@ -174,7 +174,7 @@ class ServiceRow(Gtk.Box):
 
         self._state = widgets.label("", "state-word", xalign=1, valign=Gtk.Align.CENTER, width_request=110)
         box.append(self._state)
-        box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"]))
+        box.append(Gtk.Image(icon_name="systemdpilot-go-next-symbolic", css_classes=["dim-label"]))
         self.append(box)
 
     @property
@@ -265,7 +265,7 @@ class ServicesView(Gtk.Box):
         ("device", "device", words.TYPE_ICONS["device"], "systemd.device(5): devices the kernel reports"),
         ("slice", "slice", words.TYPE_ICONS["slice"], "systemd.slice(5): resource groups"),
         ("scope", "scope", words.TYPE_ICONS["scope"], "systemd.scope(5): processes started elsewhere"),
-        ("all", "all types", "view-list-symbolic", "every unit type"),
+        ("all", "all types", "systemdpilot-view-list-symbolic", "every unit type"),
     )
 
     def __init__(self):
@@ -352,7 +352,7 @@ class ServicesView(Gtk.Box):
         self._simple_scroll = Gtk.ScrolledWindow(child=self.simple_list, hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.stack.add_named(self._simple_scroll, "simple")
 
-        self.empty_page = Adw.StatusPage(icon_name="edit-find-symbolic")
+        self.empty_page = Adw.StatusPage(icon_name="systemdpilot-edit-find-symbolic")
         self.stack.add_named(self.empty_page, "empty")
         self.append(self.stack)
 

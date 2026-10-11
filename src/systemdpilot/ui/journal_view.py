@@ -65,8 +65,8 @@ SOURCES = (
 )
 # value, sidebar label, dot (or icon), timeline title; in the order of the services' filters
 FILTERS = (
-    ("all", _("All entries"), "bell-symbolic", _("All entries")),
-    ("problems", _("Needs attention"), "dialog-warning-symbolic", None),  # problems only, no timeline
+    ("all", _("All entries"), "systemdpilot-bell-symbolic", _("All entries")),
+    ("problems", _("Needs attention"), "systemdpilot-dialog-warning-symbolic", None),  # problems only, no timeline
     ("errors", _("Errors"), "failed", _("Errors")),
     ("warnings", _("Warnings"), "warning", _("Warnings")),
 )
@@ -91,19 +91,19 @@ PRESET_TEXT = {
     "packages": (_("Package Updates"), _("Installs, upgrades and failed transactions")),
 }
 PRESET_ICONS = {
-    "coredump": "computer-fail-symbolic",
-    "oom": "process-stop-symbolic",
-    "storage": "drive-harddisk-symbolic",
-    "sudo": "dialog-password-symbolic",
-    "ssh": "network-server-symbolic",
-    "mac": "security-high-symbolic",
-    "gpu": "video-display-symbolic",
-    "audio": "audio-speakers-symbolic",
-    "flatpak": "application-x-addon-symbolic",
-    "network": "network-wireless-symbolic",
-    "usb": "media-removable-symbolic",
-    "boot": "system-reboot-symbolic",
-    "packages": "system-software-install-symbolic",
+    "coredump": "systemdpilot-computer-fail-symbolic",
+    "oom": "systemdpilot-process-stop-symbolic",
+    "storage": "systemdpilot-drive-harddisk-symbolic",
+    "sudo": "systemdpilot-dialog-password-symbolic",
+    "ssh": "systemdpilot-network-server-symbolic",
+    "mac": "systemdpilot-security-high-symbolic",
+    "gpu": "systemdpilot-video-display-symbolic",
+    "audio": "systemdpilot-audio-speakers-symbolic",
+    "flatpak": "systemdpilot-application-x-addon-symbolic",
+    "network": "systemdpilot-network-wireless-symbolic",
+    "usb": "systemdpilot-media-removable-symbolic",
+    "boot": "systemdpilot-system-reboot-symbolic",
+    "packages": "systemdpilot-system-software-install-symbolic",
 }
 PRESET_ROW = "preset:"  # the value of a preset's row in the sidebar, before its id
 
@@ -180,7 +180,7 @@ def issue_badge(issue: Issue) -> str:
 
 
 # The icon for an entry's level, by its text css class; other levels get an information icon.
-LEVEL_ICONS = {"error": "dialog-error-symbolic", "warning": "dialog-warning-symbolic"}
+LEVEL_ICONS = {"error": "systemdpilot-dialog-error-symbolic", "warning": "systemdpilot-dialog-warning-symbolic"}
 
 
 class IssueRow(Gtk.ListBoxRow):
@@ -192,7 +192,7 @@ class IssueRow(Gtk.ListBoxRow):
         title, explanation = issue_text(issue)
         error = issue.severity == ERROR
         box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=16, margin_end=16)
-        icon = "dialog-error-symbolic" if error else "dialog-warning-symbolic"
+        icon = "systemdpilot-dialog-error-symbolic" if error else "systemdpilot-dialog-warning-symbolic"
         box.append(Gtk.Image(icon_name=icon, valign=Gtk.Align.START, css_classes=["error" if error else "warning"]))
 
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
@@ -208,7 +208,9 @@ class IssueRow(Gtk.ListBoxRow):
         texts.append(widgets.label(issue_meta(issue), "dim-label", "caption", wrap=True))
         box.append(texts)
 
-        box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER))
+        box.append(
+            Gtk.Image(icon_name="systemdpilot-go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER)
+        )
         self.set_child(box)
         self.update_property([Gtk.AccessibleProperty.LABEL], [title])
 
@@ -221,7 +223,7 @@ class EntryRow(Gtk.ListBoxRow):
         self.entry = entry
         box = Gtk.Box(spacing=14, margin_top=14, margin_bottom=14, margin_start=16, margin_end=16)
         level_word, level_css = words.level(entry.priority)
-        icon = LEVEL_ICONS.get(level_css, "dialog-information-symbolic")
+        icon = LEVEL_ICONS.get(level_css, "systemdpilot-dialog-information-symbolic")
         box.append(Gtk.Image(icon_name=icon, valign=Gtk.Align.START, css_classes=[level_css or "dim-label"]))
 
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
@@ -244,7 +246,9 @@ class EntryRow(Gtk.ListBoxRow):
         meta = " · ".join(part for part in (when, f"PID {entry.pid}" if entry.pid else "", level_word) if part)
         texts.append(widgets.label(meta, "dim-label", "caption", wrap=True))
         box.append(texts)
-        box.append(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER))
+        box.append(
+            Gtk.Image(icon_name="systemdpilot-go-next-symbolic", css_classes=["dim-label"], valign=Gtk.Align.CENTER)
+        )
         self.set_child(box)
         self.update_property([Gtk.AccessibleProperty.LABEL], [f"{source}: {first}"])
 
@@ -364,7 +368,7 @@ class JournalView(Gtk.Box):
         pickers.append(self._since)
         pickers.append(self._boot)
         pickers.append(self._source)
-        self._follow = Gtk.ToggleButton(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER)
+        self._follow = Gtk.ToggleButton(icon_name="systemdpilot-media-playback-start-symbolic", valign=Gtk.Align.CENTER)
         self._follow.connect("toggled", self._on_follow_toggled)
         self.connect("destroy", lambda *_: self._stop_follow())
         pickers.append(self._follow)
@@ -511,7 +515,7 @@ class JournalView(Gtk.Box):
             self._analysis_key = None
             self.issues = []
             if ui:
-                self._status.set_icon_name("dialog-warning-symbolic")
+                self._status.set_icon_name("systemdpilot-dialog-warning-symbolic")
                 self._status.set_title(_("Could Not Read the Journal"))
                 self._status.set_description(GLib.markup_escape_text(describe(error)))
                 self.stack.set_visible_child_name("status")
@@ -1043,13 +1047,13 @@ class JournalView(Gtk.Box):
 
     def _older_row(self) -> Gtk.ListBoxRow:
         box = Gtk.Box(spacing=10, css_classes=["boot-header"])
-        box.append(Gtk.Image(icon_name="dialog-information-symbolic"))
+        box.append(Gtk.Image(icon_name="systemdpilot-dialog-information-symbolic"))
         box.append(widgets.label(_("Older entries: errors and warnings only")))
         return Gtk.ListBoxRow(child=box, activatable=False, selectable=False)
 
     def _boot_row(self, boot_id: str) -> Gtk.ListBoxRow:
         box = Gtk.Box(spacing=10, css_classes=["boot-header"])
-        box.append(Gtk.Image(icon_name="computer-symbolic"))
+        box.append(Gtk.Image(icon_name="systemdpilot-computer-symbolic"))
         current = boot_id == self._boot_id
         box.append(widgets.label(_("This boot") if current else _("Earlier boot · {id}").format(id=boot_id[:8])))
         row = Gtk.ListBoxRow(child=box, activatable=False, selectable=False)

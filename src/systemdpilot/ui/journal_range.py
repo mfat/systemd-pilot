@@ -66,7 +66,10 @@ class MomentEditor:
         clock.attach(digits, 0, 1, 3, 1)
         clock.attach(Gtk.Box(width_request=TIME_COLON_WIDTH), 1, 0, 1, 1)  # keeps the minutes' arrows over them
         for column, field in ((0, self._hour), (2, self._minute)):
-            for row, step, icon, name in ((0, 1, "go-up-symbolic", _("Up")), (2, -1, "go-down-symbolic", _("Down"))):
+            for row, step, icon, name in (
+                (0, 1, "systemdpilot-go-up-symbolic", _("Up")),
+                (2, -1, "systemdpilot-go-down-symbolic", _("Down")),
+            ):
                 button = Gtk.Button(icon_name=icon, halign=Gtk.Align.CENTER, css_classes=["flat", "circular"])
                 button.update_property([Gtk.AccessibleProperty.LABEL], [name])
                 button.connect("clicked", lambda _b, f=field, s=step: self._step(f, s))

@@ -302,7 +302,7 @@ class Window(Adw.ApplicationWindow):
     def _journal_button(self) -> tuple[Gtk.Button, Gtk.Label]:
         """For the details column's header bar: one each for the placeholder and the panel."""
         # A bell, with the count of problems on its corner.
-        bell = Gtk.Overlay(child=Gtk.Image(icon_name="bell-symbolic"))
+        bell = Gtk.Overlay(child=Gtk.Image(icon_name="systemdpilot-bell-symbolic"))
         badge = count_badge("error")
         badge.add_css_class("on-icon")
         badge.set_xalign(0.5)
@@ -326,11 +326,13 @@ class Window(Adw.ApplicationWindow):
 
     def _rebuild_machine_list(self):
         self.machine_list.remove_all()
-        local = MachineRow(LOCAL_ID, _("This Computer"), GLib.get_host_name(), "computer-symbolic")
+        local = MachineRow(LOCAL_ID, _("This Computer"), GLib.get_host_name(), "systemdpilot-computer-symbolic")
         local.set_connected(False)
         self.machine_list.append(local)
         for host in self.sessions.hosts.hosts():
-            row = MachineRow(host.id, host.name, f"{host.username}@{host.hostname}", "network-server-symbolic")
+            row = MachineRow(
+                host.id, host.name, f"{host.username}@{host.hostname}", "systemdpilot-network-server-symbolic"
+            )
             row.set_connected(self.sessions.is_connected(host.id))
             self.machine_list.append(row)
 
