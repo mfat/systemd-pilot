@@ -69,7 +69,7 @@ class UnitPanel(Adw.BreakpointBin):
     icon_tile: Gtk.Box = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
-    name_actions: Gtk.Box = Gtk.Template.Child()
+    info_button: Gtk.Button = Gtk.Template.Child()
     action_box: Gtk.Box = Gtk.Template.Child()
     stack: Adw.ViewStack = Gtk.Template.Child()
     loading_stack: Gtk.Stack = Gtk.Template.Child()
@@ -119,6 +119,7 @@ class UnitPanel(Adw.BreakpointBin):
         self.raw_switch.connect("notify::active", self._on_raw_toggled)
         self.log_search.connect("search-changed", self._on_log_search)
         self.stack.connect("notify::visible-child-name", lambda *_: self._on_page_changed())
+        self.info_button.connect("clicked", lambda *_: websearch.search(self.get_root(), words.search_name(self.unit)))
 
         self._show_unit(unit)
 
@@ -178,26 +179,10 @@ class UnitPanel(Adw.BreakpointBin):
         self.name_label.set_tooltip_text(description or None)
         self.icon_tile.set_css_classes(["unit-icon", words.state_css(unit)])
         self.icon_tile.get_first_child().set_from_icon_name(words.TYPE_ICONS.get(unit.type, "pegged-wheels-symbolic"))
-        self._show_name_actions(unit)
+        query = words.search_name(unit)
+        self.info_button.set_visible(bool(query))
+        self.info_button.set_tooltip_text(_("Search the Web for {name}").format(name=query) if query else None)
         self._show_actions(unit, props)
-
-    def _show_name_actions(self, unit: Unit) -> None:
-        """Copy and web search buttons beside the name, shown while it is hovered."""
-        widgets.clear(self.name_actions)
-
-        def add(icon: str, tooltip: str, callback: Callable[[], None]) -> None:
-            button = Gtk.Button(icon_name=icon, tooltip_text=tooltip, css_classes=["flat", "circular"])
-            button.connect("clicked", lambda *_: callback())
-            self.name_actions.append(button)
-
-        add("edit-copy-symbolic", _("Copy Name"), lambda: self._copy_name(unit.name))
-        if query := words.search_name(unit):
-            tooltip = _("Search the Web for {name}").format(name=query)
-            add("system-search-symbolic", tooltip, lambda: websearch.search(self.get_root(), query))
-
-    def _copy_name(self, name: str) -> None:
-        self.get_clipboard().set(name)
-        self.toast_overlay.add_toast(Adw.Toast(title=_("Copied {name}").format(name=name), use_markup=False, timeout=2))
 
     def _show_actions(self, unit: Unit, props: dict[str, str] | None):
         widgets.clear(self.action_box)
