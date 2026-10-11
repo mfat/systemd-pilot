@@ -10,15 +10,23 @@ from . import widgets, words
 from .widgets import FilterRow
 
 
-def matches_filter(unit: Unit, value: str) -> bool:
-    """Whether the sidebar filter ``value`` shows ``unit`` (scope or :attr:`Unit.kind`)."""
-    if value == "all":
-        return True
-    if value == "user":
+def matches_scope(unit: Unit, scope: str) -> bool:
+    """Whether ``unit`` matches a scope filter (``all``, ``system``, ``user``)."""
+    if scope == "user":
         return unit.is_user
-    if value == "system":
+    if scope == "system":
         return not unit.is_user
-    return unit.kind == value
+    return True
+
+
+def matches_kind(unit: Unit, kind: str) -> bool:
+    """Whether ``unit`` matches a state filter (``all`` or a :attr:`Unit.kind`)."""
+    return kind == "all" or unit.kind == kind
+
+
+def matches_filter(unit: Unit, scope: str, kind: str) -> bool:
+    """Whether ``unit`` matches both the scope and state sidebar filters."""
+    return matches_scope(unit, scope) and matches_kind(unit, kind)
 
 
 def user_tag() -> Gtk.Widget:
@@ -285,11 +293,13 @@ class ServicesView(Gtk.Box):
         "filter-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
-    # Labels are systemd terms; tooltips are CLI-oriented.
-    FILTERS = (
-        ("all", "all", None, "system + user"),
-        ("system", "system", None, "systemctl --system"),
-        ("user", "user", "user", "systemctl --user"),
+    # Scope and state are independent. Scope defaults to both (no button active).
+    SCOPE_FILTERS = (
+        ("system", "system", "systemctl --system"),
+        ("user", "user", "systemctl --user"),
+    )
+    KIND_FILTERS = (
+        ("all", "All", None, "all states"),
         ("failed", "failed", "failed", "failed"),
         ("running", "running", "running", "active (running)"),
         ("exited", "exited", "exited", "active (exited)"),
@@ -310,6 +320,9 @@ class ServicesView(Gtk.Box):
         self._empty_hint = ""
 
         actions = Gio.SimpleActionGroup()
+        self._scope = Gio.SimpleAction.new_stateful("scope", GLib.VariantType.new("s"), GLib.Variant("s", "all"))
+        self._scope.connect("change-state", self._on_scope)
+        actions.add_action(self._scope)
         self._filter = Gio.SimpleAction.new_stateful("filter", GLib.VariantType.new("s"), GLib.Variant("s", "all"))
         self._filter.connect("change-state", self._on_filter)
         actions.add_action(self._filter)
@@ -324,17 +337,20 @@ class ServicesView(Gtk.Box):
         bar.append(self._busy)
         self.append(widgets.scroller(bar))
 
-        # The state filters live in the window sidebar.
-        self.filter_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
-        self._filter_rows: dict[str, FilterRow] = {}
-        for value, text, dot_kind, tip in self.FILTERS:
-            icon = "computer-symbolic" if value == "system" else ""
-            row = FilterRow(value, text, dot_kind, icon_name=icon, tooltip_text=tip)
-            self._filter_rows[value] = row
-            self.filter_list.append(row)
-        self.filter_list.select_row(self._filter_rows["all"])
-        self.filter_list.connect("row-selected", self._on_filter_row_selected)
-        self.sidebar = self.filter_list
+        # Scope switcher above the state filters in the window sidebar.
+        self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_bottom=12)
+        switcher = self._build_scope_switcher()
+        switcher.set_margin_start(6)
+        switcher.set_margin_end(6)
+        switcher.set_margin_top(6)
+        switcher.set_halign(Gtk.Align.FILL)
+        switcher.set_hexpand(True)
+        self.sidebar.append(switcher)
+        self._kind_rows: dict[str, FilterRow] = {}
+        self.filter_list = self._filter_list(self.KIND_FILTERS, self._kind_rows, self._on_filter_row_selected)
+        self.filter_list.select_row(self._kind_rows["all"])
+        self.sidebar.append(self.filter_list)
+        self.filter_lists = (self.filter_list,)
 
         self.stack = Gtk.Stack(vexpand=True, hhomogeneous=False, transition_type=Gtk.StackTransitionType.CROSSFADE)
         # Grouped by state, then by name, each group after its heading. A list view
@@ -441,18 +457,69 @@ class ServicesView(Gtk.Box):
         self._empty_hint = hint
 
     @property
+    def scope_filter(self) -> str:
+        return self._scope.get_state().get_string()
+
+    @property
     def kind_filter(self) -> str:
         return self._filter.get_state().get_string()
 
     # -- internals --------------------------------------------------------
 
+    def _build_scope_switcher(self) -> Gtk.Widget:
+        """Linked system / user toggles; neither active means both scopes (default)."""
+        box = Gtk.Box(css_classes=["linked"], valign=Gtk.Align.CENTER, homogeneous=True)
+        self._scope_buttons: dict[str, Gtk.ToggleButton] = {}
+        self._syncing_scope = False
+        for value, text, tip in self.SCOPE_FILTERS:
+            # Not a radio group: both off = all scopes; click the active one again to clear.
+            button = Gtk.ToggleButton(label=text, tooltip_text=tip, hexpand=True)
+            button.connect("toggled", self._on_scope_button, value)
+            self._scope_buttons[value] = button
+            box.append(button)
+        return box
+
+    def _filter_list(self, filters, rows: dict, on_selected) -> Gtk.ListBox:
+        listbox = Gtk.ListBox(css_classes=["navigation-sidebar"])
+        for value, text, dot_kind, tip in filters:
+            row = FilterRow(value, text, dot_kind, tooltip_text=tip)
+            rows[value] = row
+            listbox.append(row)
+        listbox.connect("row-selected", on_selected)
+        return listbox
+
+    def _on_scope_button(self, button: Gtk.ToggleButton, value: str) -> None:
+        if self._syncing_scope:
+            return
+        if button.get_active():
+            scope = value
+        else:
+            # Cleared the active scope → show system + user again.
+            scope = "all"
+        if scope != self.scope_filter:
+            self._scope.change_state(GLib.Variant("s", scope))
+
     def _on_filter_row_selected(self, _listbox, row):
         if row is not None and row.value != self.kind_filter:
             self._filter.change_state(GLib.Variant("s", row.value))
 
+    def _on_scope(self, action, value):
+        action.set_state(value)
+        scope = value.get_string()
+        self._syncing_scope = True
+        try:
+            for name, button in self._scope_buttons.items():
+                button.set_active(name == scope)
+        finally:
+            self._syncing_scope = False
+        self._apply_filters()
+
     def _on_filter(self, action, value):
         action.set_state(value)
-        self.filter_list.select_row(self._filter_rows[value.get_string()])
+        self.filter_list.select_row(self._kind_rows[value.get_string()])
+        self._apply_filters()
+
+    def _apply_filters(self) -> None:
         self._refresh()
         if self.model.get_n_items():
             self.simple_list.scroll_to(0, Gtk.ListScrollFlags.NONE, None)
@@ -463,13 +530,14 @@ class ServicesView(Gtk.Box):
         return [u for u in self._units if not q or q in u.name.lower() or q in u.description.lower()]
 
     def _visible(self) -> list[Unit]:
-        kind = self.kind_filter
-        return [u for u in self._matching() if matches_filter(u, kind)]
+        scope, kind = self.scope_filter, self.kind_filter
+        return [u for u in self._matching() if matches_filter(u, scope, kind)]
 
     def _refresh(self) -> None:
         matching = self._matching()
-        for value, row in self._filter_rows.items():
-            row.set_count(sum(1 for u in matching if matches_filter(u, value)))
+        scope = self.scope_filter
+        for value, row in self._kind_rows.items():
+            row.set_count(sum(1 for u in matching if matches_filter(u, scope, value)))
 
         visible = self._visible()
         if not visible:
@@ -489,6 +557,8 @@ class ServicesView(Gtk.Box):
 
     def _update_simple(self, visible: list[Unit]) -> None:
         """Change the simple list in place, so scrolling and focus are kept."""
+        # Group headings only when State is "all"; a single-state filter is one group.
+        use_headings = self.kind_filter == "all"
         incoming = {u.key: u for u in visible}
         gone: list[int] = []
         moved: list[ServiceItem] = []
@@ -499,7 +569,10 @@ class ServicesView(Gtk.Box):
         for position in range(self._store.get_n_items()):
             item = self._store.get_item(position)
             if isinstance(item, GroupItem):
-                headings[item.kind] = position
+                if use_headings:
+                    headings[item.kind] = position
+                else:
+                    gone.append(position)
                 continue
             unit = incoming.pop(item.unit.key, None)
             if unit is None:
@@ -523,7 +596,9 @@ class ServicesView(Gtk.Box):
         gone = sorted(gone + [position for kind, position in headings.items() if kind not in kinds])
         for start, count in reversed(_runs(gone)):
             self._store.splice(start, count, [])
-        added = [GroupItem(kind) for kind in kinds - headings.keys()]
+        added: list[GObject.Object] = []
+        if use_headings:
+            added += [GroupItem(kind) for kind in kinds - headings.keys()]
         added += moved + [ServiceItem(u) for u in new]
         if added:
             self._store.splice(self._store.get_n_items(), 0, added)

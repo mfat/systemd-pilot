@@ -123,7 +123,8 @@ class Window(Adw.ApplicationWindow):
         self.services.connect("filter-changed", lambda *_: self._update_badges())
         set_bin_child(self.services_bin, self.services)
         set_bin_child(self.filters_bin, self.services.sidebar)
-        self.services.filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
+        for filter_list in self.services.filter_lists:
+            filter_list.connect("row-activated", lambda *_: self._on_filter_activated())
         self._details_placeholder = self._build_details_placeholder()
         set_bin_child(self.details_bin, self._details_placeholder)
         self.details_split.connect("notify::collapsed", self._on_details_collapsed)

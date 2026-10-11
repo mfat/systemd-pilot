@@ -54,10 +54,10 @@ def test_state_sentence():
     assert words.state_sentence(exited) == "active (exited)"
 
 
-def test_matches_filter_scope():
+def test_matches_filter_scope_and_kind():
     system = Unit("a.service", scope=Scope.SYSTEM, active_state="active", sub_state="running")
-    user = Unit("a.service", scope=Scope.USER, active_state="active", sub_state="running")
-    assert matches_filter(system, "all") and matches_filter(user, "all")
-    assert matches_filter(system, "system") and not matches_filter(user, "system")
-    assert matches_filter(user, "user") and not matches_filter(system, "user")
-    assert matches_filter(system, "running")
+    user = Unit("a.service", scope=Scope.USER, active_state="failed", sub_state="failed")
+    assert matches_filter(system, "all", "all") and matches_filter(user, "all", "all")
+    assert matches_filter(system, "system", "running") and not matches_filter(user, "system", "all")
+    assert matches_filter(user, "user", "failed") and not matches_filter(system, "user", "all")
+    assert matches_filter(system, "system", "all") and not matches_filter(system, "all", "failed")
