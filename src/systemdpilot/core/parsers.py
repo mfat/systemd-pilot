@@ -175,6 +175,29 @@ def parse_unit_list(value: str) -> list[str]:
         return value.split()
 
 
+# A line of "systemctl list-dependencies" after its state glyph: indentation of
+# "│ " or "  " per level, then a branch, in Unicode or, in a C locale, ASCII.
+_DEPENDENCY_LINE_RE = re.compile(r"^((?:[│|] |  )*)(?:├─|└─|\|-|`-)(\S.*)$")
+
+
+def parse_dependency_tree(text: str) -> list[tuple[int, str]]:
+    """``systemctl list-dependencies`` as (depth, unit name) pairs, in its order.
+
+    The first line, the unit asked about, is left out; its direct dependencies
+    have depth 0. Each other line starts with a state glyph and a space::
+
+        ssh.service
+        ● ├─-.mount
+        ● └─sysinit.target
+        ○   ├─ldconfig.service
+    """
+    tree = []
+    for line in strip_ansi(text).splitlines()[1:]:
+        if match := _DEPENDENCY_LINE_RE.match(line[2:]):
+            tree.append((len(match.group(1)) // 2, match.group(2).strip()))
+    return tree
+
+
 _TIMER_SPEC_RE = re.compile(r"\{ (\w+)=(.*?) ; next_elapse=(.*?) \}")
 
 

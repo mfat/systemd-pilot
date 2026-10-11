@@ -21,6 +21,7 @@
     <file alias="icons/scalable/actions/systemdpilot-cogged-wheel-symbolic.svg">../data/icons/actions/systemdpilot-cogged-wheel-symbolic.svg</file>
     <file alias="icons/scalable/actions/systemdpilot-computer-fail-symbolic.svg">../data/icons/actions/systemdpilot-computer-fail-symbolic.svg</file>
     <file alias="icons/scalable/actions/systemdpilot-computer-symbolic.svg">../data/icons/actions/systemdpilot-computer-symbolic.svg</file>
+    <file alias="icons/scalable/actions/systemdpilot-dependencies-symbolic.svg">../data/icons/actions/systemdpilot-dependencies-symbolic.svg</file>
     <file alias="icons/scalable/actions/systemdpilot-dialog-error-symbolic.svg">../data/icons/actions/systemdpilot-dialog-error-symbolic.svg</file>
     <file alias="icons/scalable/actions/systemdpilot-dialog-information-symbolic.svg">../data/icons/actions/systemdpilot-dialog-information-symbolic.svg</file>
     <file alias="icons/scalable/actions/systemdpilot-dialog-password-symbolic.svg">../data/icons/actions/systemdpilot-dialog-password-symbolic.svg</file>

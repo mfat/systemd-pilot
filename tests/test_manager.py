@@ -12,7 +12,7 @@ from systemdpilot.core.errors import (
     UnitExists,
 )
 from systemdpilot.core.manager import SystemdManager
-from systemdpilot.core.models import Scope, Unit, UnitAction
+from systemdpilot.core.models import DependencyKind, Scope, Unit, UnitAction
 from systemdpilot.core.runner import CommandResult, CommandRunner
 from systemdpilot.core.validation import normalize_service_name, validate_unit_name
 
@@ -159,6 +159,46 @@ def test_complete_units_tolerates_failure(runner):
     runner.reply("systemctl", "--no-pager", "list-unit-files", returncode=1, stderr="boom")
     loaded = [Unit("a.service", active_state="active")]
     assert [u.file_state for u in SystemdManager(runner).complete_units(loaded)] == [""]
+
+
+def test_dependencies_come_with_states(runner):
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "--user",
+        "list-dependencies",
+        stdout="app.service\n● ├─a.socket\n○ └─b.target\n●   └─a.socket\n",
+    )
+    runner.reply(
+        "systemctl",
+        "--no-pager",
+        "--user",
+        "show",
+        stdout="Id=a.socket\nActiveState=active\nSubState=listening\n\nId=b.target\nActiveState=inactive\n",
+    )
+    deps = SystemdManager(runner).dependencies("app.service", DependencyKind.REQUIRED_BY, Scope.USER)
+    assert [(d.depth, d.unit.name, d.unit.active_state, d.unit.scope) for d in deps] == [
+        (0, "a.socket", "active", Scope.USER),
+        (0, "b.target", "inactive", Scope.USER),
+        (1, "a.socket", "active", Scope.USER),
+    ]
+    tree, show = (call["argv"] for call in runner.calls)
+    assert tree[3:] == ["list-dependencies", "--reverse", "--", "app.service"]
+    assert show[-3:] == ["--", "a.socket", "b.target"]  # each unit asked about once
+
+
+def test_dependencies_without_states(runner):
+    runner.reply("systemctl", "--no-pager", "list-dependencies", stdout="app.service\n● └─a.socket\n")
+    runner.reply("systemctl", "--no-pager", "show", returncode=1)
+    [dep] = SystemdManager(runner).dependencies("app.service", DependencyKind.AFTER)
+    assert dep.unit == Unit("a.socket")
+    assert runner.calls[0]["argv"][2:4] == ["list-dependencies", "--after"]
+
+
+def test_no_dependencies_asks_nothing_more(runner):
+    runner.reply("systemctl", "--no-pager", "list-dependencies", stdout="app.service\n")
+    assert SystemdManager(runner).dependencies("app.service", DependencyKind.REQUIRES) == []
+    assert len(runner.calls) == 1
 
 
 def test_list_units_failure_raises(runner):

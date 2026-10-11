@@ -18,9 +18,10 @@ from .errors import (
     UnitActivationFailed,
     UnitExists,
 )
-from .models import LogResult, Scope, Unit, UnitAction
+from .models import Dependency, DependencyKind, LogResult, Scope, Unit, UnitAction
 from .parsers import (
     merge_units,
+    parse_dependency_tree,
     parse_int,
     parse_journal,
     parse_list_unit_files,
@@ -145,6 +146,15 @@ _USER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*\$?$")
 _RUNTIME_PROPERTIES = (
     "Id,MainPID,MemoryCurrent,ActiveEnterTimestamp,ActiveExitTimestamp,InactiveEnterTimestamp,InactiveExitTimestamp"
 )
+
+# list-dependencies flags for each kind of relation.
+_DEPENDENCY_FLAGS = {
+    DependencyKind.REQUIRES: (),
+    DependencyKind.REQUIRED_BY: ("--reverse",),
+    DependencyKind.AFTER: ("--after",),
+    DependencyKind.BEFORE: ("--before",),
+}
+_STATE_PROPERTIES = "Id,Description,LoadState,ActiveState,SubState,UnitFileState"
 
 # Only what the journal view shows; keeps the JSON small over SSH.
 _JOURNAL_FIELDS = ",".join(
@@ -330,6 +340,44 @@ class SystemdManager:
             # systemd < 248 has no --timestamp; times then stay in its own words.
             result = self.runner.run(self._systemctl(scope, "show", "--", name))
         return parse_properties(result.check().stdout)
+
+    def dependencies(self, name: str, kind: DependencyKind, scope: Scope = Scope.SYSTEM) -> list[Dependency]:
+        """The unit's dependency tree of one kind, as ``systemctl list-dependencies`` shows it.
+
+        Like systemctl, only targets are followed further down. Each unit comes
+        with its current state.
+        """
+        validate_unit_name(name)
+        args = ["list-dependencies", *_DEPENDENCY_FLAGS[kind], "--", name]
+        tree = parse_dependency_tree(self.runner.run(self._systemctl(scope, *args)).check().stdout)
+        states = self._unit_states(scope, list(dict.fromkeys(n for _depth, n in tree)))
+        return [Dependency(depth, states.get(n) or Unit(n, scope=scope)) for depth, n in tree]
+
+    def _unit_states(self, scope: Scope, names: list[str]) -> dict[str, Unit]:
+        """The units named, with their states, in one ``systemctl show``. Odd names are left out."""
+        valid = []
+        for name in names:
+            try:
+                valid.append(validate_unit_name(name))
+            except InvalidUnitName:
+                pass
+        if not valid:
+            return {}
+        result = self.runner.run(self._systemctl(scope, "show", f"--property={_STATE_PROPERTIES}", "--", *valid))
+        if not result.ok:
+            return {}  # states are a nice-to-have; the tree still shows
+        return {
+            name: Unit(
+                name=name,
+                description=props.get("Description", ""),
+                load_state=props.get("LoadState", ""),
+                active_state=props.get("ActiveState", ""),
+                sub_state=props.get("SubState", ""),
+                file_state=props.get("UnitFileState", ""),
+                scope=scope,
+            )
+            for name, props in parse_show_units(result.stdout).items()
+        }
 
     def unit_file(self, name: str, scope: Scope = Scope.SYSTEM) -> str:
         validate_unit_name(name)

@@ -11,7 +11,16 @@ from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from ..core.journal import matches_query
 from ..core.manager import SystemdManager
-from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction, short_unit_name
+from ..core.models import (
+    Dependency,
+    DependencyKind,
+    LogEntry,
+    LogResult,
+    Scope,
+    Unit,
+    UnitAction,
+    short_unit_name,
+)
 from ..core.parsers import (
     override_body,
     parse_int,
@@ -48,6 +57,15 @@ _SIGNAL_ITEMS = (
     (_("Hang Up"), "SIGHUP", False),
     (_("Kill…"), "SIGKILL", True),
 )
+# The Dependencies page's choices: relation, label, tooltip.
+_DEPENDENCY_KINDS = (
+    (DependencyKind.REQUIRES, _("Requires"), _("Units this one pulls in, with Requires=, Wants= and the like")),
+    (DependencyKind.REQUIRED_BY, _("Required By"), _("Units that pull this one in")),
+    (DependencyKind.AFTER, _("After"), _("Units this one starts after")),
+    (DependencyKind.BEFORE, _("Before"), _("Units this one starts before")),
+)
+# Indentation per level of the dependency tree, in pixels.
+_DEPENDENCY_INDENT = 22
 
 
 @dataclass
@@ -83,6 +101,11 @@ class UnitPanel(Adw.BreakpointBin):
     logs_banner: Adw.Banner = Gtk.Template.Child()
     logs_view: Gtk.TextView = Gtk.Template.Child()
     logs_scroll: Gtk.ScrolledWindow = Gtk.Template.Child()
+    dependency_kinds: Gtk.Box = Gtk.Template.Child()
+    dependencies_stack: Gtk.Stack = Gtk.Template.Child()
+    dependencies_spinner: Gtk.Spinner = Gtk.Template.Child()
+    dependencies_list: Gtk.ListBox = Gtk.Template.Child()
+    dependencies_message: Adw.StatusPage = Gtk.Template.Child()
 
     def __init__(
         self,
@@ -94,6 +117,7 @@ class UnitPanel(Adw.BreakpointBin):
         machine_label: str = "",
         on_changed: Callable[[], None],
         action_message: Callable[[Unit, UnitAction], str],
+        open_unit: Callable[[Unit], None] | None = None,
     ):
         super().__init__()
         self.manager = manager
@@ -103,6 +127,7 @@ class UnitPanel(Adw.BreakpointBin):
         self._machine_label = machine_label or _("This Computer")
         self._on_changed = on_changed
         self._action_message = action_message
+        self._open_unit = open_unit
         self._details: _Details | None = None
         self._pending_activity: _Details | None = None  # loaded, its rows not built yet
         self._activity_gen = 0
@@ -119,6 +144,12 @@ class UnitPanel(Adw.BreakpointBin):
         self.log_search.connect("search-changed", self._on_log_search)
         self.stack.connect("notify::visible-child-name", lambda *_: self._on_page_changed())
         self.title_label.connect("activate-link", self._on_title_link)
+        # Dependencies are fetched only when their page is shown, one relation at a time.
+        self._dependency_kind = DependencyKind.REQUIRES
+        self._dependencies: dict[DependencyKind, list[Dependency]] = {}
+        self._dependencies_gen = 0
+        self._build_dependency_kinds()
+        self.dependencies_list.connect("row-activated", self._on_dependency_activated)
 
         self._show_unit(unit)
 
@@ -286,6 +317,8 @@ class UnitPanel(Adw.BreakpointBin):
         if self.stack.get_visible_child_name() == "activity":
             self._build_pending_activity()
             self._focus_log_search()
+        elif self.stack.get_visible_child_name() == "dependencies":
+            self._show_dependencies()
 
     def _focus_log_search(self) -> None:
         """On the Log page, typing searches it."""
@@ -410,6 +443,10 @@ class UnitPanel(Adw.BreakpointBin):
         self.logs_banner.set_button_label(_("View as Administrator") if self._remote else None)
         self.logs_banner.set_revealed(bool(details.logs.warning))
         self._build_overview(details)
+        # Fetched again when next shown: an action may have changed the units' states.
+        self._dependencies.clear()
+        if self.stack.get_visible_child_name() == "dependencies":
+            self._show_dependencies()
         # Activity rows and the raw text view are built when that page is shown.
         # Doing it up front, for a log the overview does not display, held the
         # main loop for over a second and delayed the next service's details.
@@ -649,6 +686,96 @@ class UnitPanel(Adw.BreakpointBin):
 
         if add_rows():
             GLib.idle_add(add_rows, priority=_AFTER_REDRAW)
+
+    # -- dependencies -----------------------------------------------------
+
+    def _build_dependency_kinds(self) -> None:
+        group = None
+        for kind, label, tooltip in _DEPENDENCY_KINDS:
+            button = Gtk.ToggleButton(label=label, tooltip_text=tooltip, active=kind is self._dependency_kind)
+            if group is None:
+                group = button
+            else:
+                button.set_group(group)
+            button.connect("toggled", lambda b, k=kind: b.get_active() and self._on_dependency_kind(k))
+            self.dependency_kinds.append(button)
+
+    def _on_dependency_kind(self, kind: DependencyKind) -> None:
+        self._dependency_kind = kind
+        self._show_dependencies()
+
+    def _show_dependencies(self) -> None:
+        """The chosen relation's tree, fetched the first time it is asked for."""
+        kind = self._dependency_kind
+        if (cached := self._dependencies.get(kind)) is not None:
+            self._dependencies_gen += 1  # an older fetch still on its way is not shown
+            self._build_dependencies(cached)
+            return
+        self._dependencies_gen += 1
+        gen = self._dependencies_gen
+        manager, name, scope = self.manager, self.unit.name, self.scope
+        self.dependencies_spinner.start()
+        self.dependencies_stack.set_visible_child_name("loading")
+
+        def done(dependencies: list[Dependency]):
+            if self._closed or gen != self._dependencies_gen:
+                return
+            self._dependencies[kind] = dependencies
+            self._build_dependencies(dependencies)
+
+        def failed(error):
+            if self._closed or gen != self._dependencies_gen:
+                return
+            self._show_dependencies_message(_("Could Not Load Dependencies"), describe(error))
+
+        run_in_thread(lambda: manager.dependencies(name, kind, scope), on_done=done, on_error=failed)
+
+    def _build_dependencies(self, dependencies: list[Dependency]) -> None:
+        self.dependencies_spinner.stop()
+        if not dependencies:
+            self._show_dependencies_message(_("No Dependencies"), self._no_dependencies_text())
+            return
+        widgets.clear(self.dependencies_list)
+        for dependency in dependencies:
+            self.dependencies_list.append(self._dependency_row(dependency))
+        self.dependencies_stack.set_visible_child_name("list")
+
+    def _no_dependencies_text(self) -> str:
+        unit = self.unit.short_name
+        return {
+            DependencyKind.REQUIRES: _("{unit} pulls in no other units."),
+            DependencyKind.REQUIRED_BY: _("No unit pulls in {unit}."),
+            DependencyKind.AFTER: _("{unit} is not ordered after any unit."),
+            DependencyKind.BEFORE: _("{unit} is not ordered before any unit."),
+        }[self._dependency_kind].format(unit=unit)
+
+    def _show_dependencies_message(self, title: str, description: str) -> None:
+        self.dependencies_spinner.stop()
+        self.dependencies_message.set_title(title)
+        self.dependencies_message.set_description(GLib.markup_escape_text(description))
+        self.dependencies_stack.set_visible_child_name("message")
+
+    def _dependency_row(self, dependency: Dependency) -> Gtk.ListBoxRow:
+        unit = dependency.unit
+        line = Gtk.Box(
+            spacing=10,
+            margin_start=12 + dependency.depth * _DEPENDENCY_INDENT,
+            margin_end=12,
+            margin_top=8,
+            margin_bottom=8,
+        )
+        line.append(widgets.dot(unit.kind, small=True))
+        line.append(widgets.label(unit.name, ellipsize=Pango.EllipsizeMode.MIDDLE))
+        if unit.description and unit.description != unit.name:
+            line.append(widgets.label(unit.description, "dim-label", hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+        row = Gtk.ListBoxRow(child=line, activatable=self._open_unit is not None)
+        row.set_tooltip_text(f"{unit.name} — {unit.state_label}")
+        row.unit = unit
+        return row
+
+    def _on_dependency_activated(self, _list: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
+        if self._open_unit is not None:
+            self._open_unit(row.unit)
 
     def _logs_warning(self, details: _Details) -> str:
         if self._remote:

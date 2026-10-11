@@ -4,6 +4,7 @@ from systemdpilot.core.models import Unit
 from systemdpilot.core.parsers import (
     merge_units,
     override_body,
+    parse_dependency_tree,
     parse_journal,
     parse_list_unit_files,
     parse_list_units,
@@ -202,3 +203,34 @@ def test_parse_timer_specs():
         ("OnCalendar", "Mon *-*-* 00:00:00", "@1791750600"),
         ("OnBootUSec", "15min", "15min"),
     ]
+
+
+def test_parse_dependency_tree():
+    text = (
+        "ssh.service\n"
+        "\x1b[0;1;32m●\x1b[0m ├─-.mount\n"
+        "○ ├─sshd-keygen.service\n"
+        "● └─sysinit.target\n"
+        "×   ├─apparmor.service\n"
+        "●   │ └─nested.target\n"
+        "●   └─swap.target\n"
+    )
+    assert parse_dependency_tree(text) == [
+        (0, "-.mount"),
+        (0, "sshd-keygen.service"),
+        (0, "sysinit.target"),
+        (1, "apparmor.service"),
+        (2, "nested.target"),
+        (1, "swap.target"),
+    ]
+
+
+def test_parse_dependency_tree_in_ascii():
+    # In a C locale, as over SSH without a UTF-8 locale.
+    text = "ssh.service\n* |--.mount\n* `-sysinit.target\n*   |-a.service\n*   | `-b.target\n"
+    assert parse_dependency_tree(text) == [(0, "-.mount"), (0, "sysinit.target"), (1, "a.service"), (2, "b.target")]
+
+
+def test_parse_dependency_tree_without_dependencies():
+    assert parse_dependency_tree("ssh.service\n") == []
+    assert parse_dependency_tree("") == []

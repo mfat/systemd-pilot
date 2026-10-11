@@ -37,6 +37,15 @@ class UnitAction(str, Enum):
     RESET_FAILED = "reset-failed"
 
 
+class DependencyKind(str, Enum):
+    """Which of a unit's relations to follow, as ``systemctl list-dependencies`` can."""
+
+    REQUIRES = "requires"  # what it pulls in: Requires=, Wants=, BindsTo=, …
+    REQUIRED_BY = "required-by"  # what pulls it in
+    AFTER = "after"  # what it starts after
+    BEFORE = "before"  # what it starts before
+
+
 class AuthMethod(str, Enum):
     PASSWORD = "password"
     KEY = "key"
@@ -154,3 +163,11 @@ class LogEntry:
 class LogResult:
     entries: list[LogEntry]
     warning: str = ""  # e.g. journalctl permission hints
+
+
+@dataclass(frozen=True)
+class Dependency:
+    """A unit in a dependency tree; ``depth`` 0 is a direct dependency."""
+
+    depth: int
+    unit: Unit

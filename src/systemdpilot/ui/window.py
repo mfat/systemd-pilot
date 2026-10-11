@@ -757,6 +757,7 @@ class Window(Adw.ApplicationWindow):
             machine_label=host.name if host else _("This Computer"),
             on_changed=self.reload,
             action_message=self._action_message,
+            open_unit=lambda u: self._open_unit_by_name(u.name, u.scope),
         )
         self.services.select_unit(unit)
         # list-unit-files keeps systemd busy for a few seconds. Hold it while
@@ -775,7 +776,13 @@ class Window(Adw.ApplicationWindow):
             panel.start_loading()
             return
         dialog = UnitDialog(manager, unit, unit.scope, self.operations, **options)
-        dialog.connect("closed", lambda *_: self._details is None and self.services.select_unit(None))
+        # Its row stays highlighted if another unit's dialog took its place.
+        dialog.connect(
+            "closed",
+            lambda *_: (
+                self._details is None and self.services.is_open(dialog.panel.unit) and self.services.select_unit(None)
+            ),
+        )
         dialog.present(self)
         GLib.idle_add(lambda: (dialog.start_loading(), False)[-1])
 
@@ -842,9 +849,9 @@ class Window(Adw.ApplicationWindow):
             self.details_split.set_sidebar_width_fraction(fraction)
 
     def _open_unit_by_name(self, name: str, scope: Scope):
-        """From the journal: back to the units, with that one open."""
+        """From the journal or another unit's dependencies: back to the units, with that one open."""
         unit = next((u for u in self.services.units if u.key == (scope, name)), None)
-        if isinstance(dialog := self.get_visible_dialog(), JournalDetailsDialog):
+        if isinstance(dialog := self.get_visible_dialog(), (JournalDetailsDialog, UnitDialog)):
             dialog.close()
         self._close_journal()
         self.show_unit(unit or Unit(name, scope=scope))
