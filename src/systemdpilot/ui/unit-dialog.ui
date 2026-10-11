@@ -67,75 +67,81 @@
                       <object class="GtkScrolledWindow">
                         <property name="hscrollbar-policy">never</property>
                         <property name="child">
-                          <object class="GtkBox">
-                            <property name="orientation">vertical</property>
-                            <property name="spacing">22</property>
-                            <property name="margin-start">24</property>
-                            <property name="margin-end">24</property>
-                            <property name="margin-top">24</property>
-                            <property name="margin-bottom">28</property>
-                            <child>
-                              <!-- The service at a glance: its state's color, name and actions. -->
+                          <object class="AdwClamp">
+                            <property name="maximum-size">720</property>
+                            <property name="tightening-threshold">500</property>
+                            <property name="child">
                               <object class="GtkBox">
                                 <property name="orientation">vertical</property>
-                                <property name="spacing">6</property>
+                                <property name="spacing">22</property>
+                                <property name="margin-start">16</property>
+                                <property name="margin-end">16</property>
+                                <property name="margin-top">16</property>
+                                <property name="margin-bottom">24</property>
                                 <child>
-                                  <object class="GtkBox" id="icon_tile">
-                                    <property name="halign">center</property>
-                                    <!-- Only the icon inside expands, to sit in the middle. -->
-                                    <property name="hexpand">False</property>
-                                    <property name="vexpand">False</property>
-                                    <property name="margin-bottom">14</property>
-                                    <style>
-                                      <class name="unit-icon"/>
-                                    </style>
+                                  <!-- The service at a glance: its state's color, name and actions. -->
+                                  <object class="GtkBox">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">6</property>
                                     <child>
-                                      <object class="GtkImage">
-                                        <property name="icon-name">pegged-wheels-symbolic</property>
-                                        <property name="pixel-size">48</property>
+                                      <object class="GtkBox" id="icon_tile">
                                         <property name="halign">center</property>
-                                        <property name="valign">center</property>
-                                        <property name="hexpand">True</property>
-                                        <property name="vexpand">True</property>
+                                        <!-- Only the icon inside expands, to sit in the middle. -->
+                                        <property name="hexpand">False</property>
+                                        <property name="vexpand">False</property>
+                                        <property name="margin-bottom">14</property>
+                                        <style>
+                                          <class name="unit-icon"/>
+                                        </style>
+                                        <child>
+                                          <object class="GtkImage">
+                                            <property name="icon-name">pegged-wheels-symbolic</property>
+                                            <property name="pixel-size">48</property>
+                                            <property name="halign">center</property>
+                                            <property name="valign">center</property>
+                                            <property name="hexpand">True</property>
+                                            <property name="vexpand">True</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkLabel" id="title_label">
+                                        <property name="selectable">True</property>
+                                        <property name="wrap">True</property>
+                                        <property name="wrap-mode">word-char</property>
+                                        <property name="justify">center</property>
+                                        <style>
+                                          <class name="title-1"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkLabel" id="name_label">
+                                        <property name="wrap">True</property>
+                                        <property name="justify">center</property>
+                                        <style>
+                                          <class name="dim-label"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkBox" id="action_box">
+                                        <property name="spacing">10</property>
+                                        <property name="halign">center</property>
+                                        <property name="margin-top">14</property>
                                       </object>
                                     </child>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkLabel" id="title_label">
-                                    <property name="selectable">True</property>
-                                    <property name="wrap">True</property>
-                                    <property name="wrap-mode">word-char</property>
-                                    <property name="justify">center</property>
-                                    <style>
-                                      <class name="title-1"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkLabel" id="name_label">
-                                    <property name="wrap">True</property>
-                                    <property name="justify">center</property>
-                                    <style>
-                                      <class name="dim-label"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkBox" id="action_box">
-                                    <property name="spacing">10</property>
-                                    <property name="halign">center</property>
-                                    <property name="margin-top">14</property>
+                                  <object class="GtkBox" id="overview_box">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">22</property>
                                   </object>
                                 </child>
                               </object>
-                            </child>
-                            <child>
-                              <object class="GtkBox" id="overview_box">
-                                <property name="orientation">vertical</property>
-                                <property name="spacing">22</property>
-                              </object>
-                            </child>
+                            </property>
                           </object>
                         </property>
                       </object>
