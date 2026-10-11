@@ -378,7 +378,7 @@
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">_New Service…</attribute>
+        <attribute name="label" translatable="yes">_New Unit…</attribute>
         <attribute name="action">win.create-unit</attribute>
       </item>
       <item>

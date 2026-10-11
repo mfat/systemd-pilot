@@ -12,8 +12,8 @@
     </key>
     <key name="show-inactive" type="b">
       <default>false</default>
-      <summary>Show inactive services</summary>
-      <description>Also list services that are loaded but not running, and installed services that are not loaded.</description>
+      <summary>Show inactive units</summary>
+      <description>Also list units that are loaded but not active, and installed units that are not loaded.</description>
     </key>
     <key name="color-scheme" type="s">
       <choices>
@@ -30,8 +30,8 @@
         <choice value="name-description"/>
       </choices>
       <default>"name-description"</default>
-      <summary>Service label order</summary>
-      <description>Whether the service list shows description then name, or name then description.</description>
+      <summary>Unit label order</summary>
+      <description>Whether the unit list shows description then name, or name then description.</description>
     </key>
   </schema>
 </schemalist>

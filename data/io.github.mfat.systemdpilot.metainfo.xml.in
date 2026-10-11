@@ -5,18 +5,18 @@
   <project_license>GPL-3.0-or-later</project_license>
 
   <name>systemd Pilot</name>
-  <summary>Manage systemd services</summary>
+  <summary>Manage systemd units</summary>
   <description>
     <p>
-      systemd Pilot is a graphical front end for systemctl. Manage the services on this
+      systemd Pilot is a graphical front end for systemctl. Manage the units on this
       computer, or on remote machines over SSH, from one window.
     </p>
     <ul>
-      <li>Browse system and user services, with instant search</li>
-      <li>Start, stop, restart, enable and disable services</li>
-      <li>Read a service's status, logs, unit file and properties</li>
+      <li>Browse system and user units of every type, with instant search</li>
+      <li>Start, stop, restart, enable and disable units</li>
+      <li>Read a unit's status, logs, unit file and properties</li>
       <li>Read the system journal, with filters and a custom time range</li>
-      <li>Create new services from templates</li>
+      <li>Create new units from templates</li>
       <li>Connect to remote hosts with a password, a private key or your SSH agent</li>
     </ul>
   </description>
@@ -44,11 +44,11 @@
 
   <screenshots>
     <screenshot type="default">
-      <caption>Services on this computer</caption>
+      <caption>Units on this computer</caption>
       <image>https://raw.githubusercontent.com/mfat/systemd-pilot/main/data/screenshots/main.png</image>
     </screenshot>
     <screenshot>
-      <caption>Details and logs of a service</caption>
+      <caption>Details and logs of a unit</caption>
       <image>https://raw.githubusercontent.com/mfat/systemd-pilot/main/data/screenshots/details.png</image>
     </screenshot>
   </screenshots>

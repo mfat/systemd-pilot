@@ -56,7 +56,7 @@ BOOTS = (
 )
 # value, option label, help, button text, kernel only
 SOURCES = (
-    ("all", _("Everything"), _("Services, programs and the kernel"), _("Everything"), False),
+    ("all", _("Everything"), _("Units, programs and the kernel"), _("Everything"), False),
     ("kernel", _("Kernel only"), _("Hardware, drivers and memory messages"), _("Kernel"), True),
 )
 # value, sidebar label, dot (or icon), timeline title; in the order of the services' filters
@@ -83,7 +83,7 @@ PRESET_TEXT = {
     "flatpak": (_("Flatpak & Portals"), _("Portal denials, missing D-Bus interfaces")),
     "network": (_("Network & DNS"), _("DHCP timeouts, DNS drops, Wi-Fi association failures")),
     "usb": (_("USB & Peripherals"), _("Disconnects, resets, dock and hub problems")),
-    "boot": (_("Boot Problems"), _("Services that failed or timed out during this boot")),
+    "boot": (_("Boot Problems"), _("Units that failed or timed out during this boot")),
     "packages": (_("Package Updates"), _("Installs, upgrades and failed transactions")),
 }
 PRESET_ICONS = {

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Pango
 
 from ..core.models import Unit, UnitAction
@@ -62,11 +64,19 @@ def matches_filter(unit: Unit, scope: str, kind: str, unit_type: str = "all", *,
     return not is_inactive_unit(unit)
 
 
-def _type_header(row: Gtk.ListBoxRow, before: Gtk.ListBoxRow | None) -> None:
-    if before is None and row.get_header() is None:
-        row.set_header(
-            widgets.label(_("Type"), "dim-label", "caption-heading", margin_top=12, margin_bottom=6, margin_start=12)
-        )
+def _list_heading(title: str, *, first: bool = False) -> Callable:
+    """A header func that puts ``title`` over a sidebar list's first row."""
+
+    def header(row: Gtk.ListBoxRow, before: Gtk.ListBoxRow | None) -> None:
+        if before is None and row.get_header() is None:
+            margin_top = 6 if first else 12
+            row.set_header(
+                widgets.label(
+                    title, "dim-label", "caption-heading", margin_top=margin_top, margin_bottom=6, margin_start=12
+                )
+            )
+
+    return header
 
 
 def user_tag() -> Gtk.Widget:
@@ -435,7 +445,7 @@ class ServicesView(Gtk.Box):
             row = FilterRow(value, text, icon_name=icon, tooltip_text=tip)
             self._type_rows[value] = row
             self.type_list.append(row)
-        self.type_list.set_header_func(_type_header)
+        self.type_list.set_header_func(_list_heading(_("Type")))
         self.type_list.select_row(self._type_rows["service"])
         self.type_list.connect("row-selected", self._on_type_row_selected)
         self.sidebar.append(self.type_list)
@@ -589,6 +599,7 @@ class ServicesView(Gtk.Box):
             row = FilterRow(value, text, icon_name=icon, tooltip_text=tip)
             rows[value] = row
             listbox.append(row)
+        listbox.set_header_func(_list_heading(_("Status"), first=True))
         listbox.connect("row-selected", on_selected)
         return listbox
 

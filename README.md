@@ -4,18 +4,18 @@
   <img src="data/icons/hicolor/scalable/apps/io.github.mfat.systemdpilot.svg" alt="systemd Pilot icon" width="128" height="128">
 </p>
 
-systemd Pilot is a desktop app for managing systemd services on your local machine or remotely over SSH. 
+systemd Pilot is a desktop app for managing systemd units on your local machine or remotely over SSH. 
 
-![Services on this computer](data/screenshots/main.png)
+![Units on this computer](data/screenshots/main.png)
 
-![Details and logs of a service](data/screenshots/details.png)
+![Details and logs of a unit](data/screenshots/details.png)
 
 ## Features
 
-- Browse system and user services, with instant search (just start typing)
-- Start, stop, restart, enable and disable services
-- Read a service's status, logs, unit file and properties
-- Create and edit unit files, optionally enabling and starting new services
+- Browse system and user units of every type, with instant search (just start typing)
+- Start, stop, restart, enable and disable units
+- Read a unit's status, logs, unit file and properties
+- Create and edit unit files, optionally enabling and starting new ones
 - Manage remote hosts over SSH with a password, a private key or your SSH agent
 
 ## Install

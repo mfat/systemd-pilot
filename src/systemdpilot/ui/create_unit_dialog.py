@@ -10,7 +10,7 @@ from ..core.errors import InvalidUnitName, UnitExists
 from ..core.manager import SystemdManager
 from ..core.models import Scope, UnitAction, short_unit_name
 from ..core.templates import TEMPLATES, render
-from ..core.validation import normalize_service_name
+from ..core.validation import normalize_service_name, validate_unit_name
 from ..i18n import _
 from . import prompts
 from .operations import Operations
@@ -82,7 +82,7 @@ class CreateUnitDialog(Adw.Dialog):
     ):
         super().__init__()
         self.manager = manager
-        # A new service asks which systemd runs it; an edited one keeps its own.
+        # A new unit asks which systemd runs it; an edited one keeps its own.
         self.scope = scope or Scope.SYSTEM
         self._machine_label = machine_label
         self.operations = operations
@@ -91,7 +91,7 @@ class CreateUnitDialog(Adw.Dialog):
         self._edited = False
 
         if self._editing:
-            self.set_title(_("Edit Service"))
+            self.set_title(_("Edit Unit"))
             self.header_title.set_title(_("Edit {unit}").format(unit=short_unit_name(edit_name)))
             self.create_button.set_label(_("_Save"))
             self.create_button.set_sensitive(True)
@@ -102,7 +102,7 @@ class CreateUnitDialog(Adw.Dialog):
             self.enable_row.set_visible(False)
             self.start_row.set_visible(False)
         else:
-            self.header_title.set_title(_("New Service"))
+            self.header_title.set_title(_("New Unit"))
         self._show_scope()
 
         self.view, self.buffer = _make_editor()
@@ -118,7 +118,7 @@ class CreateUnitDialog(Adw.Dialog):
 
     def _show_scope(self):
         user = self.scope is Scope.USER
-        scope_label = _("user service") if user else _("system service")
+        scope_label = _("user unit") if user else _("system unit")
         self.header_title.set_subtitle(f"{self._machine_label} · {scope_label}")
         self.enable_row.set_title(_("Start at Login") if user else _("Start at Boot"))
 
@@ -144,6 +144,8 @@ class CreateUnitDialog(Adw.Dialog):
 
     def _name(self) -> str | None:
         try:
+            if self._editing:  # any unit's file can be edited; new ones are services
+                return validate_unit_name(self.name_row.get_text())
             return normalize_service_name(self.name_row.get_text())
         except InvalidUnitName:
             return None
@@ -204,7 +206,7 @@ class CreateUnitDialog(Adw.Dialog):
             if isinstance(error, UnitExists):
                 prompts.confirm(
                     self,
-                    _("Replace Existing Service?"),
+                    _("Replace Existing Unit?"),
                     _("{path} already exists. Replacing it cannot be undone.").format(path=error.path),
                     _("_Replace"),
                     lambda: self.on_create_clicked(None, overwrite=True),
@@ -224,5 +226,5 @@ class CreateUnitDialog(Adw.Dialog):
             on_success=on_success,
             on_error=on_error,
             on_finish=lambda: self.set_sensitive(True),
-            error_heading=_("Could Not Save Service") if self._editing else _("Could Not Create Service"),
+            error_heading=_("Could Not Save Unit") if self._editing else _("Could Not Create Unit"),
         )

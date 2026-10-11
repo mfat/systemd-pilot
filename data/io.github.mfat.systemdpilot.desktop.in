@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=systemd Pilot
-Comment=Manage systemd services locally and over SSH
+Comment=Manage systemd units locally and over SSH
 Exec=systemd-pilot
 Icon=io.github.mfat.systemdpilot
 Terminal=false

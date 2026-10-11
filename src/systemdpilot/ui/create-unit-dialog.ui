@@ -7,7 +7,7 @@
     <property name="height-request">294</property>
     <property name="content-width">760</property>
     <property name="content-height">680</property>
-    <property name="title" translatable="yes">New Service</property>
+    <property name="title" translatable="yes">New Unit</property>
     <property name="child">
       <object class="AdwToastOverlay" id="toast_overlay">
         <property name="child">
@@ -54,7 +54,7 @@
                     </style>
                     <child>
                       <object class="AdwEntryRow" id="name_row">
-                        <property name="title" translatable="yes">Service Name</property>
+                        <property name="title" translatable="yes">Unit Name</property>
                         <signal name="changed" handler="on_name_changed"/>
                       </object>
                     </child>
@@ -64,8 +64,8 @@
                         <property name="model">
                           <object class="GtkStringList">
                             <items>
-                              <item translatable="yes">Everyone (system service)</item>
-                              <item translatable="yes">Only me (user service)</item>
+                              <item translatable="yes">Everyone (system unit)</item>
+                              <item translatable="yes">Only me (user unit)</item>
                             </items>
                           </object>
                         </property>
