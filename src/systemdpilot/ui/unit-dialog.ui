@@ -106,35 +106,15 @@
                                       </object>
                                     </child>
                                     <child>
-                                      <!-- Centered as a whole, so the info button sits right after the name. -->
-                                      <object class="GtkCenterBox">
-                                        <property name="halign">center</property>
-                                        <property name="center-widget">
-                                          <object class="GtkLabel" id="title_label">
-                                            <property name="selectable">True</property>
-                                            <property name="wrap">True</property>
-                                            <property name="wrap-mode">word-char</property>
-                                            <property name="justify">center</property>
-                                            <style>
-                                              <class name="title-1"/>
-                                            </style>
-                                          </object>
-                                        </property>
-                                        <property name="end-widget">
-                                          <object class="GtkButton" id="info_button">
-                                            <property name="label">🛈</property>
-                                            <!-- On the name's baseline, so it sits with the letters. -->
-                                            <property name="valign">baseline-center</property>
-                                            <property name="margin-start">6</property>
-                                            <property name="visible">False</property>
-                                            <style>
-                                              <class name="flat"/>
-                                              <class name="circular"/>
-                                              <class name="dim-label"/>
-                                              <class name="name-info"/>
-                                            </style>
-                                          </object>
-                                        </property>
+                                      <object class="GtkLabel" id="title_label">
+                                        <property name="selectable">True</property>
+                                        <property name="wrap">True</property>
+                                        <property name="wrap-mode">word-char</property>
+                                        <property name="justify">center</property>
+                                        <style>
+                                          <class name="title-1"/>
+                                          <class name="unit-title"/>
+                                        </style>
                                       </object>
                                     </child>
                                     <child>

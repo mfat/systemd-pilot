@@ -69,7 +69,6 @@ class UnitPanel(Adw.BreakpointBin):
     icon_tile: Gtk.Box = Gtk.Template.Child()
     title_label: Gtk.Label = Gtk.Template.Child()
     name_label: Gtk.Label = Gtk.Template.Child()
-    info_button: Gtk.Button = Gtk.Template.Child()
     action_box: Gtk.Box = Gtk.Template.Child()
     stack: Adw.ViewStack = Gtk.Template.Child()
     loading_stack: Gtk.Stack = Gtk.Template.Child()
@@ -119,7 +118,7 @@ class UnitPanel(Adw.BreakpointBin):
         self.raw_switch.connect("notify::active", self._on_raw_toggled)
         self.log_search.connect("search-changed", self._on_log_search)
         self.stack.connect("notify::visible-child-name", lambda *_: self._on_page_changed())
-        self.info_button.connect("clicked", lambda *_: websearch.search(self.get_root(), words.search_name(self.unit)))
+        self.title_label.connect("activate-link", self._on_title_link)
 
         self._show_unit(unit)
 
@@ -171,7 +170,7 @@ class UnitPanel(Adw.BreakpointBin):
 
     def _show_unit(self, unit: Unit, props: dict[str, str] | None = None):
         self.unit = unit
-        self.title_label.set_label(unit.short_name)
+        self.title_label.set_markup(self._title_markup(unit))
         self.title_label.set_tooltip_text(unit.name)
         description = words.unit_description(unit)
         self.name_label.set_label(description)
@@ -179,10 +178,21 @@ class UnitPanel(Adw.BreakpointBin):
         self.name_label.set_tooltip_text(description or None)
         self.icon_tile.set_css_classes(["unit-icon", words.state_css(unit)])
         self.icon_tile.get_first_child().set_from_icon_name(words.TYPE_ICONS.get(unit.type, "pegged-wheels-symbolic"))
-        query = words.search_name(unit)
-        self.info_button.set_visible(bool(query))
-        self.info_button.set_tooltip_text(_("Search the Web for {name}").format(name=query) if query else None)
         self._show_actions(unit, props)
+
+    @staticmethod
+    def _title_markup(unit: Unit) -> str:
+        """The name, then a 🛈 that searches the web for it: in the same text, so on its baseline."""
+        name = GLib.markup_escape_text(unit.short_name)
+        if not (query := words.search_name(unit)):
+            return name
+        tooltip = GLib.markup_escape_text(_("Search the Web for {name}").format(name=query))
+        # No break space: the 🛈 never wraps onto a line of its own.
+        return f'{name}\u00a0<a href="search" title="{tooltip}"><span size="70%">🛈</span></a>'
+
+    def _on_title_link(self, _label: Gtk.Label, _uri: str) -> bool:
+        websearch.search(self.get_root(), words.search_name(self.unit))
+        return True  # handled: not opened as a URI
 
     def _show_actions(self, unit: Unit, props: dict[str, str] | None):
         widgets.clear(self.action_box)

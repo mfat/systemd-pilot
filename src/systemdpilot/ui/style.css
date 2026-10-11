@@ -158,7 +158,9 @@ button.hero-action.destructive-action:hover { background-image: image(alpha(curr
   border-radius: 8px;
   background-color: alpha(currentColor, 0.05);
 }
-button.name-info { min-width: 24px; min-height: 24px; padding: 0 2px; font-size: 18px; font-weight: normal; }
+/* The 🛈 after a unit's name: a link in the name's own text, dimmed like a caption. */
+label.unit-title > link { color: alpha(@window_fg_color, 0.45); font-weight: normal; text-decoration: none; }
+label.unit-title > link:hover { color: alpha(@window_fg_color, 0.8); }
 .signal-menu { padding: 4px; min-width: 220px; }
 .signal-menu-title { font-size: 13px; padding: 6px 10px 4px; }
 .signal-menu button.signal-item { padding: 8px 10px; font-weight: normal; }
