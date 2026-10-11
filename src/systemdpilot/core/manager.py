@@ -10,10 +10,10 @@ import re
 from collections.abc import Sequence
 
 from .errors import (
-    AuthenticationCancelled,
     AuthenticationTimedOut,
     CommandError,
     InvalidUnitName,
+    NotAuthorized,
     PilotError,
     UnitActivationFailed,
     UnitExists,
@@ -645,16 +645,23 @@ def _split_scopes(text: str) -> dict[str, tuple[str, int]]:
 
 
 def _raise_polkit_refusal(stderr: str) -> None:
-    """Raise if systemctl failed because polkit's password prompt did not let it through."""
-    text = stderr.lower()
-    if "interactive authentication" in text:
-        return  # No polkit agent to ask; systemd's own message says so.
-    if "access denied" in text:
-        raise AuthenticationCancelled("Authentication was cancelled")
-    # systemd closes the prompt after 25 seconds (its D-Bus timeout); the C
-    # library words "Connection timed out" in the user's language.
-    if "timed out" in text or os.strerror(errno.ETIMEDOUT).lower() in text:
-        raise AuthenticationTimedOut("systemd stopped waiting for the password after 25 seconds. Try again.")
+    """Raise :class:`NotAuthorized` or :class:`AuthenticationTimedOut` if that is why systemctl failed.
+
+    Other failures, such as having no polkit agent to ask, are left to the
+    caller. Only the whole reason after "Failed to …: " is compared: "Access
+    denied" is a fixed string from systemd, while "Connection timed out" comes
+    from the C library, in the user's language.
+    """
+    timeouts = {"connection timed out", "timed out", os.strerror(errno.ETIMEDOUT).lower()}
+    for line in stderr.lower().splitlines():
+        reason = line.rpartition(": ")[2].strip().rstrip(".")
+        if reason == "access denied":
+            raise NotAuthorized("Not authorized")
+        if reason in timeouts:
+            # systemd closes polkit's prompt after 25 seconds, its D-Bus timeout.
+            raise AuthenticationTimedOut(
+                "systemd did not answer in time. A password prompt closes after 25 seconds; try again."
+            )
 
 
 def _since_property(active_state: str) -> str:

@@ -7,7 +7,13 @@ from typing import Any
 
 from gi.repository import Gtk
 
-from ..core.errors import AuthenticationCancelled, AuthenticationFailed, AuthenticationRequired, PilotError
+from ..core.errors import (
+    AuthenticationCancelled,
+    AuthenticationFailed,
+    AuthenticationRequired,
+    NotAuthorized,
+    PilotError,
+)
 from ..core.manager import SystemdManager
 from ..core.ssh import SSHRunner
 from ..i18n import _
@@ -61,6 +67,12 @@ class Operations:
                 return
             if isinstance(error, AuthenticationCancelled):
                 cancelled()
+                return
+            if isinstance(error, NotAuthorized):
+                # Usually a dismissed prompt, so a toast rather than a dialog.
+                self.toast(_("Not authorized"))
+                if on_finish:
+                    on_finish()
                 return
             if not (on_error and on_error(error)):
                 prompts.show_error(self.parent, error_heading or _("Operation Failed"), error)

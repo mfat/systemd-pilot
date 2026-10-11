@@ -43,6 +43,10 @@ class AuthenticationCancelled(PilotError):
     """The user dismissed the authentication prompt."""
 
 
+class NotAuthorized(PilotError):
+    """polkit refused: its prompt was dismissed, or this account may not do that. systemd doesn't say which."""
+
+
 class AuthenticationTimedOut(PilotError):
     """Nobody answered the password prompt in time; systemd closes polkit's after 25 seconds."""
 

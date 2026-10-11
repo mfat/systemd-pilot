@@ -24,7 +24,7 @@ class FakeRunner(CommandRunner):
         self.replies.append((prefix, CommandResult(prefix, returncode, stdout, stderr)))
 
     def run(self, argv: Sequence[str], *, input=None, privileged=False, timeout=60):
-        self.calls.append({"argv": list(argv), "input": input, "privileged": privileged})
+        self.calls.append({"argv": list(argv), "input": input, "privileged": privileged, "timeout": timeout})
         for prefix, result in self.replies:
             if tuple(argv[: len(prefix)]) == prefix:
                 return CommandResult(tuple(argv), result.returncode, result.stdout, result.stderr)

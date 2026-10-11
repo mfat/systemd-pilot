@@ -4,10 +4,10 @@ import subprocess
 import pytest
 
 from systemdpilot.core.errors import (
-    AuthenticationCancelled,
     AuthenticationTimedOut,
     CommandError,
     InvalidUnitName,
+    NotAuthorized,
     PilotError,
     UnitExists,
 )
@@ -207,11 +207,20 @@ def test_polkit_changes_run_without_root(polkit_runner, change):
     change(SystemdManager(polkit_runner))
     (call,) = polkit_runner.calls
     assert call["argv"][:2] == ["systemctl", "--no-pager"] and not call["privileged"]
+    assert call["timeout"] is None  # a person may be typing a password
 
 
-def test_polkit_dismissed_is_cancelled(polkit_runner):
+def test_polkit_refusal_is_not_authorized(polkit_runner):
+    # A dismissed prompt and a policy that says no look the same to systemctl.
     polkit_runner.reply("systemctl", returncode=1, stderr="Failed to restart a.service: Access denied\n")
-    with pytest.raises(AuthenticationCancelled):
+    with pytest.raises(NotAuthorized):
+        SystemdManager(polkit_runner).control("a.service", UnitAction.RESTART)
+
+
+def test_broken_polkit_is_not_a_slow_password(polkit_runner):
+    stderr = "Failed to restart a.service: Activation of org.freedesktop.PolicyKit1 timed out\n"
+    polkit_runner.reply("systemctl", returncode=1, stderr=stderr)
+    with pytest.raises(CommandError, match="PolicyKit1 timed out"):
         SystemdManager(polkit_runner).control("a.service", UnitAction.RESTART)
 
 
