@@ -325,7 +325,6 @@ class ServicesView(Gtk.Box):
     )
     # value, label, icon, tooltip
     TYPE_FILTERS = (
-        ("all", "all types", "view-list-symbolic", "every unit type"),
         ("service", "service", words.TYPE_ICONS["service"], "systemd.service(5): processes"),
         ("socket", "socket", words.TYPE_ICONS["socket"], "systemd.socket(5): starts a service on connection"),
         ("timer", "timer", words.TYPE_ICONS["timer"], "systemd.timer(5): starts a unit on a schedule"),
@@ -337,6 +336,7 @@ class ServicesView(Gtk.Box):
         ("device", "device", words.TYPE_ICONS["device"], "systemd.device(5): devices the kernel reports"),
         ("slice", "slice", words.TYPE_ICONS["slice"], "systemd.slice(5): resource groups"),
         ("scope", "scope", words.TYPE_ICONS["scope"], "systemd.scope(5): processes started elsewhere"),
+        ("all", "all types", "view-list-symbolic", "every unit type"),
     )
 
     def __init__(self):
