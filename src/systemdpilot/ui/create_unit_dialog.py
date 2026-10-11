@@ -79,6 +79,7 @@ class CreateUnitDialog(Adw.Dialog):
         on_created: Callable[[str], None],
         edit_name: str = "",
         edit_content: str = "",
+        override: bool = False,
     ):
         super().__init__()
         self.manager = manager
@@ -88,11 +89,17 @@ class CreateUnitDialog(Adw.Dialog):
         self.operations = operations
         self._on_created = on_created
         self._editing = bool(edit_name)
+        # A drop-in beside the unit file, as "systemctl edit" makes, rather than the file itself.
+        self._override = self._editing and override
         self._edited = False
 
-        if self._editing:
+        if self._override:
+            self.set_title(_("Edit Override"))
+            self.header_title.set_title(_("Override {unit}").format(unit=short_unit_name(edit_name)))
+        elif self._editing:
             self.set_title(_("Edit Unit"))
             self.header_title.set_title(_("Edit {unit}").format(unit=short_unit_name(edit_name)))
+        if self._editing:
             self.create_button.set_label(_("_Save"))
             self.create_button.set_sensitive(True)
             self.name_row.set_text(edit_name)
@@ -190,11 +197,13 @@ class CreateUnitDialog(Adw.Dialog):
         content = self.buffer.get_text(self.buffer.get_start_iter(), self.buffer.get_end_iter(), True)
         enable = not self._editing and self.enable_row.get_active()
         start = not self._editing and self.start_row.get_active()
-        manager, scope = self.manager, self.scope
+        manager, scope, override = self.manager, self.scope, self._override
         if self._editing:
             overwrite = True
 
         def work():
+            if override:
+                return manager.write_override(name, content, scope)
             path = manager.create_unit(name, content, scope, overwrite=overwrite)
             if enable:
                 manager.control(name, UnitAction.ENABLE, scope)
@@ -226,5 +235,10 @@ class CreateUnitDialog(Adw.Dialog):
             on_success=on_success,
             on_error=on_error,
             on_finish=lambda: self.set_sensitive(True),
-            error_heading=_("Could Not Save Unit") if self._editing else _("Could Not Create Unit"),
+            error_heading=self._error_heading(),
         )
+
+    def _error_heading(self) -> str:
+        if self._override:
+            return _("Could Not Save Override")
+        return _("Could Not Save Unit") if self._editing else _("Could Not Create Unit")

@@ -34,11 +34,12 @@ _UNSTOPPABLE = frozenset({"-.mount", "-.slice", "init.scope"})
 
 
 def control_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[UnitAction, ...]:
-    """Start, or restart and stop, as far as the unit allows.
+    """Start, or reload, restart and stop, as far as the unit allows.
 
     Devices come and go with the hardware; scopes are made by the programs in
     them, so they can only be stopped. With the unit's ``props``, systemd's own
-    CanStart/CanStop and RefuseManualStart/RefuseManualStop decide too.
+    CanStart/CanStop and RefuseManualStart/RefuseManualStop decide too, and
+    CanReload offers reloading.
     """
     running = unit.kind == "running"
     if unit.type == "device" or unit.name in _UNSTOPPABLE:
@@ -52,6 +53,8 @@ def control_actions(unit: Unit, props: dict[str, str] | None = None) -> tuple[Un
         can_stop = props.get("CanStop") != "no" and props.get("RefuseManualStop") != "yes"
         allowed = {UnitAction.START: can_start, UnitAction.STOP: can_stop, UnitAction.RESTART: can_start and can_stop}
         actions = tuple(a for a in actions if allowed[a])
+        if running and unit.type != "scope" and props.get("CanReload") == "yes":
+            actions = (UnitAction.RELOAD, *actions)
     return actions
 
 
@@ -66,6 +69,28 @@ def confirm_control(unit: Unit, action: UnitAction) -> tuple[str, str, str] | No
     if action is UnitAction.STOP:
         return _("Stop {unit}?").format(unit=unit.short_name), body, _("S_top")
     return _("Restart {unit}?").format(unit=unit.short_name), body, _("_Restart")
+
+
+def can_signal(unit: Unit, props: dict[str, str]) -> bool:
+    """The unit has processes running in a control group of its own."""
+    return unit.kind == "running" and bool(props.get("ControlGroup")) and unit.name not in _UNSTOPPABLE
+
+
+def can_override(unit: Unit, props: dict[str, str]) -> bool:
+    """The unit comes from a file of its own, so a drop-in can change it."""
+    path = props.get("FragmentPath") or ""
+    return bool(path) and not path.startswith("/run/systemd/transient/") and unit.type not in ("device", "scope")
+
+
+def override_template(unit: Unit) -> str:
+    """What a new override starts as: a note on how drop-ins work, and the type's own section."""
+    section = {"target": "Unit"}.get(unit.type, unit.type.capitalize())
+    note = _(
+        "# Settings here are added to {unit} and override its own.\n"
+        "# To replace a list such as ExecStart=, clear it first with an empty ExecStart=.\n"
+        "# Saving with no settings removes the override.\n"
+    ).format(unit=unit.name)
+    return f"{note}\n[{section}]\n"
 
 
 def can_toggle_startup(unit: Unit) -> bool:

@@ -47,6 +47,19 @@ rm -f -- "$tmp"
 systemctl "$@" daemon-reload
 """
 
+# Removes a drop-in, and its directory if nothing else is left in it.
+_REMOVE_SCRIPT = r"""
+set -eu
+target=$1; dir=$2; shift 2
+rm -f -- "$target"
+rmdir -- "$dir" 2>/dev/null || true
+systemctl "$@" daemon-reload
+"""
+
+OVERRIDE_FILE = "override.conf"
+# Signals offered for a unit's processes.
+SIGNALS = ("SIGTERM", "SIGHUP", "SIGKILL")
+
 # Runs one systemctl command against the system and then the user instance, in
 # a single round trip over SSH. After each part a marker line with its exit
 # status goes to stdout and stderr, so the two outputs can be told apart.
@@ -376,6 +389,16 @@ class SystemdManager:
             privileged=self._privileged(scope),
         ).check()
 
+    def kill(self, name: str, signal: str, scope: Scope = Scope.SYSTEM) -> None:
+        """Send ``signal`` to all of the unit's processes."""
+        validate_unit_name(name)
+        if signal not in SIGNALS:
+            raise PilotError(f"Unsupported signal: {signal}")
+        self.runner.run(
+            self._systemctl(scope, "kill", f"--signal={signal}", "--", name),
+            privileged=self._privileged(scope),
+        ).check()
+
     def daemon_reload(self, scope: Scope = Scope.SYSTEM) -> None:
         self.runner.run(self._systemctl(scope, "daemon-reload"), privileged=self._privileged(scope)).check()
 
@@ -386,6 +409,27 @@ class SystemdManager:
 
     def unit_path(self, name: str, scope: Scope) -> str:
         return f"{SYSTEM_UNIT_DIR if scope is Scope.SYSTEM else USER_UNIT_DIR}/{validate_unit_name(name)}"
+
+    def override_path(self, name: str, scope: Scope) -> str:
+        return f"{self.unit_path(name, scope)}.d/{OVERRIDE_FILE}"
+
+    def write_override(self, name: str, content: str, scope: Scope = Scope.SYSTEM) -> str:
+        """Save the unit's drop-in override, as ``systemctl edit`` does, and reload systemd.
+
+        Empty content (or only comments) removes the override. Returns its path.
+        """
+        validate_unit_name(name)
+        unit_dir = SYSTEM_UNIT_DIR if scope is Scope.SYSTEM else USER_UNIT_DIR
+        lines = (line.strip() for line in content.splitlines())
+        settings = any(line and not line.startswith(("#", ";", "[")) for line in lines)
+        if content and not content.endswith("\n"):
+            content += "\n"
+        body = _INSTALL_SCRIPT if settings else _REMOVE_SCRIPT
+        script = f'set -- "{unit_dir}/$1.d/{OVERRIDE_FILE}" "{unit_dir}/$1.d" "$2"\n' + body
+        argv = ["env", "PILOT_OVERWRITE=1", "sh", "-c", script, "sh", name]
+        argv.append("--user" if scope is Scope.USER else "--system")
+        self.runner.run(argv, input=content if settings else None, privileged=self._privileged(scope)).check()
+        return self.override_path(name, scope)
 
     def create_unit(self, name: str, content: str, scope: Scope = Scope.SYSTEM, *, overwrite: bool = False) -> str:
         """Install a unit file and reload systemd. Returns the file's path."""

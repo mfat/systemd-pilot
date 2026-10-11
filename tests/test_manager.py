@@ -440,3 +440,38 @@ def test_user_scope_leaves_out_the_machines_devices_and_mounts():
     units = [Unit("a.service"), Unit("sda.device"), Unit("-.mount"), Unit("app.slice")]
     assert [u.name for u in _with_scope(units, Scope.USER)] == ["a.service", "app.slice"]
     assert len(_with_scope(units, Scope.SYSTEM)) == 4
+
+
+def test_kill_sends_signal(runner):
+    SystemdManager(runner).kill("a.service", "SIGHUP")
+    call = runner.calls[0]
+    assert call["argv"] == ["systemctl", "--no-pager", "kill", "--signal=SIGHUP", "--", "a.service"]
+    assert call["privileged"]
+
+
+def test_kill_rejects_other_signals(runner):
+    with pytest.raises(PilotError):
+        SystemdManager(runner).kill("a.service", "SIGTERM; reboot")
+    assert runner.calls == []
+
+
+def test_reset_failed(runner):
+    SystemdManager(runner).control("a.service", UnitAction.RESET_FAILED, Scope.USER)
+    assert runner.calls[0]["argv"] == ["systemctl", "--no-pager", "--user", "reset-failed", "--", "a.service"]
+
+
+def test_override_written_and_removed_end_to_end(runner, tmp_path, monkeypatch):
+    manager = SystemdManager(runner)
+    path = manager.write_override("demo.service", "[Service]\nEnvironment=A=1", Scope.USER)
+    assert path.endswith("/systemd/user/demo.service.d/override.conf")
+    proc = _run_install_script(runner.calls[0], tmp_path, monkeypatch)
+    assert proc.returncode == 0, proc.stderr
+    override = tmp_path / ".config/systemd/user/demo.service.d/override.conf"
+    assert override.read_text() == "[Service]\nEnvironment=A=1\n"
+
+    # Saved again with no settings, only comments and a section: removed, directory too.
+    manager.write_override("demo.service", "# nothing\n\n[Service]\n", Scope.USER)
+    proc = _run_install_script(runner.calls[1], tmp_path, monkeypatch)
+    assert proc.returncode == 0, proc.stderr
+    assert not override.parent.exists()
+    assert (tmp_path / "reload").read_text().strip() == "--user daemon-reload"

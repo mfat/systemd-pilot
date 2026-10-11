@@ -7,12 +7,13 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from gi.repository import Adw, GLib, Gtk, Pango
+from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from ..core.journal import matches_query
-from ..core.manager import SystemdManager
+from ..core.manager import SIGNALS, SystemdManager
 from ..core.models import LogEntry, LogResult, Scope, Unit, UnitAction, short_unit_name
 from ..core.parsers import (
+    override_body,
     parse_int,
     parse_timer_specs,
     parse_unit_list,
@@ -41,6 +42,12 @@ _RESOURCE_TYPES = ("service", "slice", "scope")
 _NO_STARTUP_TYPES = ("device", "scope")
 # Unit names listed in a row before "…and N more".
 _UNIT_LIST_LIMIT = 8
+# The More Actions menu's Send Signal items, in SIGNALS' order.
+_SIGNAL_LABELS = {
+    "SIGTERM": _("Terminate (SIGTERM)"),
+    "SIGHUP": _("Hang Up (SIGHUP)"),
+    "SIGKILL": _("Kill (SIGKILL)"),
+}
 
 
 @dataclass
@@ -115,7 +122,24 @@ class UnitPanel(Adw.BreakpointBin):
             lambda stack, _p: stack.get_visible_child_name() == "activity" and self._build_pending_activity(),
         )
 
+        self._install_actions()
         self._show_unit(unit)
+
+    def _install_actions(self) -> None:
+        """The More Actions menu's items, as actions of the "unit" group."""
+        group = Gio.SimpleActionGroup()
+        text_type = GLib.VariantType.new("s")
+        actions = [
+            ("reset-failed", None, lambda _a, _p: self._run_action(UnitAction.RESET_FAILED)),
+            ("run", text_type, lambda _a, name: self._run_action(UnitAction.START, name.get_string())),
+            ("signal", text_type, lambda _a, signal: self._on_signal(signal.get_string())),
+            ("edit-override", None, lambda *_: self._edit_override()),
+        ]
+        for name, parameter, callback in actions:
+            action = Gio.SimpleAction.new(name, parameter)
+            action.connect("activate", callback)
+            group.add_action(action)
+        self.insert_action_group("unit", group)
 
     def start_loading(self) -> None:
         """Fetch fresh data in the background (call after :meth:`present`)."""
@@ -179,6 +203,7 @@ class UnitPanel(Adw.BreakpointBin):
         widgets.clear(self.action_box)
         buttons = {
             UnitAction.START: (_("_Start"), "media-playback-start-symbolic", "suggested-action"),
+            UnitAction.RELOAD: (_("Re_load"), "emblem-synchronizing-symbolic", None),
             UnitAction.RESTART: (_("_Restart"), "view-refresh-symbolic", None),
             UnitAction.STOP: (_("S_top"), "media-playback-stop-symbolic", "destructive-action"),
         }
@@ -192,6 +217,42 @@ class UnitPanel(Adw.BreakpointBin):
                 button.add_css_class(css)
             button.connect("clicked", lambda _b, a=action: self._on_control_clicked(a))
             self.action_box.append(button)
+        if props and (menu := self._more_menu(unit, props)).get_n_items():
+            self.action_box.append(
+                Gtk.MenuButton(
+                    icon_name="view-more-symbolic",
+                    menu_model=menu,
+                    tooltip_text=_("More Actions"),
+                    css_classes=["hero-action"],
+                )
+            )
+
+    @staticmethod
+    def _more_menu(unit: Unit, props: dict[str, str]) -> Gio.Menu:
+        """What the unit allows beyond starting and stopping it."""
+        menu = Gio.Menu()
+        actions = Gio.Menu()
+        if unit.type == "timer":
+            for name in parse_unit_list(props.get("Triggers", "")):
+                item = Gio.MenuItem.new(_("Run {unit} Now").format(unit=short_unit_name(name)), None)
+                item.set_action_and_target_value("unit.run", GLib.Variant.new_string(name))
+                actions.append_item(item)
+        if unit.is_failed:
+            actions.append(_("Clear Failed State"), "unit.reset-failed")
+        if words.can_signal(unit, props):
+            signals = Gio.Menu()
+            for signal in SIGNALS:
+                item = Gio.MenuItem.new(_SIGNAL_LABELS[signal], None)
+                item.set_action_and_target_value("unit.signal", GLib.Variant.new_string(signal))
+                signals.append_item(item)
+            actions.append_submenu(_("Send Signal"), signals)
+        if actions.get_n_items():
+            menu.append_section(None, actions)
+        if words.can_override(unit, props):
+            edit = Gio.Menu()
+            edit.append(_("Edit Override…"), "unit.edit-override")
+            menu.append_section(None, edit)
+        return menu
 
     def _on_control_clicked(self, action: UnitAction):
         if question := words.confirm_control(self.unit, action):
@@ -462,6 +523,9 @@ class UnitPanel(Adw.BreakpointBin):
             edit.connect("clicked", lambda *_: self._edit_unit_file())
             file_row.add_suffix(edit)
         where.add(file_row)
+        drop_ins = (props.get("DropInPaths") or "").split()
+        if drop_ins:
+            where.add(self._row(_("Drop-ins"), "\n".join(drop_ins), "DropInPaths", mono=True))
         box.append(where)
 
         recent = [e for e in reversed(details.logs.entries[-3:])]
@@ -738,17 +802,70 @@ class UnitPanel(Adw.BreakpointBin):
         )
         dialog.present(self)
 
-    def _run_action(self, action: UnitAction):
-        self._set_busy(True)
-        manager, name, scope = self.manager, self.unit.name, self.scope
+    def _edit_override(self):
+        details = self._details
+        if not details:
+            return
+        content = override_body(details.unit_file, self.unit.name) or words.override_template(self.unit)
 
-        def success(_result):
+        def on_saved(_name: str):
+            if not self._closed:
+                self.toast_overlay.add_toast(Adw.Toast(title=_("Override saved"), timeout=3))
+                self.load()
+            self._on_changed()
+
+        dialog = CreateUnitDialog(
+            self.manager,
+            self.scope,
+            self._machine_label,
+            self.operations,
+            on_created=on_saved,
+            edit_name=self.unit.name,
+            edit_content=content,
+            override=True,
+        )
+        dialog.present(self)
+
+    def _on_signal(self, signal: str):
+        if signal != "SIGKILL":
+            self._send_signal(signal)
+            return
+        prompts.confirm(
+            self,
+            _("Kill {unit}?").format(unit=self.unit.short_name),
+            _("Its processes end at once, with no chance to save their work or clean up."),
+            _("_Kill"),
+            lambda: self._send_signal(signal),
+            destructive=True,
+        )
+
+    def _send_signal(self, signal: str):
+        manager, name, scope = self.manager, self.unit.name, self.scope
+        self._run(
+            lambda: manager.kill(name, signal, scope),
+            _("Sent {signal} to {unit}").format(signal=signal, unit=self.unit.short_name),
+            _("Could Not Send {signal}").format(signal=signal),
+        )
+
+    def _run_action(self, action: UnitAction, name: str = ""):
+        """``action`` on this unit, or on the one named (a timer's service)."""
+        manager, scope = self.manager, self.scope
+        target = Unit(name=name, scope=scope) if name else self.unit
+
+        def work():
+            manager.control(target.name, action, scope)
             if action in (UnitAction.ENABLE, UnitAction.DISABLE, UnitAction.MASK, UnitAction.UNMASK):
                 manager.invalidate_unit_files()
+
+        self._run(work, self._action_message(target, action), _("Action Failed"))
+
+    def _run(self, work: Callable[[], None], message: str, error_heading: str):
+        self._set_busy(True)
+        manager = self.manager
+
+        def success(_result):
             if not self._closed:
-                self.toast_overlay.add_toast(
-                    Adw.Toast(title=self._action_message(self.unit, action), use_markup=False, timeout=3)
-                )
+                self.toast_overlay.add_toast(Adw.Toast(title=message, use_markup=False, timeout=3))
             self._on_changed()
 
         def finish():
@@ -758,10 +875,10 @@ class UnitPanel(Adw.BreakpointBin):
 
         self.operations.run(
             manager,
-            lambda: manager.control(name, action, scope),
+            work,
             on_success=success,
             on_finish=finish,
-            error_heading=_("Action Failed"),
+            error_heading=error_heading,
         )
 
 

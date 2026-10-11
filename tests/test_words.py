@@ -130,6 +130,26 @@ def test_control_actions_follow_systemd():
     assert words.control_actions(Unit("-.mount", active_state="active", sub_state="mounted")) == ()
 
 
+def test_reload_offered_when_systemd_allows():
+    running = Unit("a.service", active_state="active", sub_state="running")
+    assert words.control_actions(running, {"CanReload": "yes"}) == (
+        UnitAction.RELOAD,
+        UnitAction.RESTART,
+        UnitAction.STOP,
+    )
+    assert words.control_actions(Unit("a.service"), {"CanReload": "yes"}) == (UnitAction.START,)
+
+
+def test_more_actions_need_processes_and_a_unit_file():
+    running = Unit("a.service", active_state="active", sub_state="running")
+    assert words.can_signal(running, {"ControlGroup": "/system.slice/a.service"})
+    assert not words.can_signal(Unit("a.service"), {"ControlGroup": "/system.slice/a.service"})
+    assert words.can_override(running, {"FragmentPath": "/usr/lib/systemd/system/a.service"})
+    assert not words.can_override(running, {"FragmentPath": "/run/systemd/transient/a.service"})
+    assert words.override_template(Unit("a.timer")).endswith("[Timer]\n")
+    assert words.override_template(Unit("a.target")).endswith("[Unit]\n")
+
+
 def test_stopping_a_target_asks_first():
     target = Unit("multi-user.target", active_state="active", sub_state="active")
     assert words.confirm_control(target, UnitAction.STOP)

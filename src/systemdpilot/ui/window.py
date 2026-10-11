@@ -760,6 +760,7 @@ class Window(Adw.ApplicationWindow):
             UnitAction.DISABLE: _("Disabled {unit}"),
             UnitAction.MASK: _("Masked {unit}"),
             UnitAction.UNMASK: _("Unmasked {unit}"),
+            UnitAction.RESET_FAILED: _("Cleared the failed state of {unit}"),
         }
         return messages[action].format(unit=unit.short_name)
 
@@ -774,6 +775,7 @@ class Window(Adw.ApplicationWindow):
             UnitAction.DISABLE: _("Could Not Disable {unit}"),
             UnitAction.MASK: _("Could Not Mask {unit}"),
             UnitAction.UNMASK: _("Could Not Unmask {unit}"),
+            UnitAction.RESET_FAILED: _("Could Not Clear the Failed State of {unit}"),
         }
         return headings[action].format(unit=unit.short_name)
 

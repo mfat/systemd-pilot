@@ -34,6 +34,7 @@ class UnitAction(str, Enum):
     DISABLE = "disable"
     MASK = "mask"
     UNMASK = "unmask"
+    RESET_FAILED = "reset-failed"
 
 
 class AuthMethod(str, Enum):

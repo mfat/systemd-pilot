@@ -3,6 +3,7 @@ import json
 from systemdpilot.core.models import Unit
 from systemdpilot.core.parsers import (
     merge_units,
+    override_body,
     parse_journal,
     parse_list_unit_files,
     parse_list_units,
@@ -30,6 +31,28 @@ def test_unit_file_body_strips_path_and_dropins():
         "Environment=FOO=1\n"
     )
     assert unit_file_body(text) == "[Unit]\nDescription=Demo\n# Keep this comment\n\n"
+
+
+def test_override_body_only_the_units_own():
+    text = (
+        "# /usr/lib/systemd/system/demo.service\n"
+        "[Unit]\n"
+        "Description=Demo\n"
+        "\n"
+        "# /usr/lib/systemd/system/demo.service.d/override.conf\n"
+        "[Service]\n"
+        "Nice=5\n"
+        "\n"
+        "# /etc/systemd/system/demo.service.d/override.conf\n"
+        "[Service]\n"
+        "Environment=FOO=1\n"
+        "\n"
+        "# /etc/systemd/system/demo.service.d/other.conf\n"
+        "[Service]\n"
+        "Nice=1\n"
+    )
+    assert override_body(text, "demo.service") == "[Service]\nEnvironment=FOO=1\n"
+    assert override_body(text, "other.service") == ""
 
 
 def test_unit_file_body_empty():

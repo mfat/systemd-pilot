@@ -135,6 +135,7 @@ listview.services-list > row:focus-visible .service-row {
 button.hero-action { min-height: 40px; padding: 0 20px; border-radius: 9999px; font-weight: bold; }
 button.hero-action.destructive-action { background-color: @destructive_bg_color; color: @destructive_fg_color; }
 button.hero-action.destructive-action:hover { background-image: image(alpha(currentColor, 0.1)); }
+menubutton.hero-action > button { min-height: 40px; min-width: 40px; padding: 0; border-radius: 9999px; }
 
 .command-row .subtitle { font-family: monospace; }
 

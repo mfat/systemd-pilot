@@ -41,6 +41,25 @@ def unit_file_body(text: str) -> str:
     return "".join(body)
 
 
+def override_body(text: str, name: str) -> str:
+    """The unit's own ``override.conf`` from ``systemctl cat`` output, or "".
+
+    Only one under /etc or a home directory: the ones under /usr, /lib and
+    /run belong to packages and to systemd.
+    """
+    body: list[str] = []
+    inside = False
+    for line in text.splitlines(keepends=True):
+        if line.startswith("# /"):
+            path = line[2:].strip()
+            inside = path.endswith(f"/{name}.d/override.conf") and not path.startswith(("/usr/", "/lib/", "/run/"))
+            continue
+        if inside:
+            body.append(line)
+    content = "".join(body).strip("\n")
+    return content + "\n" if content else ""
+
+
 def _parse_json_list(text: str) -> list[dict] | None:
     text = strip_ansi(text).strip()
     if not text:
